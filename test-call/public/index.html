@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Test Call</title>
+  <style>
+    :root { color-scheme: dark; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #111;
+      color: #eee;
+    }
+    header {
+      padding: 16px 20px;
+      border-bottom: 1px solid #2a2a2a;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    header h1 { font-size: 15px; font-weight: 600; margin: 0; color: #888; }
+    input {
+      background: #1c1c1c;
+      border: 1px solid #333;
+      border-radius: 6px;
+      color: #eee;
+      padding: 8px 10px;
+      font-size: 14px;
+    }
+    button {
+      border: none;
+      border-radius: 6px;
+      padding: 8px 16px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    #join { background: #2f7cf6; color: #fff; }
+    #leave { background: #3a1f1f; color: #ff8080; }
+    #join:disabled, #leave:disabled { opacity: 0.4; cursor: default; }
+    #status { font-size: 13px; color: #888; }
+    #grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 12px;
+      padding: 20px;
+    }
+    .tile {
+      background: #1a1a1a;
+      border-radius: 10px;
+      overflow: hidden;
+      position: relative;
+      aspect-ratio: 16 / 9;
+    }
+    .tile video, .tile audio { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .tile .label {
+      position: absolute;
+      bottom: 8px;
+      left: 8px;
+      background: rgba(0, 0, 0, 0.6);
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Test Call (not Petition Studio — throwaway LiveKit smoke test)</h1>
+    <input id="name" placeholder="Your name" />
+    <input id="room" placeholder="Room name (same on both laptops)" value="two-laptop-test" />
+    <button id="join">Join</button>
+    <button id="leave" disabled>Leave</button>
+    <span id="status">not connected</span>
+  </header>
+  <div id="grid"></div>
+
+  <script type="module">
+    import { Room, RoomEvent, Track } from 'https://unpkg.com/livekit-client@2.22.1/dist/livekit-client.esm.mjs';
+
+    const nameInput = document.getElementById('name');
+    const roomInput = document.getElementById('room');
+    const joinBtn = document.getElementById('join');
+    const leaveBtn = document.getElementById('leave');
+    const statusEl = document.getElementById('status');
+    const grid = document.getElementById('grid');
+
+    let room;
+
+    function tileId(participantIdentity) {
+      return `tile-${participantIdentity.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
+    }
+
+    function ensureTile(identity, label) {
+      let tile = document.getElementById(tileId(identity));
+      if (!tile) {
+        tile = document.createElement('div');
+        tile.className = 'tile';
+        tile.id = tileId(identity);
+        tile.innerHTML = `<div class="label">${label}</div>`;
+        grid.appendChild(tile);
+      }
+      return tile;
+    }
+
+    function attachTrack(track, identity, label) {
+      const tile = ensureTile(identity, label);
+      const el = track.attach();
+      tile.appendChild(el);
+    }
+
+    function removeParticipantTile(identity) {
+      document.getElementById(tileId(identity))?.remove();
+    }
+
+    async function join() {
+      const name = nameInput.value.trim();
+      const roomName = roomInput.value.trim();
+      if (!name || !roomName) {
+        statusEl.textContent = 'enter your name and a room name first';
+        return;
+      }
+
+      joinBtn.disabled = true;
+      statusEl.textContent = 'requesting token...';
+
+      let details;
+      try {
+        const res = await fetch(`/connect?room=${encodeURIComponent(roomName)}&name=${encodeURIComponent(name)}`);
+        if (!res.ok) throw new Error(`connect failed: ${res.status}`);
+        details = await res.json();
+      } catch (err) {
+        statusEl.textContent = `failed to get token: ${err.message}`;
+        joinBtn.disabled = false;
+        return;
+      }
+
+      room = new Room();
+
+      room.on(RoomEvent.TrackSubscribed, (track, _pub, participant) => {
+        attachTrack(track, participant.identity, participant.name || participant.identity);
+      });
+      room.on(RoomEvent.TrackUnsubscribed, (track) => {
+        track.detach().forEach((el) => el.remove());
+      });
+      room.on(RoomEvent.ParticipantDisconnected, (participant) => {
+        removeParticipantTile(participant.identity);
+      });
+      room.on(RoomEvent.Disconnected, () => {
+        statusEl.textContent = 'disconnected';
+        joinBtn.disabled = false;
+        leaveBtn.disabled = true;
+        grid.innerHTML = '';
+      });
+
+      statusEl.textContent = 'connecting to LiveKit...';
+      try {
+        await room.connect(details.serverUrl, details.participantToken);
+      } catch (err) {
+        statusEl.textContent = `connect failed: ${err.message}`;
+        joinBtn.disabled = false;
+        return;
+      }
+
+      await room.localParticipant.setCameraEnabled(true);
+      await room.localParticipant.setMicrophoneEnabled(true);
+
+      for (const pub of room.localParticipant.videoTrackPublications.values()) {
+        if (pub.track) attachTrack(pub.track, room.localParticipant.identity, `${name} (you)`);
+      }
+
+      statusEl.textContent = `connected as ${details.participantName} to room "${details.roomName}"`;
+      leaveBtn.disabled = false;
+    }
+
+    async function leave() {
+      await room?.disconnect();
+      room = undefined;
+    }
+
+    joinBtn.addEventListener('click', join);
+    leaveBtn.addEventListener('click', leave);
+  </script>
+</body>
+</html>
