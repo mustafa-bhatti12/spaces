@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mintToken } from './livekit';
+import { mintToken, listActiveRooms } from './livekit';
 
 test('throws when LiveKit env vars are missing', async () => {
   delete process.env.LIVEKIT_API_KEY;
@@ -21,4 +21,11 @@ test('returns connection details shaped for the caller when env vars are present
   assert.equal(details.participantName, 'writer@hof.test');
   assert.equal(typeof details.participantToken, 'string');
   assert.ok(details.participantToken.length > 0);
+});
+
+test('listActiveRooms throws when LiveKit env vars are missing', async () => {
+  delete process.env.LIVEKIT_API_KEY;
+  delete process.env.LIVEKIT_API_SECRET;
+  delete process.env.LIVEKIT_URL;
+  await assert.rejects(() => listActiveRooms());
 });

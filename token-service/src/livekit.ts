@@ -1,4 +1,4 @@
-import { AccessToken } from 'livekit-server-sdk';
+import { AccessToken, RoomServiceClient } from 'livekit-server-sdk';
 
 export interface CallConnectionDetails {
   serverUrl: string;
@@ -44,4 +44,28 @@ export async function mintToken(params: {
     participantName: params.name,
     participantToken: await at.toJwt(),
   };
+}
+
+export interface ActiveRoom {
+  name: string;
+  numParticipants: number;
+}
+
+/**
+ * Lists rooms that currently have at least one connection. Used only by the throwaway test-call
+ * site's room picker so a second person can see what the first person already started instead of
+ * having to type an exact room name. Never expose this over an unauthenticated endpoint — it's
+ * gated by the same shared secret as /token.
+ */
+export async function listActiveRooms(): Promise<ActiveRoom[]> {
+  const apiKey = process.env.LIVEKIT_API_KEY;
+  const apiSecret = process.env.LIVEKIT_API_SECRET;
+  const serverUrl = process.env.LIVEKIT_URL;
+  if (!apiKey || !apiSecret || !serverUrl) {
+    throw new Error('LIVEKIT_API_KEY, LIVEKIT_API_SECRET and LIVEKIT_URL must be set.');
+  }
+
+  const svc = new RoomServiceClient(serverUrl, apiKey, apiSecret);
+  const rooms = await svc.listRooms();
+  return rooms.map((room) => ({ name: room.name, numParticipants: room.numParticipants }));
 }

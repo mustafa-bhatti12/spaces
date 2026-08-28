@@ -1,0 +1,7 @@
+.env
+.env.*
+!.env.example
+node_modules/
+
+# Self-signed TLS cert, regenerated per machine/IP — never commit a private key.
+certs/

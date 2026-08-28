@@ -15,12 +15,39 @@
     header {
       padding: 16px 20px;
       border-bottom: 1px solid #2a2a2a;
+    }
+    header h1 { font-size: 15px; font-weight: 600; margin: 0 0 12px; color: #888; }
+    .row {
       display: flex;
       align-items: center;
-      gap: 16px;
+      gap: 10px;
       flex-wrap: wrap;
     }
-    header h1 { font-size: 15px; font-weight: 600; margin: 0; color: #888; }
+    .picker {
+      margin-top: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .rooms {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+      min-height: 28px;
+    }
+    .rooms .hint { font-size: 12px; color: #666; }
+    .room-chip {
+      background: #1c1c1c;
+      border: 1px solid #333;
+      border-radius: 999px;
+      padding: 5px 12px;
+      font-size: 12px;
+      color: #cde;
+      cursor: pointer;
+    }
+    .room-chip:hover { border-color: #2f7cf6; }
+    .room-chip.active { border-color: #2f7cf6; color: #fff; }
     input {
       background: #1c1c1c;
       border: 1px solid #333;
@@ -39,8 +66,10 @@
     }
     #join { background: #2f7cf6; color: #fff; }
     #leave { background: #3a1f1f; color: #ff8080; }
+    #generate { background: #232323; color: #cde; }
     #join:disabled, #leave:disabled { opacity: 0.4; cursor: default; }
     #status { font-size: 13px; color: #888; }
+    #status.error { color: #ff8080; }
     #grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
@@ -53,8 +82,12 @@
       overflow: hidden;
       position: relative;
       aspect-ratio: 16 / 9;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
     .tile video, .tile audio { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .tile .waiting { font-size: 12px; color: #555; }
     .tile .label {
       position: absolute;
       bottom: 8px;
@@ -68,24 +101,51 @@
 </head>
 <body>
   <header>
-    <h1>Test Call (not Petition Studio — throwaway LiveKit smoke test)</h1>
-    <input id="name" placeholder="Your name" />
-    <input id="room" placeholder="Room name (same on both laptops)" value="two-laptop-test" />
-    <button id="join">Join</button>
-    <button id="leave" disabled>Leave</button>
-    <span id="status">not connected</span>
+    <h1>Test Call — throwaway LiveKit smoke test, not Petition Studio</h1>
+    <div class="row">
+      <input id="name" placeholder="Your name" />
+      <input id="room" placeholder="Room name" value="two-laptop-test" />
+      <button id="generate" type="button">Generate new room</button>
+      <button id="join">Join</button>
+      <button id="leave" disabled>Leave</button>
+      <span id="status">not connected</span>
+    </div>
+    <div class="picker">
+      <div class="rooms" id="rooms"><span class="hint">Active rooms will show up here once someone joins one.</span></div>
+    </div>
   </header>
   <div id="grid"></div>
 
   <script type="module">
-    import { Room, RoomEvent, Track } from 'https://unpkg.com/livekit-client@2.22.1/dist/livekit-client.esm.mjs';
+    import { Room, RoomEvent } from 'https://unpkg.com/livekit-client@2.22.1/dist/livekit-client.esm.mjs';
 
     const nameInput = document.getElementById('name');
     const roomInput = document.getElementById('room');
     const joinBtn = document.getElementById('join');
     const leaveBtn = document.getElementById('leave');
+    const generateBtn = document.getElementById('generate');
     const statusEl = document.getElementById('status');
     const grid = document.getElementById('grid');
+    const roomsEl = document.getElementById('rooms');
+
+    const ADJECTIVES = ['brave', 'calm', 'quick', 'warm', 'bright', 'quiet', 'bold', 'lucky'];
+    const NOUNS = ['otter', 'falcon', 'maple', 'harbor', 'comet', 'canyon', 'tiger', 'meadow'];
+
+    function randomRoomName() {
+      const adjective = ADJECTIVES[Math.floor(Math.random() * ADJECTIVES.length)];
+      const noun = NOUNS[Math.floor(Math.random() * NOUNS.length)];
+      const suffix = Math.floor(Math.random() * 90 + 10);
+      return `${adjective}-${noun}-${suffix}`;
+    }
+
+    function setStatus(text, isError) {
+      statusEl.textContent = text;
+      statusEl.classList.toggle('error', Boolean(isError));
+    }
+
+    function normalizeRoomName(raw) {
+      return raw.trim().toLowerCase().replace(/\s+/g, '-');
+    }
 
     let room;
 
@@ -99,7 +159,7 @@
         tile = document.createElement('div');
         tile.className = 'tile';
         tile.id = tileId(identity);
-        tile.innerHTML = `<div class="label">${label}</div>`;
+        tile.innerHTML = `<span class="waiting">waiting for video…</span><div class="label">${label}</div>`;
         grid.appendChild(tile);
       }
       return tile;
@@ -107,6 +167,7 @@
 
     function attachTrack(track, identity, label) {
       const tile = ensureTile(identity, label);
+      tile.querySelector('.waiting')?.remove();
       const el = track.attach();
       tile.appendChild(el);
     }
@@ -115,16 +176,60 @@
       document.getElementById(tileId(identity))?.remove();
     }
 
+    // --- Room picker: poll active rooms so a second person can click instead of typing exactly
+    // what the first person typed (case, spacing, and typos otherwise split people into two rooms
+    // that never see each other with no error at all). ---
+    let roomsPollTimer;
+
+    async function refreshRoomList() {
+      try {
+        const res = await fetch('/rooms');
+        if (!res.ok) return;
+        const rooms = await res.json();
+        if (rooms.length === 0) {
+          roomsEl.innerHTML = '<span class="hint">No active rooms yet — join one to start it.</span>';
+          return;
+        }
+        roomsEl.innerHTML = '';
+        for (const r of rooms) {
+          const chip = document.createElement('button');
+          chip.type = 'button';
+          chip.className = 'room-chip';
+          chip.textContent = `${r.name} (${r.numParticipants})`;
+          if (normalizeRoomName(roomInput.value) === r.name) chip.classList.add('active');
+          chip.addEventListener('click', () => {
+            roomInput.value = r.name;
+            refreshRoomList();
+          });
+          roomsEl.appendChild(chip);
+        }
+      } catch {
+        // token-service unreachable — leave whatever was last rendered, join button still works
+      }
+    }
+
+    function startRoomPolling() {
+      refreshRoomList();
+      roomsPollTimer = setInterval(refreshRoomList, 3000);
+    }
+
+    generateBtn.addEventListener('click', () => {
+      roomInput.value = randomRoomName();
+      refreshRoomList();
+    });
+
+    // --- Call flow ---
     async function join() {
       const name = nameInput.value.trim();
-      const roomName = roomInput.value.trim();
+      const roomName = normalizeRoomName(roomInput.value);
       if (!name || !roomName) {
-        statusEl.textContent = 'enter your name and a room name first';
+        setStatus('enter your name and a room name first', true);
         return;
       }
+      roomInput.value = roomName;
 
       joinBtn.disabled = true;
-      statusEl.textContent = 'requesting token...';
+      setStatus('requesting token...');
 
       let details;
       try {
@@ -132,13 +237,16 @@
         if (!res.ok) throw new Error(`connect failed: ${res.status}`);
         details = await res.json();
       } catch (err) {
-        statusEl.textContent = `failed to get token: ${err.message}`;
+        setStatus(`failed to get token: ${err.message}`, true);
         joinBtn.disabled = false;
         return;
       }
 
       room = new Room();
 
+      room.on(RoomEvent.ParticipantConnected, (participant) => {
+        ensureTile(participant.identity, participant.name || participant.identity);
+      });
       room.on(RoomEvent.TrackSubscribed, (track, _pub, participant) => {
         attachTrack(track, participant.identity, participant.name || participant.identity);
       });
@@ -149,30 +257,41 @@
         removeParticipantTile(participant.identity);
       });
       room.on(RoomEvent.Disconnected, () => {
-        statusEl.textContent = 'disconnected';
+        setStatus('disconnected');
         joinBtn.disabled = false;
         leaveBtn.disabled = true;
         grid.innerHTML = '';
       });
 
-      statusEl.textContent = 'connecting to LiveKit...';
+      setStatus('connecting to LiveKit...');
       try {
         await room.connect(details.serverUrl, details.participantToken);
       } catch (err) {
-        statusEl.textContent = `connect failed: ${err.message}`;
+        setStatus(`connect failed: ${err.message}`, true);
         joinBtn.disabled = false;
         return;
       }
 
-      await room.localParticipant.setCameraEnabled(true);
-      await room.localParticipant.setMicrophoneEnabled(true);
+      try {
+        await room.localParticipant.setCameraEnabled(true);
+        await room.localParticipant.setMicrophoneEnabled(true);
+      } catch (err) {
+        setStatus(
+          `connected, but could not access camera/mic: ${err.message}. ` +
+            'This page must be loaded over https (or from localhost) for the browser to grant camera access at all — check the address bar.',
+          true,
+        );
+        leaveBtn.disabled = false;
+        return;
+      }
 
       for (const pub of room.localParticipant.videoTrackPublications.values()) {
         if (pub.track) attachTrack(pub.track, room.localParticipant.identity, `${name} (you)`);
       }
 
-      statusEl.textContent = `connected as ${details.participantName} to room "${details.roomName}"`;
+      setStatus(`connected as ${details.participantName} to room "${details.roomName}"`);
       leaveBtn.disabled = false;
+      refreshRoomList();
     }
 
     async function leave() {
@@ -182,6 +301,11 @@
 
     joinBtn.addEventListener('click', join);
     leaveBtn.addEventListener('click', leave);
+    window.addEventListener('beforeunload', () => {
+      room?.disconnect();
+    });
+
+    startRoomPolling();
   </script>
 </body>
 </html>

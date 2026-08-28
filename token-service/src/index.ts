@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import express from 'express';
-import { mintToken } from './livekit';
+import { mintToken, listActiveRooms } from './livekit';
 import { requireSharedSecret } from './auth';
 
 const app = express();
@@ -8,6 +8,15 @@ app.use(express.json());
 
 app.get('/health', (_req, res) => {
   res.json({ ok: true });
+});
+
+app.get('/rooms', requireSharedSecret, async (_req, res) => {
+  try {
+    res.json(await listActiveRooms());
+  } catch (err) {
+    console.error('Failed to list LiveKit rooms:', err);
+    res.status(500).json({ error: 'Could not list rooms.' });
+  }
 });
 
 app.post('/token', requireSharedSecret, async (req, res) => {
