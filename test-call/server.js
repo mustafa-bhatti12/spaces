@@ -35,11 +35,19 @@ function normalizeRoomName(raw) {
 app.get('/connect', async (req, res) => {
   const room = normalizeRoomName(req.query.room);
   const name = String(req.query.name ?? '').trim();
+  const deviceId = String(req.query.deviceId ?? '').trim();
   if (!room || !name) {
     res.status(400).json({ error: 'room and name query params are required.' });
     return;
   }
-  const identity = `${name}__${Math.random().toString(36).slice(2, 8)}`;
+  // Identity is what LiveKit uses to tell participants apart within a room: joining again with
+  // the same identity replaces the earlier connection rather than adding a second one. Keying it
+  // on a per-browser id (persisted client-side in localStorage) instead of the free-typed name
+  // means two tabs in the *same browser* can't both be in the call under different display names
+  // -- the second join kicks the first. A different browser, or a private window, has its own
+  // localStorage and so its own id; no server-side signal distinguishes that from a genuinely
+  // different laptop, and no browser API exposes real machine identity for this to check instead.
+  const identity = deviceId || `${name}__${Math.random().toString(36).slice(2, 8)}`;
 
   try {
     const upstream = await fetch(`${TOKEN_SERVICE_URL}/token`, {
