@@ -829,21 +829,29 @@
       flex-direction: column;
       align-items: center;
       justify-content: center;
+      width: 100%;
       gap: 12px;
     }
 
     .tile .tile-avatar-circle {
-      width: 88px;
-      height: 88px;
+      width: 64px;
+      height: 64px;
       border-radius: 50%;
       background: linear-gradient(135deg, #2563eb, #38bdf8);
       color: #fff;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 32px;
+      font-size: 22px;
       font-weight: 700;
       box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+    }
+
+    /* Sidebar rail cards are compact; the fallback avatar shrinks to match. */
+    #sidebar-strip .tile .tile-avatar-circle {
+      width: 36px;
+      height: 36px;
+      font-size: 14px;
     }
 
     .tile .tile-name-tag {
