@@ -157,6 +157,75 @@ fastify.get('/whoami', async (request, reply) => {
   }
 });
 
+// Recording controls: same proxy shape as /connect and /rooms, just forwarding to
+// token-service's /recording/* routes so the browser never needs the shared secret.
+fastify.post('/recording/start', async (request, reply) => {
+  const room = normalizeRoomName(request.query.room);
+  if (!room) {
+    reply.code(400).send({ error: 'room query param is required.' });
+    return;
+  }
+  try {
+    const upstream = await fetch(`${TOKEN_SERVICE_URL}/recording/start`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${TOKEN_SERVICE_SHARED_SECRET}` },
+      body: JSON.stringify({ room }),
+    });
+    if (!upstream.ok) {
+      reply.code(502).send({ error: `token-service responded ${upstream.status}` });
+      return;
+    }
+    reply.send(await upstream.json());
+  } catch (err) {
+    console.error('Failed to reach token-service:', err);
+    reply.code(502).send({ error: 'Could not reach token-service. Is it running?' });
+  }
+});
+
+fastify.post('/recording/stop', async (request, reply) => {
+  const egressId = String(request.query.egressId ?? '').trim();
+  if (!egressId) {
+    reply.code(400).send({ error: 'egressId query param is required.' });
+    return;
+  }
+  try {
+    const upstream = await fetch(`${TOKEN_SERVICE_URL}/recording/stop`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${TOKEN_SERVICE_SHARED_SECRET}` },
+      body: JSON.stringify({ egressId }),
+    });
+    if (!upstream.ok) {
+      reply.code(502).send({ error: `token-service responded ${upstream.status}` });
+      return;
+    }
+    reply.send(await upstream.json());
+  } catch (err) {
+    console.error('Failed to reach token-service:', err);
+    reply.code(502).send({ error: 'Could not reach token-service. Is it running?' });
+  }
+});
+
+fastify.get('/recording/status', async (request, reply) => {
+  const room = normalizeRoomName(request.query.room);
+  if (!room) {
+    reply.code(400).send({ error: 'room query param is required.' });
+    return;
+  }
+  try {
+    const upstream = await fetch(`${TOKEN_SERVICE_URL}/recording/status?room=${encodeURIComponent(room)}`, {
+      headers: { Authorization: `Bearer ${TOKEN_SERVICE_SHARED_SECRET}` },
+    });
+    if (!upstream.ok) {
+      reply.code(502).send({ error: `token-service responded ${upstream.status}` });
+      return;
+    }
+    reply.send(await upstream.json());
+  } catch (err) {
+    console.error('Failed to reach token-service:', err);
+    reply.code(502).send({ error: 'Could not reach token-service. Is it running?' });
+  }
+});
+
 fastify
   .listen({ port, host: '0.0.0.0' })
   .then(() => {

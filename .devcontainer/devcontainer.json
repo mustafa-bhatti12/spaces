@@ -1,0 +1,28 @@
+{
+  "name": "Space Meet & LiveKit",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:20",
+  "forwardPorts": [8888, 8880, 7880],
+  "portsAttributes": {
+    "8888": {
+      "label": "Space Meet Web App",
+      "onAutoForward": "openBrowser",
+      "visibility": "public"
+    },
+    "8880": {
+      "label": "Token Service",
+      "visibility": "private"
+    },
+    "7880": {
+      "label": "LiveKit Server",
+      "visibility": "private"
+    }
+  },
+  "postCreateCommand": "curl -sSL https://get.livekit.io | bash && cd token-service && npm install && cp -n .env.example .env || true && cd ../test-call && npm install && cp -n .env.example .env || true",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "dbaeumer.vscode-eslint"
+      ]
+    }
+  }
+}

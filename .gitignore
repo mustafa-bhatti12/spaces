@@ -141,3 +141,10 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# LiveKit egress recordings (local dev output, never committed)
+egress/raw/
+egress/compressed/
+
+# Redis dump
+dump.rdb

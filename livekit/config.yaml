@@ -1,0 +1,20 @@
+# Replaces `livekit-server --dev` once egress needs redis + webhook signing, which --dev's
+# placeholder-key mode doesn't wire up (CLI flags alone can't set a webhook signing key).
+port: 7880
+bind_addresses:
+  - "0.0.0.0"
+rtc:
+  tcp_port: 7881
+  udp_port: 7882
+  use_external_ip: false
+redis:
+  address: localhost:6379
+keys:
+  devkey: secret
+# Lets LiveKit sign the `Authorize` header on outbound egress webhooks with devkey's secret --
+# without this, StartRoomCompositeEgress's own `webhooks` field is silently unusable ("no signing
+# key or secret was provided"). No `urls` here: only egress requests that ask for a webhook get
+# one; this repo doesn't want every room/participant event firing at token-service too.
+webhook:
+  api_key: devkey
+log_level: debug

@@ -1,0 +1,15 @@
+{
+  "name": "compressor",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Internal-only service that transcodes a raw egress recording to a low-bitrate Opus file before it's kept long-term. Not reachable from the LAN -- bound to 127.0.0.1 and called only by token-service after a recording finishes.",
+  "type": "commonjs",
+  "scripts": {
+    "dev": "node server.js",
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "fastify": "^5.12.1"
+  }
+}

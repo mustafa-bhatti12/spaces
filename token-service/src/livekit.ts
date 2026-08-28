@@ -1,4 +1,12 @@
-import { AccessToken, RoomServiceClient } from 'livekit-server-sdk';
+import path from 'node:path';
+import {
+  AccessToken,
+  EgressClient,
+  EncodedFileOutput,
+  EncodedFileType,
+  RoomServiceClient,
+  WebhookConfig,
+} from 'livekit-server-sdk';
 
 export interface CallConnectionDetails {
   serverUrl: string;
@@ -77,6 +85,63 @@ export async function getParticipantSid(room: string, identity: string): Promise
   } catch {
     return null;
   }
+}
+
+export interface RecordingInfo {
+  egressId: string;
+  roomName: string;
+  startedAt: string;
+}
+
+// LiveKit Egress runs in its own Docker container (see ../egress/) and writes the raw recording
+// under the path *as that container sees it* -- /out/raw/<file>, from ../egress mounted at /out.
+// Everything server-side (this process, the compressor) needs the real host path instead; this is
+// the one place that mapping is defined.
+const EGRESS_CONTAINER_RAW_DIR = '/out/raw';
+const EGRESS_HOST_RAW_DIR = process.env.EGRESS_RAW_DIR ?? path.join(__dirname, '..', '..', 'egress', 'raw');
+
+export function containerPathToHostPath(containerPath: string): string {
+  if (!containerPath.startsWith(EGRESS_CONTAINER_RAW_DIR)) {
+    throw new Error(`Unexpected egress file path outside ${EGRESS_CONTAINER_RAW_DIR}: ${containerPath}`);
+  }
+  return path.join(EGRESS_HOST_RAW_DIR, path.relative(EGRESS_CONTAINER_RAW_DIR, containerPath));
+}
+
+/**
+ * Starts a single mixed-audio recording of every participant currently in the room. Tied to the
+ * room's lifecycle -- LiveKit stops it automatically once the room empties, same as if /stop had
+ * been called. The webhook lets us know the moment the file is finalized so it can be handed to
+ * the compressor without polling or guessing when Egress is done writing it.
+ */
+export async function startRoomAudioRecording(room: string): Promise<RecordingInfo> {
+  const { apiKey, apiSecret, serverUrl } = requireLiveKitEnv();
+  const egress = new EgressClient(serverUrl, apiKey, apiSecret);
+
+  const filename = `${room}-${Date.now()}.ogg`;
+  const info = await egress.startRoomCompositeEgress(
+    room,
+    new EncodedFileOutput({ fileType: EncodedFileType.OGG, filepath: path.posix.join(EGRESS_CONTAINER_RAW_DIR, filename) }),
+    {
+      audioOnly: true, // leaving layout/customBaseUrl unset is what keeps this on the audio-only billing rate
+      webhooks: [new WebhookConfig({ url: process.env.RECORDING_WEBHOOK_URL ?? 'http://localhost:8880/recording/webhook' })],
+    },
+  );
+
+  return { egressId: info.egressId, roomName: info.roomName, startedAt: info.startedAt.toString() };
+}
+
+export async function stopRecording(egressId: string): Promise<void> {
+  const { apiKey, apiSecret, serverUrl } = requireLiveKitEnv();
+  const egress = new EgressClient(serverUrl, apiKey, apiSecret);
+  await egress.stopEgress(egressId);
+}
+
+/** Recordings currently in progress for a room (starting, active, or wrapping up). */
+export async function getActiveRecordings(room: string): Promise<RecordingInfo[]> {
+  const { apiKey, apiSecret, serverUrl } = requireLiveKitEnv();
+  const egress = new EgressClient(serverUrl, apiKey, apiSecret);
+  const active = await egress.listEgress({ roomName: room, active: true });
+  return active.map((info) => ({ egressId: info.egressId, roomName: info.roomName, startedAt: info.startedAt.toString() }));
 }
 
 function requireLiveKitEnv() {

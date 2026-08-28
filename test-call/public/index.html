@@ -1153,6 +1153,38 @@
       border: 1px solid var(--primary);
     }
 
+    /* Recording toggle + REC badge */
+    .meet-btn.recording {
+      background: rgba(234, 67, 53, 0.18);
+      color: var(--danger);
+      border: 1px solid var(--danger);
+      animation: rec-btn-pulse 1.6s ease-in-out infinite;
+    }
+    @keyframes rec-btn-pulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(234, 67, 53, 0.35); }
+      50% { box-shadow: 0 0 0 6px rgba(234, 67, 53, 0); }
+    }
+    .rec-badge {
+      display: none;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--danger);
+      background: var(--danger-dim);
+      padding: 4px 10px;
+      border-radius: var(--radius-full);
+      font-variant-numeric: tabular-nums;
+    }
+    .rec-badge.active { display: inline-flex; }
+    .rec-badge .rec-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--danger);
+      animation: pulse-dot 1.2s infinite ease-in-out;
+    }
+
     /* Hang up / Leave Button (Google Meet Signature Red Pill) */
     .meet-btn-end {
       width: 64px;
@@ -1555,6 +1587,7 @@
           <div class="meet-room-name">
             <span id="meet-room-display">room-name</span>
           </div>
+          <span class="rec-badge" id="rec-badge"><span class="rec-dot"></span>REC <span id="rec-timer">00:00</span></span>
           <button class="btn-copy-link" id="btn-copy-room" type="button" title="Copy room link">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
@@ -1618,6 +1651,9 @@
           </button>
 
           <!-- End Call / Leave Button (Google Meet Red Pill) -->
+          <button class="meet-btn" id="toggleRecord" type="button" title="Start/stop recording">
+            <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="7"/></svg>
+          </button>
           <button class="meet-btn-end" id="leave" type="button" title="Leave call">
             <svg viewBox="0 0 24 24" fill="currentColor">
               <path d="M12 19c-1.1 0-2-.9-2-2v-3c0-.55-.45-1-1-1H6.2c-.42 0-.8.26-.95.65l-1.5 4c-.21.55.07 1.16.62 1.35C5.83 19.5 7.9 20 12 20s6.17-.5 7.63-1c.55-.19.83-.8.62-1.35l-1.5-4c-.15-.39-.53-.65-.95-.65H15c-.55 0-1 .45-1 1v3c0 1.1-.9 2-2 2z"/>
@@ -1690,6 +1726,9 @@
     const toggleCamBtn = document.getElementById('toggleCam');
     const toggleScreenBtn = document.getElementById('toggleScreen');
     const raiseHandBtn = document.getElementById('btn-raise-hand');
+    const toggleRecordBtn = document.getElementById('toggleRecord');
+    const recBadge = document.getElementById('rec-badge');
+    const recTimerEl = document.getElementById('rec-timer');
     const generateBtn = document.getElementById('generate');
     const statusPill = document.getElementById('status');
     const statusText = document.getElementById('status-text');
@@ -1838,6 +1877,10 @@
     let handRaised = false;
     let room = null;
     let heartbeatTimer = null;
+    let currentRoomName = null;
+    let recordingEgressId = null;
+    let recordingStartedAt = null;
+    let recordingTimer = null;
 
     // Start local camera preview in lobby
     function initLobbyMedia() {
@@ -2302,6 +2345,7 @@
 
     function handleDisconnection() {
       setStatus('Ready', 'idle');
+      stopRecordingUI();
       meetingView.classList.remove('active');
       lobbyView.style.display = 'flex';
       joinBtn.disabled = false;
@@ -2417,6 +2461,74 @@
       showToast(handRaised ? 'Hand raised ✋' : 'Hand lowered');
     }
 
+    async function toggleRecording() {
+      if (!room || !currentRoomName) return;
+      toggleRecordBtn.disabled = true;
+      try {
+        if (recordingEgressId) {
+          await fetch(`/recording/stop?egressId=${encodeURIComponent(recordingEgressId)}`, { method: 'POST' });
+          stopRecordingUI();
+          showToast('Recording stopped');
+        } else {
+          const res = await fetch(`/recording/start?room=${encodeURIComponent(currentRoomName)}`, { method: 'POST' });
+          if (!res.ok) throw new Error(`Server returned ${res.status}`);
+          const { egressId } = await res.json();
+          startRecordingUI(egressId, Date.now());
+          showToast('Recording started');
+        }
+      } catch (err) {
+        showToast(`Recording error: ${err.message}`);
+      } finally {
+        toggleRecordBtn.disabled = false;
+      }
+    }
+
+    function startRecordingUI(egressId, startedAt) {
+      recordingEgressId = egressId;
+      recordingStartedAt = startedAt;
+      toggleRecordBtn.classList.add('recording');
+      recBadge.classList.add('active');
+      clearInterval(recordingTimer);
+      recordingTimer = setInterval(updateRecTimer, 1000);
+      updateRecTimer();
+    }
+
+    function stopRecordingUI() {
+      recordingEgressId = null;
+      recordingStartedAt = null;
+      toggleRecordBtn.classList.remove('recording');
+      recBadge.classList.remove('active');
+      clearInterval(recordingTimer);
+      recTimerEl.textContent = '00:00';
+    }
+
+    function updateRecTimer() {
+      if (!recordingStartedAt) return;
+      const secs = Math.floor((Date.now() - recordingStartedAt) / 1000);
+      const m = String(Math.floor(secs / 60)).padStart(2, '0');
+      const s = String(secs % 60).padStart(2, '0');
+      recTimerEl.textContent = `${m}:${s}`;
+    }
+
+    // Lets a second participant see recording already in progress, and catches either side
+    // missing a stop/start (e.g. a dropped request) -- piggybacks on the heartbeat interval
+    // below rather than running its own timer.
+    async function syncRecordingState() {
+      if (!currentRoomName) return;
+      try {
+        const res = await fetch(`/recording/status?room=${encodeURIComponent(currentRoomName)}`);
+        if (!res.ok) return;
+        const active = await res.json();
+        if (active.length > 0 && !recordingEgressId) {
+          startRecordingUI(active[0].egressId, Date.now());
+        } else if (active.length === 0 && recordingEgressId) {
+          stopRecordingUI();
+        }
+      } catch {
+        // token-service unreachable this tick -- try again next tick
+      }
+    }
+
     // Call Join Flow
     async function join() {
       const name = nameInput.value.trim();
@@ -2430,6 +2542,7 @@
 
       localStorage.setItem('space_user_name', name);
       roomInput.value = roomName;
+      currentRoomName = roomName;
 
       joinBtn.disabled = true;
       joinBtn.innerHTML = `
@@ -2530,6 +2643,7 @@
         try {
           const res = await fetch(`/whoami?room=${encodeURIComponent(roomName)}&identity=${encodeURIComponent(deviceId)}`);
           if (!res.ok) return;
+          syncRecordingState();
           const { sid } = await res.json();
           if (sid && room.localParticipant && sid !== room.localParticipant.sid) {
             clearInterval(heartbeatTimer);
@@ -2568,6 +2682,7 @@
       updateInCallControlsUI();
       updateParticipantsDrawer();
       showToast(`Joined ${details.roomName}`);
+      syncRecordingState();
     }
 
     // Attach event listeners
@@ -2577,6 +2692,7 @@
     toggleCamBtn.addEventListener('click', toggleCam);
     toggleScreenBtn.addEventListener('click', toggleScreenShare);
     raiseHandBtn.addEventListener('click', toggleRaiseHand);
+    toggleRecordBtn.addEventListener('click', toggleRecording);
 
     lobbyToggleMic.addEventListener('click', () => {
       micEnabled = !micEnabled;
