@@ -1,0 +1,24 @@
+{
+  "name": "token-service",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Mints LiveKit join tokens. The only thing in this repo that holds LIVEKIT_API_KEY/SECRET.",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test src/**/*.test.ts"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "express": "^4.21.1",
+    "livekit-server-sdk": "^2.18.0"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  }
+}
