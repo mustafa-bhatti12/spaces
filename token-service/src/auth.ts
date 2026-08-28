@@ -1,15 +1,14 @@
-import type { Request, Response, NextFunction } from 'express';
+import type { FastifyReply, FastifyRequest } from 'fastify';
 
 /** Service-to-service auth: the caller must present the shared secret this instance was configured with. */
-export function requireSharedSecret(req: Request, res: Response, next: NextFunction): void {
+export async function requireSharedSecret(req: FastifyRequest, reply: FastifyReply): Promise<void> {
   const expected = process.env.TOKEN_SERVICE_SHARED_SECRET;
   if (!expected) {
-    res.status(500).json({ error: 'TOKEN_SERVICE_SHARED_SECRET is not configured.' });
+    reply.code(500).send({ error: 'TOKEN_SERVICE_SHARED_SECRET is not configured.' });
     return;
   }
   if (req.headers.authorization !== `Bearer ${expected}`) {
-    res.status(401).json({ error: 'Invalid or missing service credentials.' });
+    reply.code(401).send({ error: 'Invalid or missing service credentials.' });
     return;
   }
-  next();
 }

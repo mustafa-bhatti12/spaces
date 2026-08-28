@@ -8,8 +8,9 @@
     "start": "node server.js"
   },
   "dependencies": {
+    "@fastify/static": "^10.0.0",
     "dotenv": "^16.4.5",
-    "express": "^4.19.2",
+    "fastify": "^5.12.1",
     "http-proxy": "^1.18.1"
   }
 }
