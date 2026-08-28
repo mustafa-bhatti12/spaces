@@ -588,7 +588,7 @@
     }
 
     /* ==========================================================================
-       MEETING IN-CALL STAGE (Google Meet Layout)
+       MEETING IN-CALL STAGE (Google Meet Layouts & Fullscreen)
        ========================================================================== */
     .meeting-view {
       display: none;
@@ -614,40 +614,115 @@
       margin-bottom: 80px; /* space for bottom bar */
     }
 
-    /* Video Grid */
-    #grid {
+    /* Main Stage Flex/Grid Container */
+    #stage-container {
       flex: 1;
+      display: flex;
+      gap: 16px;
+      width: 100%;
+      height: 100%;
+      position: relative;
+      overflow: hidden;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    /* Tiled / Grid Mode */
+    #stage-container.mode-tiled {
       display: grid;
       gap: 16px;
       align-items: center;
       justify-content: center;
-      width: 100%;
-      height: 100%;
-      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     }
 
-    /* Dynamic Grid Layouts */
-    .grid-1 {
+    #stage-container.mode-tiled.grid-1 {
       grid-template-columns: minmax(320px, 980px);
       grid-template-rows: minmax(240px, 1fr);
     }
-    .grid-2 {
+    #stage-container.mode-tiled.grid-2 {
       grid-template-columns: repeat(2, minmax(280px, 1fr));
       grid-template-rows: 1fr;
     }
-    .grid-3, .grid-4 {
+    #stage-container.mode-tiled.grid-3,
+    #stage-container.mode-tiled.grid-4 {
       grid-template-columns: repeat(2, minmax(280px, 1fr));
       grid-template-rows: repeat(2, 1fr);
     }
-    .grid-5, .grid-6 {
+    #stage-container.mode-tiled.grid-5,
+    #stage-container.mode-tiled.grid-6 {
       grid-template-columns: repeat(3, minmax(240px, 1fr));
       grid-template-rows: repeat(2, 1fr);
     }
 
-    @media (max-width: 768px) {
-      .grid-2, .grid-3, .grid-4, .grid-5, .grid-6 {
+    /* Sidebar Mode */
+    #stage-container.mode-sidebar {
+      display: grid;
+      grid-template-columns: 1fr 260px;
+      gap: 16px;
+    }
+
+    #focal-stage {
+      display: none;
+      flex: 1;
+      height: 100%;
+      min-height: 0;
+      position: relative;
+    }
+
+    #stage-container.mode-sidebar #focal-stage,
+    #stage-container.mode-spotlight #focal-stage {
+      display: flex;
+    }
+
+    #sidebar-strip {
+      display: none;
+      flex-direction: column;
+      gap: 12px;
+      overflow-y: auto;
+      height: 100%;
+      padding-right: 4px;
+    }
+
+    #stage-container.mode-sidebar #sidebar-strip {
+      display: flex;
+    }
+
+    #sidebar-strip .tile {
+      width: 100%;
+      height: 146px;
+      min-height: 146px;
+      aspect-ratio: 16 / 9;
+    }
+
+    /* Spotlight Mode */
+    #stage-container.mode-spotlight {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #stage-container.mode-spotlight #focal-stage {
+      width: 100%;
+      height: 100%;
+    }
+
+    #stage-container.mode-spotlight #sidebar-strip {
+      display: none;
+    }
+
+    @media (max-width: 840px) {
+      #stage-container.mode-sidebar {
         grid-template-columns: 1fr;
-        grid-template-rows: auto;
+        grid-template-rows: 1fr auto;
+      }
+      #sidebar-strip {
+        flex-direction: row;
+        height: 120px;
+        overflow-x: auto;
+      }
+      #sidebar-strip .tile {
+        width: 180px;
+        height: 100%;
+        min-width: 180px;
       }
     }
 
@@ -665,7 +740,8 @@
       justify-content: center;
       box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
       border: 2px solid transparent;
-      transition: border-color 0.2s ease;
+      transition: border-color 0.2s ease, transform 0.2s ease;
+      cursor: pointer;
     }
 
     .tile.speaking {
@@ -673,11 +749,23 @@
       box-shadow: 0 0 0 2px rgba(52, 168, 83, 0.3);
     }
 
+    .tile.pinned {
+      border-color: var(--primary);
+    }
+
     .tile video {
       width: 100%;
       height: 100%;
       object-fit: cover;
       display: block;
+    }
+
+    /* Screen share specific styling (contain aspect, no crop) */
+    .tile.screen-share-tile {
+      background: #0d0e11;
+    }
+    .tile.screen-share-tile video {
+      object-fit: contain;
     }
 
     .tile audio.visible {
@@ -691,6 +779,58 @@
       height: 1px;
       opacity: 0;
       pointer-events: none;
+    }
+
+    /* Tile Hover Overlays (Pin, Fullscreen, etc.) */
+    .tile-hover-bar {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      opacity: 0;
+      transform: translateY(-4px);
+      transition: all 0.2s ease;
+      z-index: 10;
+    }
+
+    .tile:hover .tile-hover-bar,
+    .tile:focus-within .tile-hover-bar {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .tile-tool-btn {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: rgba(0, 0, 0, 0.65);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .tile-tool-btn:hover {
+      background: rgba(0, 0, 0, 0.9);
+      border-color: var(--primary);
+      color: var(--primary);
+      transform: scale(1.08);
+    }
+
+    .tile-tool-btn svg {
+      width: 15px;
+      height: 15px;
+    }
+
+    .tile-tool-btn.active {
+      background: var(--primary);
+      color: #0b1120;
     }
 
     /* Fallback Avatar inside Tile */
@@ -748,6 +888,59 @@
     .tile-mic-status svg {
       width: 14px;
       height: 14px;
+    }
+
+    /* Screen Share Presenter Banner */
+    .presenting-banner {
+      position: absolute;
+      top: 14px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(30, 41, 59, 0.9);
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      backdrop-filter: blur(10px);
+      padding: 8px 16px;
+      border-radius: var(--radius-full);
+      display: none;
+      align-items: center;
+      gap: 12px;
+      z-index: 25;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+      animation: drop-down 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .presenting-banner.active {
+      display: flex;
+    }
+
+    @keyframes drop-down {
+      from { transform: translateX(-50%) translateY(-20px); opacity: 0; }
+      to { transform: translateX(-50%) translateY(0); opacity: 1; }
+    }
+
+    .presenting-text {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--primary);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .btn-stop-presenting {
+      background: var(--danger);
+      color: #fff;
+      border: none;
+      border-radius: var(--radius-full);
+      padding: 4px 12px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .btn-stop-presenting:hover {
+      background: var(--danger-hover);
     }
 
     /* Right Side Drawer (Participants & Info) */
@@ -956,6 +1149,12 @@
       background: var(--danger-hover);
     }
 
+    .meet-btn.active {
+      background: var(--primary-dim);
+      color: var(--primary);
+      border: 1px solid var(--primary);
+    }
+
     /* Hang up / Leave Button (Google Meet Signature Red Pill) */
     .meet-btn-end {
       width: 64px;
@@ -987,9 +1186,10 @@
     .meet-tools-right {
       display: flex;
       align-items: center;
-      gap: 12px;
+      gap: 10px;
       min-width: 220px;
       justify-content: flex-end;
+      position: relative;
     }
 
     .meet-tool-btn {
@@ -1033,6 +1233,77 @@
       border-radius: 10px;
       padding: 1px 5px;
       line-height: 1.2;
+    }
+
+    /* Layout Popover Menu */
+    .layout-popover {
+      position: absolute;
+      bottom: 60px;
+      right: 90px;
+      width: 240px;
+      background: var(--surface-1);
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-md);
+      padding: 8px;
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+      display: none;
+      flex-direction: column;
+      gap: 4px;
+      z-index: 40;
+      animation: popover-fade 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .layout-popover.open {
+      display: flex;
+    }
+
+    @keyframes popover-fade {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .layout-popover-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-tertiary);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      padding: 6px 10px 4px 10px;
+    }
+
+    .layout-option-btn {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 12px;
+      border-radius: var(--radius-sm);
+      border: none;
+      background: transparent;
+      color: var(--text-primary);
+      font-family: var(--font-main);
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      text-align: left;
+      transition: all 0.15s ease;
+      width: 100%;
+    }
+
+    .layout-option-btn:hover {
+      background: var(--surface-2);
+      color: var(--primary);
+    }
+
+    .layout-option-btn.selected {
+      background: var(--primary-dim);
+      color: var(--primary);
+      font-weight: 600;
+    }
+
+    .layout-option-btn svg {
+      width: 18px;
+      height: 18px;
+      flex-shrink: 0;
     }
 
     /* Toast Notification */
@@ -1083,6 +1354,9 @@
       }
       .meet-tools-right {
         min-width: auto;
+      }
+      .layout-popover {
+        right: 10px;
       }
     }
   </style>
@@ -1208,8 +1482,24 @@
 
     <!-- IN-CALL MEETING VIEW (Google Meet Style) -->
     <section class="meeting-view" id="meeting-view">
+      <!-- Presenting Banner (when screen share is active) -->
+      <div class="presenting-banner" id="presenting-banner">
+        <span class="presenting-text">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+          You are presenting to everyone
+        </span>
+        <button class="btn-stop-presenting" id="btn-stop-presenting-top" type="button">Stop presenting</button>
+      </div>
+
       <div class="meeting-stage">
-        <div id="grid" class="grid-1"></div>
+        <!-- Stage Container supporting Tiled, Sidebar, and Spotlight Layouts -->
+        <div id="stage-container" class="mode-tiled grid-1">
+          <!-- Focal Stage for Sidebar & Spotlight Modes -->
+          <div id="focal-stage"></div>
+
+          <!-- Sidebar Strip for other participants in Sidebar Mode -->
+          <div id="sidebar-strip"></div>
+        </div>
 
         <!-- Participants Side Drawer -->
         <aside class="side-drawer" id="participants-drawer">
@@ -1241,6 +1531,23 @@
             </button>
           </div>
         </aside>
+      </div>
+
+      <!-- Layout Popover Menu (Google Meet Style) -->
+      <div class="layout-popover" id="layout-popover">
+        <div class="layout-popover-title">Change Layout</div>
+        <button class="layout-option-btn selected" id="opt-layout-tiled" type="button" data-layout="tiled">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+          <span>Tiled (Grid)</span>
+        </button>
+        <button class="layout-option-btn" id="opt-layout-sidebar" type="button" data-layout="sidebar">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="12" height="18" rx="1"/><rect x="17" y="3" width="4" height="5" rx="1"/><rect x="17" y="9.5" width="4" height="5" rx="1"/><rect x="17" y="16" width="4" height="5" rx="1"/></svg>
+          <span>Sidebar (Focus)</span>
+        </button>
+        <button class="layout-option-btn" id="opt-layout-spotlight" type="button" data-layout="spotlight">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="18" rx="2"/><circle cx="12" cy="12" r="3"/></svg>
+          <span>Spotlight (Single)</span>
+        </button>
       </div>
 
       <!-- Google Meet Bottom Control Bar -->
@@ -1321,8 +1628,29 @@
           </button>
         </div>
 
-        <!-- Right: Side Drawer Toggles (People / Info) -->
+        <!-- Right: Side Drawer Toggles & Layout Options -->
         <div class="meet-tools-right">
+          <!-- Layout Switcher Button -->
+          <button class="meet-tool-btn" id="btn-toggle-layout" type="button" title="Change layout">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="3" width="7" height="7"/>
+              <rect x="14" y="3" width="7" height="7"/>
+              <rect x="14" y="14" width="7" height="7"/>
+              <rect x="3" y="14" width="7" height="7"/>
+            </svg>
+          </button>
+
+          <!-- Global Fullscreen Toggle -->
+          <button class="meet-tool-btn" id="btn-toggle-fullscreen" type="button" title="Toggle fullscreen">
+            <svg class="icon-fs-enter" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
+            </svg>
+            <svg class="icon-fs-exit" style="display:none;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M4 14h6m0 0v6m0-6L3 21m17-7h-6m0 0v6m0-6l7 7M4 10h6m0 0V4m0 6L3 3m17 7h-6m0 0V4m0 6l7-7"/>
+            </svg>
+          </button>
+
+          <!-- Meeting Info Toggle -->
           <button class="meet-tool-btn" id="btn-toggle-info" type="button" title="Meeting details">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <circle cx="12" cy="12" r="10"/>
@@ -1330,6 +1658,8 @@
               <line x1="12" y1="8" x2="12.01" y2="8"/>
             </svg>
           </button>
+
+          <!-- Participants Toggle -->
           <button class="meet-tool-btn" id="btn-toggle-people" type="button" title="Show participants">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
@@ -1351,7 +1681,7 @@
   </div>
 
   <script type="module">
-    import { Room, RoomEvent, DisconnectReason } from 'https://unpkg.com/livekit-client@2.22.1/dist/livekit-client.esm.mjs';
+    import { Room, RoomEvent, Track } from 'https://unpkg.com/livekit-client@2.22.1/dist/livekit-client.esm.mjs';
 
     // Elements
     const nameInput = document.getElementById('name');
@@ -1365,7 +1695,9 @@
     const generateBtn = document.getElementById('generate');
     const statusPill = document.getElementById('status');
     const statusText = document.getElementById('status-text');
-    const grid = document.getElementById('grid');
+    const stageContainer = document.getElementById('stage-container');
+    const focalStage = document.getElementById('focal-stage');
+    const sidebarStrip = document.getElementById('sidebar-strip');
     const roomsEl = document.getElementById('rooms');
     const lobbyView = document.getElementById('lobby-view');
     const meetingView = document.getElementById('meeting-view');
@@ -1382,6 +1714,12 @@
     const drawerCopyBtn = document.getElementById('drawer-copy-btn');
     const btnTogglePeople = document.getElementById('btn-toggle-people');
     const btnToggleInfo = document.getElementById('btn-toggle-info');
+    const btnToggleLayout = document.getElementById('btn-toggle-layout');
+    const btnToggleFullscreen = document.getElementById('btn-toggle-fullscreen');
+    const layoutPopover = document.getElementById('layout-popover');
+    const layoutOptionBtns = document.querySelectorAll('.layout-option-btn');
+    const presentingBanner = document.getElementById('presenting-banner');
+    const btnStopPresentingTop = document.getElementById('btn-stop-presenting-top');
     const participantsDrawer = document.getElementById('participants-drawer');
     const infoDrawer = document.getElementById('info-drawer');
     const closeDrawerBtn = document.getElementById('close-drawer-btn');
@@ -1391,6 +1729,10 @@
     const participantsCountBadge = document.getElementById('participants-count-badge');
     const toastEl = document.getElementById('toast');
     const toastText = document.getElementById('toast-text');
+
+    // Layout Mode: 'tiled' | 'sidebar' | 'spotlight'
+    let currentLayoutMode = 'tiled';
+    let pinnedTileId = null;
 
     // Random generator words
     const ADJECTIVES = ['brave', 'calm', 'quick', 'warm', 'bright', 'quiet', 'bold', 'lucky', 'solar', 'swift', 'clever', 'vibrant', 'gentle', 'cosmic'];
@@ -1455,17 +1797,6 @@
       nameInput.value = localStorage.getItem('space_user_name');
     }
 
-    // A stable per-browser id, persisted in localStorage: used as the LiveKit identity so
-    // rejoining from another tab in *this same browser* replaces the earlier connection instead
-    // of both being in the call under different typed names. A different browser (or a private
-    // window) has its own localStorage, so it gets its own id -- nothing here can tell that apart
-    // from a genuinely different laptop; no browser API exposes real machine identity for that.
-    let deviceId = localStorage.getItem('space_device_id');
-    if (!deviceId) {
-      deviceId = crypto.randomUUID();
-      localStorage.setItem('space_device_id', deviceId);
-    }
-
     function updatePreviewAvatar() {
       const name = nameInput.value.trim() || 'You';
       previewAvatarInitial.textContent = getInitials(name);
@@ -1523,12 +1854,10 @@
     }
 
     function updateLobbyControlsUI() {
-      // Mic UI
       lobbyToggleMic.classList.toggle('off', !micEnabled);
       lobbyToggleMic.querySelector('.icon-mic-on').style.display = micEnabled ? 'block' : 'none';
       lobbyToggleMic.querySelector('.icon-mic-off').style.display = !micEnabled ? 'block' : 'none';
 
-      // Cam UI
       lobbyToggleCam.classList.toggle('off', !camEnabled);
       lobbyToggleCam.querySelector('.icon-cam-on').style.display = camEnabled ? 'block' : 'none';
       lobbyToggleCam.querySelector('.icon-cam-off').style.display = !camEnabled ? 'block' : 'none';
@@ -1559,42 +1888,102 @@
 
       toggleScreenBtn.classList.toggle('active', screenShareActive);
       raiseHandBtn.classList.toggle('active', handRaised);
+      presentingBanner.classList.toggle('active', screenShareActive);
     }
 
-    // Tile management
-    function tileId(participantIdentity) {
-      return `tile-${participantIdentity.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
+    // =========================================================================
+    // TILE CREATION & MANAGEMENT (Camera & Screen Share)
+    // =========================================================================
+    function tileId(participantIdentity, isScreen = false) {
+      const clean = participantIdentity.replace(/[^a-zA-Z0-9_-]/g, '_');
+      return isScreen ? `screen-${clean}` : `tile-${clean}`;
     }
 
-    function ensureTile(identity, label, isLocal = false) {
-      let tile = document.getElementById(tileId(identity));
+    function ensureTile(identity, label, isLocal = false, isScreen = false) {
+      const id = tileId(identity, isScreen);
+      let tile = document.getElementById(id);
       if (!tile) {
         tile = document.createElement('div');
         tile.className = 'tile';
-        tile.id = tileId(identity);
+        if (isScreen) tile.classList.add('screen-share-tile');
+        tile.id = id;
         tile.dataset.identity = identity;
+        tile.dataset.isScreen = isScreen ? 'true' : 'false';
 
         const initials = getInitials(label);
+        const iconMic = isScreen
+          ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>'
+          : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>';
+
+        const titleText = isScreen
+          ? `${label}'s screen`
+          : `${label}${isLocal ? ' (You)' : ''}`;
+
         tile.innerHTML = `
+          <!-- Hover action controls -->
+          <div class="tile-hover-bar">
+            <button class="tile-tool-btn btn-pin-tile" type="button" title="Pin / Spotlight">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 2v6l3 3v2h-6v7l-1 1-1-1v-7H5v-2l3-3V2z"/></svg>
+            </button>
+            <button class="tile-tool-btn btn-fs-tile" type="button" title="Toggle full screen">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+            </button>
+          </div>
+
+          ${isScreen ? '' : `
           <div class="tile-avatar-view">
             <div class="tile-avatar-circle">${initials}</div>
-          </div>
+          </div>`}
+
           <div class="tile-name-tag">
-            <span class="tile-mic-status" id="mic-icon-${tileId(identity)}">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+            <span class="tile-mic-status" id="mic-icon-${id}">
+              ${iconMic}
             </span>
-            <span class="tile-label-text">${label}${isLocal ? ' (You)' : ''}</span>
+            <span class="tile-label-text">${titleText}</span>
           </div>
         `;
-        grid.appendChild(tile);
-        recalcGridLayout();
+
+        // Wire tile events
+        const pinBtn = tile.querySelector('.btn-pin-tile');
+        const fsBtn = tile.querySelector('.btn-fs-tile');
+
+        pinBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          togglePinTile(id);
+        });
+
+        fsBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          toggleFullscreenElement(tile);
+        });
+
+        tile.addEventListener('dblclick', () => {
+          togglePinTile(id);
+        });
+
+        // Add to DOM
+        stageContainer.appendChild(tile);
+
+        // If screen share was added, auto-spotlight or sidebar focus it!
+        if (isScreen) {
+          pinnedTileId = id;
+          if (currentLayoutMode === 'tiled') {
+            setLayoutMode('sidebar');
+          } else {
+            recalcStageStructure();
+          }
+          showToast(`${label} started presenting`);
+        } else {
+          recalcStageStructure();
+        }
+
         updateParticipantsDrawer();
       }
       return tile;
     }
 
-    function attachTrack(track, identity, label, isLocal = false) {
-      const tile = ensureTile(identity, label, isLocal);
+    function attachTrack(track, identity, label, isLocal = false, isScreen = false) {
+      const tile = ensureTile(identity, label, isLocal, isScreen);
       const el = track.attach();
       if (track.kind === 'video') {
         tile.querySelector('.tile-avatar-view')?.remove();
@@ -1607,20 +1996,164 @@
       }
     }
 
-    function removeParticipantTile(identity) {
-      document.getElementById(tileId(identity))?.remove();
-      recalcGridLayout();
+    function removeParticipantTile(identity, isScreen = false) {
+      const id = tileId(identity, isScreen);
+      document.getElementById(id)?.remove();
+      if (pinnedTileId === id) {
+        pinnedTileId = null;
+        if (currentLayoutMode !== 'tiled') {
+          setLayoutMode('tiled');
+        }
+      }
+      recalcStageStructure();
       updateParticipantsDrawer();
     }
 
-    function recalcGridLayout() {
-      const count = grid.children.length;
-      grid.className = '';
-      if (count <= 1) grid.classList.add('grid-1');
-      else if (count === 2) grid.classList.add('grid-2');
-      else if (count <= 4) grid.classList.add('grid-3');
-      else grid.classList.add('grid-5');
+    // =========================================================================
+    // LAYOUT MODES (Tiled, Sidebar, Spotlight) & PINNING
+    // =========================================================================
+    function togglePinTile(id) {
+      if (pinnedTileId === id) {
+        pinnedTileId = null;
+        setLayoutMode('tiled');
+        showToast('Unpinned');
+      } else {
+        pinnedTileId = id;
+        if (currentLayoutMode === 'tiled') {
+          setLayoutMode('sidebar');
+        } else {
+          recalcStageStructure();
+        }
+        showToast('Pinned to main stage');
+      }
     }
+
+    function setLayoutMode(mode) {
+      currentLayoutMode = mode;
+      layoutOptionBtns.forEach(btn => {
+        btn.classList.toggle('selected', btn.dataset.layout === mode);
+      });
+
+      stageContainer.classList.remove('mode-tiled', 'mode-sidebar', 'mode-spotlight');
+      stageContainer.classList.add(`mode-${mode}`);
+
+      layoutPopover.classList.remove('open');
+      btnToggleLayout.classList.remove('active');
+
+      recalcStageStructure();
+    }
+
+    function recalcStageStructure() {
+      const allTiles = Array.from(document.querySelectorAll('.tile'));
+      if (allTiles.length === 0) return;
+
+      // Highlight pinned button state
+      allTiles.forEach(t => {
+        t.classList.toggle('pinned', t.id === pinnedTileId);
+        const pinBtn = t.querySelector('.btn-pin-tile');
+        if (pinBtn) pinBtn.classList.toggle('active', t.id === pinnedTileId);
+      });
+
+      if (currentLayoutMode === 'tiled') {
+        // Move all tiles back to stageContainer root
+        allTiles.forEach(t => {
+          if (t.parentElement !== stageContainer) {
+            stageContainer.appendChild(t);
+          }
+        });
+        focalStage.innerHTML = '';
+        sidebarStrip.innerHTML = '';
+
+        const count = allTiles.length;
+        stageContainer.classList.remove('grid-1', 'grid-2', 'grid-3', 'grid-4', 'grid-5', 'grid-6');
+        if (count <= 1) stageContainer.classList.add('grid-1');
+        else if (count === 2) stageContainer.classList.add('grid-2');
+        else if (count <= 4) stageContainer.classList.add('grid-3');
+        else stageContainer.classList.add('grid-5');
+      } else if (currentLayoutMode === 'sidebar') {
+        // Target focal tile (pinned or first screen share or first tile)
+        let focalTile = pinnedTileId ? document.getElementById(pinnedTileId) : null;
+        if (!focalTile) {
+          focalTile = document.querySelector('.tile.screen-share-tile') || allTiles[0];
+          if (focalTile) pinnedTileId = focalTile.id;
+        }
+
+        if (focalTile) {
+          focalStage.appendChild(focalTile);
+        }
+
+        // Place remaining tiles into sidebar strip
+        allTiles.forEach(t => {
+          if (t !== focalTile) {
+            sidebarStrip.appendChild(t);
+          }
+        });
+      } else if (currentLayoutMode === 'spotlight') {
+        // Spotlight mode: Only focal tile on stage
+        let focalTile = pinnedTileId ? document.getElementById(pinnedTileId) : null;
+        if (!focalTile) {
+          focalTile = document.querySelector('.tile.screen-share-tile') || allTiles[0];
+          if (focalTile) pinnedTileId = focalTile.id;
+        }
+
+        if (focalTile) {
+          focalStage.appendChild(focalTile);
+        }
+
+        // Keep rest hidden inside sidebar strip (not rendered in spotlight)
+        allTiles.forEach(t => {
+          if (t !== focalTile) {
+            sidebarStrip.appendChild(t);
+          }
+        });
+      }
+    }
+
+    // Fullscreen helper for elements
+    function toggleFullscreenElement(element) {
+      if (!document.fullscreenElement) {
+        element.requestFullscreen().catch(err => {
+          showToast(`Could not enter full screen: ${err.message}`);
+        });
+      } else {
+        document.exitFullscreen().catch(() => {});
+      }
+    }
+
+    document.addEventListener('fullscreenchange', () => {
+      const isFs = !!document.fullscreenElement;
+      btnToggleFullscreen.classList.toggle('active', isFs);
+      btnToggleFullscreen.querySelector('.icon-fs-enter').style.display = isFs ? 'none' : 'block';
+      btnToggleFullscreen.querySelector('.icon-fs-exit').style.display = isFs ? 'block' : 'none';
+    });
+
+    btnToggleFullscreen.addEventListener('click', () => {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(() => {});
+      } else {
+        document.exitFullscreen().catch(() => {});
+      }
+    });
+
+    // Layout switcher popover
+    btnToggleLayout.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isOpen = layoutPopover.classList.toggle('open');
+      btnToggleLayout.classList.toggle('active', isOpen);
+    });
+
+    layoutOptionBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        setLayoutMode(btn.dataset.layout);
+      });
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!layoutPopover.contains(e.target) && e.target !== btnToggleLayout) {
+        layoutPopover.classList.remove('open');
+        btnToggleLayout.classList.remove('active');
+      }
+    });
 
     // Refresh active room list
     async function refreshRoomList() {
@@ -1691,8 +2224,8 @@
       }
     }
 
-    function handleDisconnection(message) {
-      setStatus(message ?? 'Ready', message ? 'error' : 'idle');
+    function handleDisconnection() {
+      setStatus('Ready', 'idle');
       meetingView.classList.remove('active');
       lobbyView.style.display = 'flex';
       joinBtn.disabled = false;
@@ -1700,7 +2233,16 @@
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
         <span>Join Meeting</span>
       `;
-      grid.innerHTML = '';
+      focalStage.innerHTML = '';
+      sidebarStrip.innerHTML = '';
+      stageContainer.innerHTML = '';
+      stageContainer.appendChild(focalStage);
+      stageContainer.appendChild(sidebarStrip);
+
+      pinnedTileId = null;
+      screenShareActive = false;
+      setLayoutMode('tiled');
+
       participantsDrawer.classList.remove('open');
       infoDrawer.classList.remove('open');
       btnTogglePeople.classList.remove('active');
@@ -1738,7 +2280,7 @@
           if (camEnabled) {
             tile.querySelector('.tile-avatar-view')?.remove();
             for (const pub of room.localParticipant.videoTrackPublications.values()) {
-              if (pub.track) tile.appendChild(pub.track.attach());
+              if (pub.track && pub.source !== 'screen_share') tile.appendChild(pub.track.attach());
             }
           } else {
             tile.querySelectorAll('video').forEach(el => el.remove());
@@ -1758,16 +2300,40 @@
     async function toggleScreenShare() {
       if (!room) return;
       try {
-        screenShareActive = !screenShareActive;
-        await room.localParticipant.setScreenShareEnabled(screenShareActive);
+        if (!screenShareActive) {
+          screenShareActive = true;
+          const pub = await room.localParticipant.setScreenShareEnabled(true, { audio: true });
+          if (pub && pub.track) {
+            attachTrack(pub.track, room.localParticipant.identity, nameInput.value || 'You', true, true);
+            // Handle browser stop sharing native bar
+            pub.track.mediaStreamTrack.onended = () => {
+              stopScreenSharing();
+            };
+          }
+          showToast('You started screen sharing');
+        } else {
+          await stopScreenSharing();
+        }
         updateInCallControlsUI();
-        showToast(screenShareActive ? 'Started screen share' : 'Stopped screen share');
       } catch (err) {
         screenShareActive = false;
         updateInCallControlsUI();
-        showToast(`Screen share cancelled`);
+        showToast('Screen share cancelled');
       }
     }
+
+    async function stopScreenSharing() {
+      if (!room) return;
+      screenShareActive = false;
+      try {
+        await room.localParticipant.setScreenShareEnabled(false);
+      } catch {}
+      removeParticipantTile(room.localParticipant.identity, true);
+      updateInCallControlsUI();
+      showToast('Stopped screen sharing');
+    }
+
+    btnStopPresentingTop.addEventListener('click', stopScreenSharing);
 
     function toggleRaiseHand() {
       handRaised = !handRaised;
@@ -1798,7 +2364,7 @@
 
       let details;
       try {
-        const res = await fetch(`/connect?room=${encodeURIComponent(roomName)}&name=${encodeURIComponent(name)}&deviceId=${encodeURIComponent(deviceId)}`);
+        const res = await fetch(`/connect?room=${encodeURIComponent(roomName)}&name=${encodeURIComponent(name)}`);
         if (!res.ok) throw new Error(`Server returned ${res.status}`);
         details = await res.json();
       } catch (err) {
@@ -1811,7 +2377,6 @@
         return;
       }
 
-      // Stop lobby preview stream before LiveKit takes over devices
       if (previewStream) {
         previewStream.getTracks().forEach(t => t.stop());
         previewStream = null;
@@ -1828,34 +2393,36 @@
         updateParticipantsDrawer();
       });
 
-      room.on(RoomEvent.TrackSubscribed, (track, _pub, participant) => {
-        attachTrack(track, participant.identity, participant.name || participant.identity);
+      room.on(RoomEvent.TrackSubscribed, (track, pub, participant) => {
+        const isScreen = pub.source === 'screen_share' || track.source === 'screen_share';
+        attachTrack(track, participant.identity, participant.name || participant.identity, false, isScreen);
       });
 
-      room.on(RoomEvent.TrackUnsubscribed, (track) => {
+      room.on(RoomEvent.TrackUnsubscribed, (track, pub, participant) => {
+        const isScreen = pub.source === 'screen_share' || track.source === 'screen_share';
         track.detach().forEach(el => el.remove());
+        if (isScreen) {
+          removeParticipantTile(participant.identity, true);
+        }
       });
 
       room.on(RoomEvent.ParticipantDisconnected, (participant) => {
-        removeParticipantTile(participant.identity);
+        removeParticipantTile(participant.identity, false);
+        removeParticipantTile(participant.identity, true);
         showToast(`${participant.name || participant.identity} left`);
         updateParticipantsDrawer();
       });
 
       room.on(RoomEvent.ActiveSpeakersChanged, (speakers) => {
         const speakerIdentities = new Set(speakers.map(s => s.identity));
-        document.querySelectorAll('.tile').forEach(tile => {
+        document.querySelectorAll('.tile:not(.screen-share-tile)').forEach(tile => {
           const id = tile.dataset.identity;
           tile.classList.toggle('speaking', speakerIdentities.has(id));
         });
       });
 
-      room.on(RoomEvent.Disconnected, (reason) => {
-        if (reason === DisconnectReason.DUPLICATE_IDENTITY) {
-          handleDisconnection('Disconnected: you joined from another tab or window on this browser.');
-        } else {
-          handleDisconnection();
-        }
+      room.on(RoomEvent.Disconnected, () => {
+        handleDisconnection();
       });
 
       setStatus('Connecting to room…', 'connecting');
@@ -1872,7 +2439,6 @@
         return;
       }
 
-      // Apply initial mic and cam choices from lobby
       try {
         await room.localParticipant.setCameraEnabled(camEnabled);
         await room.localParticipant.setMicrophoneEnabled(micEnabled);
@@ -1881,24 +2447,27 @@
       }
 
       // Render local participant tile
-      ensureTile(room.localParticipant.identity, name, true);
+      ensureTile(room.localParticipant.identity, name, true, false);
       for (const pub of room.localParticipant.videoTrackPublications.values()) {
-        if (pub.track) attachTrack(pub.track, room.localParticipant.identity, name, true);
+        if (pub.track && pub.source !== 'screen_share') {
+          attachTrack(pub.track, room.localParticipant.identity, name, true, false);
+        }
       }
 
-      // Transition views: Lobby -> In-Call Meeting View
+      // Transition views
       lobbyView.style.display = 'none';
       meetingView.classList.add('active');
       meetRoomDisplay.textContent = details.roomName;
       drawerRoomCode.textContent = details.roomName;
 
       setStatus(`Connected to ${details.roomName}`, 'connected');
+      setLayoutMode('tiled');
       updateInCallControlsUI();
       updateParticipantsDrawer();
       showToast(`Joined ${details.roomName}`);
     }
 
-    // Attach all event listeners immediately
+    // Attach event listeners
     joinBtn.addEventListener('click', join);
     leaveBtn.addEventListener('click', leave);
     toggleMicBtn.addEventListener('click', toggleMic);
@@ -1974,11 +2543,15 @@
         e.preventDefault();
         if (meetingView.classList.contains('active')) toggleCam();
         else lobbyToggleCam.click();
+      } else if (e.key.toLowerCase() === 'f') {
+        btnToggleFullscreen.click();
       } else if (e.key === 'Escape') {
         participantsDrawer.classList.remove('open');
         infoDrawer.classList.remove('open');
+        layoutPopover.classList.remove('open');
         btnTogglePeople.classList.remove('active');
         btnToggleInfo.classList.remove('active');
+        btnToggleLayout.classList.remove('active');
       }
     });
 

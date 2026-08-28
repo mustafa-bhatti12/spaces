@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import express from 'express';
-import { mintToken, listActiveRooms } from './livekit';
+import { mintToken, listActiveRooms, getParticipantSid } from './livekit';
 import { requireSharedSecret } from './auth';
 
 const app = express();
@@ -16,6 +16,21 @@ app.get('/rooms', requireSharedSecret, async (_req, res) => {
   } catch (err) {
     console.error('Failed to list LiveKit rooms:', err);
     res.status(500).json({ error: 'Could not list rooms.' });
+  }
+});
+
+app.get('/participant', requireSharedSecret, async (req, res) => {
+  const room = String(req.query.room ?? '');
+  const identity = String(req.query.identity ?? '');
+  if (!room || !identity) {
+    res.status(400).json({ error: 'room and identity query params are required.' });
+    return;
+  }
+  try {
+    res.json({ sid: await getParticipantSid(room, identity) });
+  } catch (err) {
+    console.error('Failed to look up LiveKit participant:', err);
+    res.status(500).json({ error: 'Could not look up participant.' });
   }
 });
 

@@ -18,12 +18,7 @@ export async function mintToken(params: {
   identity: string;
   name: string;
 }): Promise<CallConnectionDetails> {
-  const apiKey = process.env.LIVEKIT_API_KEY;
-  const apiSecret = process.env.LIVEKIT_API_SECRET;
-  const serverUrl = process.env.LIVEKIT_URL;
-  if (!apiKey || !apiSecret || !serverUrl) {
-    throw new Error('LIVEKIT_API_KEY, LIVEKIT_API_SECRET and LIVEKIT_URL must be set.');
-  }
+  const { apiKey, apiSecret, serverUrl } = requireLiveKitEnv();
 
   const at = new AccessToken(apiKey, apiSecret, {
     identity: params.identity,
@@ -58,14 +53,38 @@ export interface ActiveRoom {
  * gated by the same shared secret as /token.
  */
 export async function listActiveRooms(): Promise<ActiveRoom[]> {
+  const { apiKey, apiSecret, serverUrl } = requireLiveKitEnv();
+
+  const svc = new RoomServiceClient(serverUrl, apiKey, apiSecret);
+  const rooms = await svc.listRooms();
+  return rooms.map((room) => ({ name: room.name, numParticipants: room.numParticipants }));
+}
+
+/**
+ * Looks up the SID (connection id) LiveKit currently has on file for an identity in a room, or
+ * null if that identity isn't present at all. Used by the throwaway test-call site as a pull-based
+ * heartbeat: LiveKit's own push-based "you were disconnected" signal to the losing side of a
+ * duplicate-identity join wasn't observed firing promptly in local testing, so the losing client
+ * instead polls this and self-disconnects the moment its own sid no longer matches the current
+ * one -- this admin API reflects the true state immediately, verified separately.
+ */
+export async function getParticipantSid(room: string, identity: string): Promise<string | null> {
+  const { apiKey, apiSecret, serverUrl } = requireLiveKitEnv();
+  const svc = new RoomServiceClient(serverUrl, apiKey, apiSecret);
+  try {
+    const participant = await svc.getParticipant(room, identity);
+    return participant.sid;
+  } catch {
+    return null;
+  }
+}
+
+function requireLiveKitEnv() {
   const apiKey = process.env.LIVEKIT_API_KEY;
   const apiSecret = process.env.LIVEKIT_API_SECRET;
   const serverUrl = process.env.LIVEKIT_URL;
   if (!apiKey || !apiSecret || !serverUrl) {
     throw new Error('LIVEKIT_API_KEY, LIVEKIT_API_SECRET and LIVEKIT_URL must be set.');
   }
-
-  const svc = new RoomServiceClient(serverUrl, apiKey, apiSecret);
-  const rooms = await svc.listRooms();
-  return rooms.map((room) => ({ name: room.name, numParticipants: room.numParticipants }));
+  return { apiKey, apiSecret, serverUrl };
 }

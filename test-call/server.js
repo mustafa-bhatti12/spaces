@@ -15,9 +15,30 @@ const LIVEKIT_HTTP_URL = (process.env.LIVEKIT_URL ?? 'ws://localhost:7880').repl
 if (!TOKEN_SERVICE_SHARED_SECRET) {
   throw new Error('TOKEN_SERVICE_SHARED_SECRET is required (copy .env.example to .env).');
 }
+app.use((req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE');
+  res.setHeader('Access-Control-Allow-Headers', '*');
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(204);
+  }
+  next();
+});
+
+const proxy = httpProxy.createProxyServer({ target: LIVEKIT_HTTP_URL, ws: true });
+proxy.on('error', (err) => console.error('LiveKit proxy error:', err.message));
+proxy.on('proxyRes', (proxyRes) => {
+  proxyRes.headers['access-control-allow-origin'] = '*';
+  proxyRes.headers['access-control-allow-methods'] = 'GET, POST, OPTIONS, PUT, DELETE';
+  proxyRes.headers['access-control-allow-headers'] = '*';
+});
+
+// Forward LiveKit HTTP endpoints (/rtc/*, /twirp/*) directly on this server port
+app.all(['/rtc*', '/twirp*'], (req, res) => {
+  proxy.web(req, res);
+});
 
 app.use(express.static(path.join(__dirname, 'public')));
-
 // Browsers only grant camera/mic access on a "secure context" — https, or the single special
 // case of http://localhost. A second laptop loading this over plain http://<lan-ip> gets no
 // permission prompt at all: getUserMedia rejects immediately, silently, with no dialog. Hence the
@@ -63,10 +84,11 @@ app.get('/connect', async (req, res) => {
       return;
     }
     const details = await upstream.json();
-    // token-service hands back LiveKit's own ws:// URL, which an https page can't open (browsers
-    // block "mixed content": a secure page may not open an insecure websocket). Point the browser
-    // at the wss:// proxy below instead, running on this same host+cert, one port up.
-    details.serverUrl = `wss://${req.hostname}:${wssProxyPort}`;
+    // Point the browser at the same host & port (or wss proxy), so Firefox only needs
+    // one certificate acceptance for both the web app and WebSockets/LiveKit signaling.
+    const host = req.headers.host || `${req.hostname}:${port}`;
+    const protocol = hasCert ? 'wss' : 'ws';
+    details.serverUrl = `${protocol}://${host}`;
     res.json(details);
   } catch (err) {
     console.error('Failed to reach token-service:', err);
@@ -92,6 +114,33 @@ app.get('/rooms', async (_req, res) => {
   }
 });
 
+// Heartbeat for the client-side duplicate-identity check: LiveKit's push-based disconnect signal
+// to the losing side of a duplicate-identity join wasn't observed firing promptly in testing, so
+// the client instead polls this while connected and self-disconnects the moment the sid it holds
+// no longer matches the one LiveKit currently has on file for its identity.
+app.get('/whoami', async (req, res) => {
+  const room = normalizeRoomName(req.query.room);
+  const identity = String(req.query.identity ?? '').trim();
+  if (!room || !identity) {
+    res.status(400).json({ error: 'room and identity query params are required.' });
+    return;
+  }
+  try {
+    const upstream = await fetch(
+      `${TOKEN_SERVICE_URL}/participant?room=${encodeURIComponent(room)}&identity=${encodeURIComponent(identity)}`,
+      { headers: { Authorization: `Bearer ${TOKEN_SERVICE_SHARED_SECRET}` } },
+    );
+    if (!upstream.ok) {
+      res.status(502).json({ error: `token-service responded ${upstream.status}` });
+      return;
+    }
+    res.json(await upstream.json());
+  } catch (err) {
+    console.error('Failed to reach token-service:', err);
+    res.status(502).json({ error: 'Could not reach token-service. Is it running?' });
+  }
+});
+
 const port = Number(process.env.PORT ?? 8888);
 const wssProxyPort = Number(process.env.WSS_PROXY_PORT ?? 8889);
 const certPath = path.join(__dirname, 'certs', 'cert.pem');
@@ -101,32 +150,30 @@ const hasCert = fs.existsSync(certPath) && fs.existsSync(keyPath);
 if (hasCert) {
   const tlsOptions = { cert: fs.readFileSync(certPath), key: fs.readFileSync(keyPath) };
 
-  https.createServer(tlsOptions, app).listen(port, '0.0.0.0', () => {
+  const mainServer = https.createServer(tlsOptions, app);
+  mainServer.on('upgrade', (req, socket, head) => {
+    proxy.ws(req, socket, head);
+  });
+  mainServer.listen(port, '0.0.0.0', () => {
     console.log(`test-call listening on https://0.0.0.0:${port} (LAN-reachable, self-signed cert)`);
     console.log('Each browser will warn "not private" once — that is expected for a self-signed cert; proceed past it.');
   });
 
-  // LiveKit's own server has no TLS support on its signaling port (only --turn-cert/--turn-key,
-  // for TURN specifically) — it expects a reverse proxy in front of it for wss://. This is that
-  // proxy: same cert as above, plain passthrough to LiveKit's ws:// port, so the browser only
-  // ever talks wss:// and never trips mixed-content blocking (which Firefox enforces strictly and
-  // Chrome does not, which is why this broke on a Firefox laptop specifically after "working" on
-  // a Chrome one — it never really worked, Chrome was just permissive about it).
-  const proxy = httpProxy.createProxyServer({ target: LIVEKIT_HTTP_URL, ws: true });
-  proxy.on('error', (err) => console.error('LiveKit proxy error:', err.message));
+  // Keep standalone proxy on wssProxyPort (8889) as fallback
   const proxyServer = https.createServer(tlsOptions, (req, res) => proxy.web(req, res));
   proxyServer.on('upgrade', (req, socket, head) => proxy.ws(req, socket, head));
   proxyServer.listen(wssProxyPort, '0.0.0.0', () => {
-    console.log(`wss proxy to ${LIVEKIT_HTTP_URL} listening on wss://0.0.0.0:${wssProxyPort}`);
+    console.log(`wss proxy fallback listening on wss://0.0.0.0:${wssProxyPort}`);
   });
 } else {
   console.warn(
-    'No certs/cert.pem + certs/key.pem found — falling back to plain http, no wss proxy either. ' +
-      'Camera/mic and any browser enforcing mixed-content blocking will only work from http://localhost. ' +
-      'Generate a cert with: openssl req -x509 -newkey rsa:2048 -nodes -keyout certs/key.pem -out certs/cert.pem -days 30 ' +
-      '-subj "/CN=test-call" -addext "subjectAltName=IP:<your-lan-ip>,IP:127.0.0.1,DNS:localhost"',
+    'No certs/cert.pem + certs/key.pem found — falling back to plain http, no wss proxy either.',
   );
-  http.createServer(app).listen(port, '0.0.0.0', () => {
+  const mainServer = http.createServer(app);
+  mainServer.on('upgrade', (req, socket, head) => {
+    proxy.ws(req, socket, head);
+  });
+  mainServer.listen(port, '0.0.0.0', () => {
     console.log(`test-call listening on http://0.0.0.0:${port} (LAN-reachable)`);
   });
 }
