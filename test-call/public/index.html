@@ -1797,6 +1797,17 @@
       nameInput.value = localStorage.getItem('space_user_name');
     }
 
+    // A stable per-browser id, persisted in localStorage: sent as the LiveKit identity on every
+    // join so rejoining from another tab in *this same browser* replaces the earlier connection
+    // instead of both being in the call under different typed names. A different browser (or a
+    // private window) has its own localStorage and so its own id -- nothing here, or in any
+    // browser API, can tell that apart from a genuinely different laptop without real auth.
+    let deviceId = localStorage.getItem('space_device_id');
+    if (!deviceId) {
+      deviceId = crypto.randomUUID();
+      localStorage.setItem('space_device_id', deviceId);
+    }
+
     function updatePreviewAvatar() {
       const name = nameInput.value.trim() || 'You';
       previewAvatarInitial.textContent = getInitials(name);
@@ -1814,6 +1825,7 @@
     let screenShareActive = false;
     let handRaised = false;
     let room = null;
+    let heartbeatTimer = null;
 
     // Start local camera preview in lobby
     function initLobbyMedia() {
@@ -2364,7 +2376,7 @@
 
       let details;
       try {
-        const res = await fetch(`/connect?room=${encodeURIComponent(roomName)}&name=${encodeURIComponent(name)}`);
+        const res = await fetch(`/connect?room=${encodeURIComponent(roomName)}&name=${encodeURIComponent(name)}&deviceId=${encodeURIComponent(deviceId)}`);
         if (!res.ok) throw new Error(`Server returned ${res.status}`);
         details = await res.json();
       } catch (err) {
@@ -2422,6 +2434,7 @@
       });
 
       room.on(RoomEvent.Disconnected, () => {
+        clearInterval(heartbeatTimer);
         handleDisconnection();
       });
 
@@ -2438,6 +2451,28 @@
         initLobbyMedia();
         return;
       }
+
+      // LiveKit evicts an older connection when a new one joins with the same identity, but its
+      // push-based disconnect signal to the losing side wasn't observed firing promptly in local
+      // testing -- possibly specific to this dev server/proxy setup. This heartbeat is a
+      // pull-based backstop: poll who LiveKit actually has on file for this identity, and if it's
+      // not us anymore, disconnect for real instead of sitting in a room we've already lost.
+      heartbeatTimer = setInterval(async () => {
+        if (!room || room.state !== 'connected') return;
+        try {
+          const res = await fetch(`/whoami?room=${encodeURIComponent(roomName)}&identity=${encodeURIComponent(deviceId)}`);
+          if (!res.ok) return;
+          const { sid } = await res.json();
+          if (sid && room.localParticipant && sid !== room.localParticipant.sid) {
+            clearInterval(heartbeatTimer);
+            await room.disconnect();
+            room = null;
+            setStatus('Disconnected: you joined from another tab or window on this browser.', 'error');
+          }
+        } catch {
+          // token-service unreachable for this tick -- try again next tick, don't act on it
+        }
+      }, 5000);
 
       try {
         await room.localParticipant.setCameraEnabled(camEnabled);
