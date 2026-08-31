@@ -1,6 +1,6 @@
 {
   "name": "Space Meet & LiveKit",
-  "image": "mcr.microsoft.com/devcontainers/javascript-node:20",
+  "image": "mcr.microsoft.com/devcontainers/universal:2",
   "features": {
     "ghcr.io/devcontainers/features/node:1": {
       "version": "20"
