@@ -17,15 +17,24 @@ else
   echo "⚠️  redis-server not found -- recording (LiveKit Egress) needs it. Install it (e.g. \`brew install redis\`) to enable recording; calling itself still works without it."
 fi
 
-# 2. Start LiveKit Server
+# 2. Start LiveKit Server. --dev mode can't sign egress webhooks (no webhook.api_key), which
+#    silently breaks the compression step: recordings still start, but token-service never hears
+#    "recording finished" and files pile up uncompressed in egress/raw/ forever. Use the real
+#    config (redis + webhook signing) whenever Redis actually came up in step 1; fall back to
+#    --dev only when it didn't, so plain calling still works without Redis/Docker installed.
+if [ -n "$REDIS_PID" ]; then
+  LK_ARGS="--config livekit/config.yaml"
+else
+  LK_ARGS="--dev --bind 0.0.0.0"
+fi
 if command -v livekit-server >/dev/null 2>&1; then
   echo "📡 Starting LiveKit Server on :7880..."
-  livekit-server --dev --bind 0.0.0.0 > /tmp/livekit.log 2>&1 &
+  livekit-server $LK_ARGS > /tmp/livekit.log 2>&1 &
   LK_PID=$!
 else
   echo "⚠️ livekit-server not found. Installing LiveKit..."
   curl -sSL https://get.livekit.io | bash
-  livekit-server --dev --bind 0.0.0.0 > /tmp/livekit.log 2>&1 &
+  livekit-server $LK_ARGS > /tmp/livekit.log 2>&1 &
   LK_PID=$!
 fi
 
