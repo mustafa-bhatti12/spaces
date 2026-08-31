@@ -1,96 +1,146 @@
-# Space — self-hosted video calling service
+# Space — Self-Hosted Video Calling & Audio Recording Service
 
-This repo is the home of the LiveKit media server and the only code that mints LiveKit tokens for
-it. Both pieces of infrastructure live here; nothing outside this repo holds `LIVEKIT_API_KEY` /
-`LIVEKIT_API_SECRET`. Consumers — `hof-petition-studio` is the first (and so far only) one, via
-`apps/api/src/calls/` and `apps/web/src/app/calls/` — decide *who* may join *which* room, then ask
-this repo's token API to mint the actual token. If a second consumer ever needs video calls, it
-talks to the same token API, not a copy of it, and never gets its own LiveKit credentials either.
+This repository provides self-hosted LiveKit WebRTC video calling, room token minting, Google Meet-style call controls, and audio recording with automated compression pipelines.
 
-## Why LiveKit
+---
 
-Chosen over mediasoup (library, not a server — would mean building signaling/room management from
-scratch for no benefit at this scale), Jitsi (heavier JVM stack, harder to embed as a component
-rather than an iframe), OpenVidu (adds its own orchestration layer on top of a media engine, which
-is redundant once our own NestJS backend is already the control plane), and Galène (simpler, but no
-server-side SDK or React component ecosystem, so the token-issuing and UI work would all be
-hand-rolled). LiveKit's Node server SDK (`livekit-server-sdk`) and React components
-(`@livekit/components-react`) are the reason a small team can ship this without owning a WebRTC
-stack.
+## 🚀 Quick Start with GitHub Codespaces (Free Remote VPS)
 
-## Components
+You can run and test this entire stack on a free cloud Linux VPS via **GitHub Codespaces** with zero local dependencies and no credit card required.
 
-- **Media server** — the actual LiveKit server. Handles WebRTC signaling and media.
-- **`token-service/`** — a small Express app, the *only* thing that holds
-  `LIVEKIT_API_KEY`/`SECRET` and talks to `livekit-server-sdk`. Deliberately generic: it knows
-  nothing about cases, users, or call types — `POST /token` takes `{ room, identity, name }` and
-  returns a signed join token plus the media server's URL. It doesn't decide who's allowed to join;
-  the caller (currently `hof-petition-studio`'s `apps/api/src/calls/`) makes that decision and only
-  calls this once access is already granted. Auth between them is a shared secret
-  (`TOKEN_SERVICE_SHARED_SECRET`), not a user-facing auth system — this service has no concept of a
-  logged-in person.
+### Method A: Web Browser (Zero Installation)
 
-## Local development
+1. Open this repository on GitHub: [`mustafa-bhatti12/spaces`](https://github.com/mustafa-bhatti12/spaces).
+2. Click the green **`<> Code`** button $\rightarrow$ select the **Codespaces** tab.
+3. Click **Create codespace on main**.
+4. Once the terminal loads, start all services:
+   ```bash
+   ./start-all.sh
+   ```
+5. In the **PORTS** tab (bottom panel next to Terminal):
+   - Locate port **`8888`** (`Space Meet Web App`).
+   - Right-click $\rightarrow$ **Port Visibility** $\rightarrow$ set to **`Public`**.
+   - Click the **Open in Browser** (globe) icon or copy the public `https://*.app.github.dev` link.
+   - Open that URL on your phone or share it with other participants to test the call!
 
-Two processes, both native (not Docker):
+---
+
+### Method B: Terminal / SSH (Using GitHub CLI)
+
+1. Authenticate with GitHub CLI on your local machine (if not already logged in):
+   ```bash
+   gh auth login
+   ```
+
+2. Create the Codespace cloud VPS:
+   ```bash
+   gh codespace create -R mustafa-bhatti12/spaces -b main
+   ```
+
+3. SSH into the remote Ubuntu terminal:
+   ```bash
+   gh codespace ssh
+   ```
+
+4. Launch all services inside the SSH session:
+   ```bash
+   ./start-all.sh
+   ```
+
+5. In a new local terminal tab on your machine, expose port 8888:
+   ```bash
+   # Make port 8888 publicly accessible
+   gh codespace ports visibility 8888:public
+
+   # View your live public URL
+   gh codespace ports
+   ```
+
+---
+
+## 💻 Local Development Setup
+
+### Prerequisites
+- **Node.js** (v20+ or v22+)
+- **LiveKit Server binary**:
+  - macOS: `brew install livekit`
+  - Linux: `curl -sSL https://get.livekit.io | bash`
+- *(Optional for audio recording)*: **Docker** & **Redis** (`brew install redis` or `apt-get install redis-server`)
+
+---
+
+### Running All Services Locally
+
+You can launch all services with a single command:
 
 ```bash
-# 1. Media server — brew install livekit && livekit-server --dev
-livekit-server --dev
+./start-all.sh
 ```
 
-Docker Desktop on macOS cannot expose LiveKit's WebRTC UDP ports cleanly (no real host
-networking), and LiveKit's own docs recommend the native binary for local dev specifically for this
-reason. Docker Compose is the right tool for the production/Linux deployment below, where host
-networking works normally. This binds `127.0.0.1:7880` with the fixed dev credentials `devkey` /
-`secret` — no config file needed.
+This script automatically launches:
+1. **LiveKit Media Server** on `http://localhost:7880` (WebRTC on `:7881` & UDP `:50000-60000`)
+2. **Redis & LiveKit Egress** (if Docker is available for audio recording)
+3. **Token Service** on `http://localhost:8880`
+4. **Compressor Service** on `http://localhost:8890`
+5. **Space Meet Web App & TLS/WSS Proxy** on `https://localhost:8888`
 
+---
+
+### Running Services Individually
+
+If you prefer running services in separate terminal tabs:
+
+#### 1. LiveKit Media Server
 ```bash
-# 2. Token service
+livekit-server --dev --bind 0.0.0.0
+```
+*Binds `127.0.0.1:7880` with default development credentials (`devkey` / `secret`).*
+
+#### 2. Token Service
+```bash
 cd token-service
 npm install
-cp .env.example .env   # defaults already match the --dev credentials above
+cp -n .env.example .env
 npm run dev
 ```
+*Binds `:8880`. Mints LiveKit access tokens and manages room state.*
 
-Binds `:8880` (override with `PORT`). `TOKEN_SERVICE_SHARED_SECRET` in this `.env` must match
-`TOKEN_SERVICE_SHARED_SECRET` in `hof-petition-studio`'s root `.env` exactly, or every call from
-that repo gets a 401.
-
-Sanity-check both, independent of any consuming app:
-
+#### 3. Space Meet Frontend & Unified Proxy
 ```bash
-curl http://127.0.0.1:7880/                                    # LiveKit itself → 200 OK
-curl http://localhost:8880/health                                # token-service → {"ok":true}
-curl -X POST http://localhost:8880/token \
-  -H "Authorization: Bearer <TOKEN_SERVICE_SHARED_SECRET from token-service/.env>" \
-  -H "Content-Type: application/json" \
-  -d '{"room":"smoke-room","identity":"smoke-test","name":"Smoke Test"}'
-  # → a real, signed token for LiveKit's own dev credentials
+cd test-call
+npm install
+cp -n .env.example .env
+node server.js
 ```
+*Binds `:8888` (HTTPS & WSS). Serves the Google Meet UI and proxies WebSocket signaling to LiveKit.*
 
-For a check of the media server alone with no HTTP layer at all,
-`brew install livekit-cli` and `lk room join --url ws://localhost:7880 --api-key devkey
---api-secret secret --identity smoke-test --publish-demo smoke-room`.
+---
 
-## Production (not yet built)
+## 🎙️ Audio Recording & Transcription Pipeline
 
-- **Host:** Oracle Cloud Infrastructure, Dubai or Abu Dhabi region — closest to the Gulf/Pakistan
-  client base, and OCI's egress pricing is the deciding factor over Hetzner/DigitalOcean/Vultr at
-  this traffic profile. `VM.Standard.E4.Flex` (x86, not the Arm Always-Free tier, to avoid Oracle's
-  Arm reclaim risk), ~4 OCPU / 8GB, roughly $26-35/month plus block storage.
-- **Packaging:** Docker Compose on that VM, running both the media server and `token-service` as
-  separate containers (plus a `livekit.yaml` config for the former) — this is where those files
-  belong once written; do not put them in `hof-petition-studio`. `token-service` only needs a
-  real `TOKEN_SERVICE_SHARED_SECRET` (long random value, not the local dev one) and the same three
-  `LIVEKIT_*` vars pointed at the production media server instead of `localhost`.
-- **TURN:** Cloudflare Realtime (free tier covers this call volume), not self-managed coturn.
-- **Recording:** LiveKit Egress, audio-only by default (video egress is ~4x the cost), feeding the
-  AI petition-drafting pipeline as transcripts. Not built yet — do not add recording config here
-  speculatively; add it when the transcript pipeline is actually being wired up.
-- **Fallback:** Google Meet stays available as a manual break-glass option if this server is down;
-  there's no on-call rotation, so an automatic failover isn't planned.
+1. **Recording Initiation:**
+   - Any participant can click the **REC** button in the top bar.
+   - Client sends `POST /recording/start?room=<name>&startedBy=<name>`.
+   - `token-service` starts a LiveKit **RoomCompositeEgress** (audio-only) and broadcasts the `REC` badge to all active participants.
 
-None of the above is implemented yet. This section exists so that whoever builds it doesn't
-re-litigate the hosting/TURN/recording decisions — they were already made; only the Docker Compose
-and `livekit.yaml` remain to be written.
+2. **Storage & Auto-Stop:**
+   - The audio stream is captured by the Egress worker container to `./egress/raw/<egress-id>.ogg`.
+   - Recordings automatically stop if all participants leave the room (`room_finished` webhook).
+
+3. **Compression & Archival:**
+   - When the Egress finishes, LiveKit sends an `egress_ended` webhook to `token-service`.
+   - `token-service` sends the raw audio to `compressor/` (`:8890`), which encodes it into a lightweight, high-clarity opus file in `./egress/compressed/` ready for Whisper / Deepgram speech-to-text processing.
+
+---
+
+## 🎨 UI Features (Space Meet)
+
+- **Lobby Join Card:** Centered Google Meet-style join card with pre-call camera/mic check, audio level visualizer, initialed avatar fallback, room name randomizer ("Shuffle"), and active room chips.
+- **In-Call Controls:** Floating bottom dock with circular action buttons for Microphone, Camera, Screen Share, Raise Hand (`✋`), Layout Switcher, Fullscreen, and Red Pill End Call.
+- **Layout Modes:**
+  - **Tiled (Grid):** Adaptive responsive grid (1, 2, 3–4, 5+ participants).
+  - **Sidebar (Focus):** Large center stage for active speaker / presenter + right-hand thumbnail strip.
+  - **Spotlight (Single):** Maximized view of the pinned participant or presentation.
+- **Fullscreen Support:** Per-tile hover buttons (Pin / Fullscreen) and global fullscreen mode (<kbd>F</kbd> shortcut).
+- **Aspect-Safe Screen Sharing:** Dedicated presentation stream rendered with `object-fit: contain`, presenter status banner, and automatic spotlight focus.
+- **Browser Compatibility:** Single-port WSS/HTTPS architecture eliminating TLS certificate isolation errors in Firefox and Chromium.
