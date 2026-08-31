@@ -1,8 +1,10 @@
 {
   "name": "Space Meet & LiveKit",
-  "image": "mcr.microsoft.com/devcontainers/typescript-node:1-20-bookworm",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:20",
   "features": {
-    "ghcr.io/devcontainers/features/sshd:1": {},
+    "ghcr.io/devcontainers/features/sshd:1": {
+      "version": "latest"
+    },
     "ghcr.io/devcontainers/features/docker-in-docker:2": {}
   },
   "forwardPorts": [8888, 8880, 7880],
@@ -21,7 +23,7 @@
       "visibility": "private"
     }
   },
-  "postCreateCommand": "curl -sSL https://get.livekit.io | bash && cd token-service && npm install && cp -n .env.example .env || true && cd ../test-call && npm install && cp -n .env.example .env || true",
+  "postCreateCommand": "curl -sSL https://get.livekit.io | bash && cd token-service && npm install && cp -n .env.example .env || true && cd ../test-call && npm install && cp -n .env.example .env || true && cd ../compressor && npm install && cp -n .env.example .env || true",
   "customizations": {
     "vscode": {
       "extensions": [
