@@ -1,6 +1,10 @@
 {
   "name": "Space Meet & LiveKit",
   "image": "mcr.microsoft.com/devcontainers/javascript-node:20",
+  "features": {
+    "ghcr.io/devcontainers/features/sshd:1": {},
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+  },
   "forwardPorts": [8888, 8880, 7880],
   "portsAttributes": {
     "8888": {
