@@ -145,5 +145,9 @@ image (no native binary like `livekit-server --dev`).
 - `test-call/public/index.html` — the entire call UI (single file: lobby, in-call layouts, controls).
 - `compressor/server.js` — the one `/compress` endpoint.
 - `livekit/config.yaml`, `egress/config.yaml` — real (non-`--dev`) server config; read the comments in each before editing.
-- `start-all.sh` — local orchestration; degrades gracefully (calling still works) if Redis/Docker are missing.
+- `start-all.sh` — local / Codespaces / VPS orchestration. Tries to install Redis / LiveKit /
+  ffmpeg when they're missing. Degrades gracefully (calling still works) if Redis/Docker still
+  aren't there. Codespaces and `SPACE_HTTP=1` stay on HTTP and let the upstream proxy terminate
+  TLS; a bare VPS gets a self-signed cert covering the public IP. `/connect` honors
+  `X-Forwarded-Proto` / `X-Forwarded-Host` so the browser gets `wss://` on the public host.
 - `README.md` — user-facing quick start (Codespaces, local setup, UI feature list). This file is agent-facing; keep the two in sync but don't duplicate wholesale.

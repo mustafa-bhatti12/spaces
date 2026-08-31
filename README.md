@@ -17,6 +17,7 @@ You can run and test this entire stack on a free cloud Linux VPS via **GitHub Co
    ```bash
    ./start-all.sh
    ```
+   The script installs Redis / LiveKit / ffmpeg when it can. In Codespaces the app itself speaks **HTTP** on `:8888` — that is expected. GitHub's port proxy already provides HTTPS, so you will **not** see `certs/` or a `wss proxy` log line.
 5. In the **PORTS** tab (bottom panel next to Terminal):
    - Locate port **`8888`** (`Space Meet Web App`).
    - Right-click $\rightarrow$ **Port Visibility** $\rightarrow$ set to **`Public`**.
@@ -58,6 +59,30 @@ You can run and test this entire stack on a free cloud Linux VPS via **GitHub Co
 
 ---
 
+## 🖥️ Bare VPS (Ubuntu / Debian)
+
+Same command as Codespaces. On a machine with a public IP the script generates a self-signed cert covering that IP, and LiveKit advertises it for WebRTC:
+
+```bash
+./start-all.sh
+```
+
+Open these ports on the firewall (ufw/security group): **8888/tcp** (the app), **7881/tcp** and **7882/udp** (LiveKit media). Then share `https://<vps-ip>:8888` — browsers will warn once about the self-signed cert; proceed past it.
+
+Optional overrides:
+
+```bash
+export SPACE_PUBLIC_IP=203.0.113.10
+export SPACE_PUBLIC_HOST=meet.example.com
+# If nginx/Caddy already terminates TLS in front of :8888:
+export SPACE_HTTP=1
+./start-all.sh
+```
+
+If Docker is missing, recording is skipped (calling still works). Install it with `curl -fsSL https://get.docker.com | sh`.
+
+---
+
 ## 💻 Local Development Setup
 
 ### Prerequisites
@@ -78,11 +103,11 @@ You can launch all services with a single command:
 ```
 
 This script automatically launches:
-1. **LiveKit Media Server** on `http://localhost:7880` (WebRTC on `:7881` & UDP `:50000-60000`)
-2. **Redis & LiveKit Egress** (if Docker is available for audio recording)
+1. **LiveKit Media Server** on `http://localhost:7880` (WebRTC on `:7881` TCP & `:7882` UDP)
+2. **Redis & LiveKit Egress** (installs Redis when missing; starts Egress if Docker is available)
 3. **Token Service** on `http://localhost:8880`
 4. **Compressor Service** on `http://localhost:8890`
-5. **Space Meet Web App & TLS/WSS Proxy** on `https://localhost:8888`
+5. **Space Meet Web App** on `https://localhost:8888` locally (self-signed cert, generated if missing) or `http://localhost:8888` in Codespaces (the `*.app.github.dev` proxy already terminates TLS)
 
 ---
 

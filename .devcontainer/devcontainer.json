@@ -7,7 +7,7 @@
     },
     "ghcr.io/devcontainers/features/docker-in-docker:2": {}
   },
-  "forwardPorts": [8888, 8880, 7880],
+  "forwardPorts": [8888, 8880, 7880, 7881],
   "portsAttributes": {
     "8888": {
       "label": "Space Meet Web App",
@@ -21,9 +21,13 @@
     "7880": {
       "label": "LiveKit Server",
       "visibility": "private"
+    },
+    "7881": {
+      "label": "LiveKit ICE (TCP)",
+      "visibility": "public"
     }
   },
-  "postCreateCommand": "curl -sSL https://get.livekit.io | bash && cd token-service && npm install && cp -n .env.example .env || true && cd ../test-call && npm install && cp -n .env.example .env || true && cd ../compressor && npm install && cp -n .env.example .env || true",
+  "postCreateCommand": "bash .devcontainer/setup.sh",
   "customizations": {
     "vscode": {
       "extensions": [

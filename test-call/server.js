@@ -18,8 +18,30 @@ const port = Number(process.env.PORT ?? 8888);
 const wssProxyPort = Number(process.env.WSS_PROXY_PORT ?? 8889);
 const certPath = path.join(__dirname, 'certs', 'cert.pem');
 const keyPath = path.join(__dirname, 'certs', 'key.pem');
-const hasCert = fs.existsSync(certPath) && fs.existsSync(keyPath);
+// Codespaces / SPACE_HTTP=1: TLS is terminated at github.dev (or nginx/Caddy). Serving a
+// leftover self-signed cert on :8888 would make the proxy's HTTP health-check fail.
+const behindProxy = process.env.SPACE_HTTP === '1' || Boolean(process.env.CODESPACES || process.env.CODESPACE_NAME);
+const hasCert = !behindProxy && fs.existsSync(certPath) && fs.existsSync(keyPath);
 const tlsOptions = hasCert ? { cert: fs.readFileSync(certPath), key: fs.readFileSync(keyPath) } : null;
+
+// Codespaces (and any TLS-terminating proxy) talks HTTP to this process but the
+// browser sees HTTPS. Honor X-Forwarded-* so we advertise wss://<public-host>
+// instead of ws://localhost, which mixed-content blocking would refuse.
+function firstForwarded(value) {
+  if (typeof value !== 'string' || !value.trim()) return '';
+  return value.split(',')[0].trim();
+}
+function clientFacingHttps(request) {
+  if (hasCert) return true;
+  return firstForwarded(request.headers['x-forwarded-proto']).toLowerCase() === 'https';
+}
+function clientFacingHost(request) {
+  return (
+    firstForwarded(request.headers['x-forwarded-host']) ||
+    request.headers.host ||
+    `${request.hostname}:${port}`
+  );
+}
 
 const fastify = Fastify(hasCert ? { https: tlsOptions } : {});
 
@@ -102,8 +124,8 @@ fastify.get('/connect', async (request, reply) => {
     const details = await upstream.json();
     // Point the browser at the same host & port (or wss proxy), so Firefox only needs
     // one certificate acceptance for both the web app and WebSockets/LiveKit signaling.
-    const host = request.headers.host || `${request.hostname}:${port}`;
-    const protocol = hasCert ? 'wss' : 'ws';
+    const host = clientFacingHost(request);
+    const protocol = clientFacingHttps(request) ? 'wss' : 'ws';
     details.serverUrl = `${protocol}://${host}`;
     reply.send(details);
   } catch (err) {
@@ -233,9 +255,13 @@ fastify
     if (hasCert) {
       console.log(`test-call listening on https://0.0.0.0:${port} (LAN-reachable, self-signed cert)`);
       console.log('Each browser will warn "not private" once — that is expected for a self-signed cert; proceed past it.');
+    } else if (behindProxy) {
+      console.log(
+        `test-call listening on http://0.0.0.0:${port} (TLS terminated upstream — use the public https URL, not http://localhost from another machine)`,
+      );
     } else {
       console.warn(
-        'No certs/cert.pem + certs/key.pem found — falling back to plain http, no wss proxy either.',
+        'No certs/cert.pem + certs/key.pem found — falling back to plain http. Camera/mic on a second machine will only work from http://localhost.',
       );
       console.log(`test-call listening on http://0.0.0.0:${port} (LAN-reachable)`);
     }
