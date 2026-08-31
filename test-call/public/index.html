@@ -1880,6 +1880,7 @@
     let currentRoomName = null;
     let recordingEgressId = null;
     let recordingStartedAt = null;
+    let recordingStartedByName = null;
     let recordingTimer = null;
 
     // Start local camera preview in lobby
@@ -2470,10 +2471,14 @@
           stopRecordingUI();
           showToast('Recording stopped');
         } else {
-          const res = await fetch(`/recording/start?room=${encodeURIComponent(currentRoomName)}`, { method: 'POST' });
+          const startedBy = nameInput.value.trim() || 'You';
+          const res = await fetch(
+            `/recording/start?room=${encodeURIComponent(currentRoomName)}&startedBy=${encodeURIComponent(startedBy)}`,
+            { method: 'POST' },
+          );
           if (!res.ok) throw new Error(`Server returned ${res.status}`);
           const { egressId } = await res.json();
-          startRecordingUI(egressId, Date.now());
+          startRecordingUI(egressId, Date.now(), startedBy);
           showToast('Recording started');
         }
       } catch (err) {
@@ -2483,11 +2488,13 @@
       }
     }
 
-    function startRecordingUI(egressId, startedAt) {
+    function startRecordingUI(egressId, startedAt, startedByName) {
       recordingEgressId = egressId;
       recordingStartedAt = startedAt;
+      recordingStartedByName = startedByName || null;
       toggleRecordBtn.classList.add('recording');
       recBadge.classList.add('active');
+      recBadge.title = recordingStartedByName ? `Recording started by ${recordingStartedByName}` : '';
       clearInterval(recordingTimer);
       recordingTimer = setInterval(updateRecTimer, 1000);
       updateRecTimer();
@@ -2496,8 +2503,10 @@
     function stopRecordingUI() {
       recordingEgressId = null;
       recordingStartedAt = null;
+      recordingStartedByName = null;
       toggleRecordBtn.classList.remove('recording');
       recBadge.classList.remove('active');
+      recBadge.title = '';
       clearInterval(recordingTimer);
       recTimerEl.textContent = '00:00';
     }
@@ -2520,7 +2529,8 @@
         if (!res.ok) return;
         const active = await res.json();
         if (active.length > 0 && !recordingEgressId) {
-          startRecordingUI(active[0].egressId, Date.now());
+          startRecordingUI(active[0].egressId, Date.now(), active[0].startedBy);
+          if (active[0].startedBy) showToast(`${active[0].startedBy} started recording`);
         } else if (active.length === 0 && recordingEgressId) {
           stopRecordingUI();
         }

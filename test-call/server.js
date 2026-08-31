@@ -161,6 +161,7 @@ fastify.get('/whoami', async (request, reply) => {
 // token-service's /recording/* routes so the browser never needs the shared secret.
 fastify.post('/recording/start', async (request, reply) => {
   const room = normalizeRoomName(request.query.room);
+  const startedBy = String(request.query.startedBy ?? '').trim();
   if (!room) {
     reply.code(400).send({ error: 'room query param is required.' });
     return;
@@ -169,7 +170,7 @@ fastify.post('/recording/start', async (request, reply) => {
     const upstream = await fetch(`${TOKEN_SERVICE_URL}/recording/start`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${TOKEN_SERVICE_SHARED_SECRET}` },
-      body: JSON.stringify({ room }),
+      body: JSON.stringify({ room, startedBy: startedBy || undefined }),
     });
     if (!upstream.ok) {
       reply.code(502).send({ error: `token-service responded ${upstream.status}` });

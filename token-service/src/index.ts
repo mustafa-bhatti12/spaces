@@ -8,6 +8,7 @@ import {
   listActiveRooms,
   mintToken,
   startRoomAudioRecording,
+  stopAllActiveRecordings,
   stopRecording,
 } from './livekit';
 import { requireSharedSecret } from './auth';
@@ -70,19 +71,23 @@ fastify.post<{ Body: { room?: string; identity?: string; name?: string } }>(
   },
 );
 
-fastify.post<{ Body: { room?: string } }>('/recording/start', { preHandler: requireSharedSecret }, async (req, reply) => {
-  const room = req.body?.room;
-  if (typeof room !== 'string' || !room) {
-    reply.code(400).send({ error: 'room is required.' });
-    return;
-  }
-  try {
-    reply.send(await startRoomAudioRecording(room));
-  } catch (err) {
-    console.error('Failed to start recording:', err);
-    reply.code(500).send({ error: 'Could not start recording.' });
-  }
-});
+fastify.post<{ Body: { room?: string; startedBy?: string } }>(
+  '/recording/start',
+  { preHandler: requireSharedSecret },
+  async (req, reply) => {
+    const { room, startedBy } = req.body ?? {};
+    if (typeof room !== 'string' || !room) {
+      reply.code(400).send({ error: 'room is required.' });
+      return;
+    }
+    try {
+      reply.send(await startRoomAudioRecording(room, typeof startedBy === 'string' ? startedBy : undefined));
+    } catch (err) {
+      console.error('Failed to start recording:', err);
+      reply.code(500).send({ error: 'Could not start recording.' });
+    }
+  },
+);
 
 fastify.post<{ Body: { egressId?: string } }>('/recording/stop', { preHandler: requireSharedSecret }, async (req, reply) => {
   const egressId = req.body?.egressId;
@@ -144,6 +149,15 @@ fastify.register(async (scoped) => {
     reply.send({ received: true });
 
     const info = event.egressInfo;
+    if (event.event === 'room_finished' && event.room?.name) {
+      // Belt-and-braces: LiveKit ties Room Composite Egress to the room's own lifecycle, but if
+      // that coupling ever fails to tear an egress down cleanly, this guarantees a recording
+      // can't outlive every participant having left.
+      stopAllActiveRecordings(event.room.name).catch((err) => {
+        console.error(`Failed to auto-stop recording(s) for finished room ${event.room?.name}:`, err);
+      });
+      return;
+    }
     if (event.event !== 'egress_ended' || info?.status !== EgressStatus.EGRESS_COMPLETE) {
       return;
     }
