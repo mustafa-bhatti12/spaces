@@ -17,7 +17,8 @@ CO_PID=""
 TC_PID=""
 PUBLIC_IP="${SPACE_PUBLIC_IP:-}"
 PUBLIC_HOST="${SPACE_PUBLIC_HOST:-}"
-LK_CONFIG="${ROOT}/livekit/config.yaml"
+LK_CONFIG=""
+EGRESS_CONFIG=""
 
 in_codespaces() {
   [ -n "${CODESPACES:-}" ] ||
@@ -57,6 +58,25 @@ ensure_npm_env() {
   fi
 }
 
+# Read KEY=value from an env file (first match); empty when the file or key is missing.
+env_get() {
+  grep -E "^$2=" "$1" 2>/dev/null | head -1 | cut -d= -f2- || true
+}
+
+# Replace KEY=value in an env file, appending it when absent.
+env_set() {
+  local file="$1" key="$2" value="$3" tmp
+  tmp="$(mktemp)"
+  awk -v k="$key" -v v="$value" '
+    BEGIN { done = 0 }
+    index($0, k "=") == 1 { print k "=" v; done = 1; next }
+    { print }
+    END { if (!done) print k "=" v }
+  ' "$file" > "$tmp"
+  cat "$tmp" > "$file"
+  rm -f "$tmp"
+}
+
 # Keep token-service and test-call on the same shared secret. Fresh copies of the two
 # .env.example files used to disagree, which made every /connect return 401.
 align_shared_secret() {
@@ -64,21 +84,45 @@ align_shared_secret() {
   local ts_env="$ROOT/token-service/.env"
   [ -f "$tc_env" ] && [ -f "$ts_env" ] || return 0
   local tc_sec ts_sec
-  tc_sec="$(grep -E '^TOKEN_SERVICE_SHARED_SECRET=' "$tc_env" | head -1 | cut -d= -f2- || true)"
-  ts_sec="$(grep -E '^TOKEN_SERVICE_SHARED_SECRET=' "$ts_env" | head -1 | cut -d= -f2- || true)"
+  tc_sec="$(env_get "$tc_env" TOKEN_SERVICE_SHARED_SECRET)"
+  ts_sec="$(env_get "$ts_env" TOKEN_SERVICE_SHARED_SECRET)"
   if [ -z "$tc_sec" ] || [ "$tc_sec" = "$ts_sec" ]; then
     return 0
   fi
   echo "🔑 Aligning token-service TOKEN_SERVICE_SHARED_SECRET with test-call/.env"
-  local tmp
-  tmp="$(mktemp)"
-  awk -v s="$tc_sec" '
-    BEGIN { done = 0 }
-    /^TOKEN_SERVICE_SHARED_SECRET=/ { print "TOKEN_SERVICE_SHARED_SECRET=" s; done = 1; next }
-    { print }
-    END { if (!done) print "TOKEN_SERVICE_SHARED_SECRET=" s }
-  ' "$ts_env" > "$tmp"
-  mv "$tmp" "$ts_env"
+  env_set "$ts_env" TOKEN_SERVICE_SHARED_SECRET "$tc_sec"
+}
+
+# A public host must never run on the credentials committed to this public repo (devkey/secret,
+# local-dev-secret-not-for-production): anyone could sign their own LiveKit tokens. Generate real
+# ones once, into the gitignored .env files, and keep them across restarts. Local macOS and
+# Codespaces keep the dev defaults so the `lk` CLI examples in AGENTS.md still work there.
+ensure_real_credentials() {
+  in_codespaces && return 0
+  [ "$(uname)" = "Darwin" ] && return 0
+  local ts_env="$ROOT/token-service/.env"
+  local tc_env="$ROOT/test-call/.env"
+  if ! have openssl; then
+    echo "❌ openssl is required to generate LiveKit credentials on this host. Install it and re-run."
+    exit 1
+  fi
+  local lk_secret tc_secret
+  lk_secret="$(env_get "$ts_env" LIVEKIT_API_SECRET)"
+  if [ "${#lk_secret}" -lt 32 ]; then
+    echo "🔐 Generating a real LiveKit API key/secret into token-service/.env (replacing the public dev pair)"
+    env_set "$ts_env" LIVEKIT_API_KEY "API$(openssl rand -hex 6)"
+    env_set "$ts_env" LIVEKIT_API_SECRET "$(openssl rand -hex 32)"
+  fi
+  tc_secret="$(env_get "$tc_env" TOKEN_SERVICE_SHARED_SECRET)"
+  if [ -z "$tc_secret" ] || [ "$tc_secret" = "local-dev-secret-not-for-production" ]; then
+    echo "🔐 Generating a real TOKEN_SERVICE_SHARED_SECRET into test-call/.env"
+    env_set "$tc_env" TOKEN_SERVICE_SHARED_SECRET "$(openssl rand -hex 32)"
+  fi
+  if [ -z "$(env_get "$ts_env" ADMIN_SHARED_SECRET)" ]; then
+    echo "🔐 Generating ADMIN_SHARED_SECRET (for the admin app) into token-service/.env"
+    env_set "$ts_env" ADMIN_SHARED_SECRET "$(openssl rand -hex 32)"
+  fi
+  chmod 600 "$ts_env" "$tc_env"
 }
 
 discover_public_ip() {
@@ -217,29 +261,62 @@ wait_for_docker() {
   return 1
 }
 
-# A real VPS needs ICE candidates a phone on the public internet can reach. Codespaces
-# github.dev only proxies HTTP — advertising a public ICE IP there makes media worse.
-# Local macOS stays on the private LAN IPs in livekit/config.yaml.
-write_livekit_runtime_config() {
-  LK_CONFIG="${ROOT}/livekit/config.yaml"
-  in_codespaces && return 0
-  [ "$(uname)" = "Darwin" ] && return 0
-  local dest="/tmp/space-livekit.yaml"
-  local ip
-  ip="$(discover_public_ip)"
-  [ -n "$ip" ] && PUBLIC_IP="$ip"
-  awk -v node="${PUBLIC_IP}" '
-    /^  use_external_ip:/ { print "  use_external_ip: true"; next }
+# Runtime copies of livekit/config.yaml and egress/config.yaml with the real key pair from
+# token-service/.env substituted in, so the committed files keep only the public dev pair. They
+# live in the gitignored .runtime/ (mode 700: other host users can't read them). The egress file is
+# 644 because the container's `egress` user reads it through the bind mount, which bypasses the
+# directory's mode.
+#
+# A real VPS also needs ICE candidates a phone on the public internet can reach, so there the
+# LiveKit copy also gets use_external_ip + node_ip. Codespaces github.dev only proxies HTTP —
+# advertising a public ICE IP there makes media worse — and local macOS stays on the private LAN IPs.
+write_runtime_configs() {
+  local runtime="$ROOT/.runtime"
+  mkdir -p "$runtime"
+  chmod 700 "$runtime"
+  local lk_key lk_secret
+  lk_key="$(env_get "$ROOT/token-service/.env" LIVEKIT_API_KEY)"
+  lk_secret="$(env_get "$ROOT/token-service/.env" LIVEKIT_API_SECRET)"
+  lk_key="${lk_key:-devkey}"
+  lk_secret="${lk_secret:-secret}"
+
+  local public_rtc=0 node=""
+  if ! in_codespaces && [ "$(uname)" != "Darwin" ]; then
+    public_rtc=1
+    node="$(discover_public_ip)"
+    [ -n "$node" ] && PUBLIC_IP="$node"
+  fi
+
+  LK_CONFIG="$runtime/livekit.yaml"
+  (umask 077 && awk -v key="$lk_key" -v secret="$lk_secret" -v public_rtc="$public_rtc" -v node="$node" '
+    skip && /^  / { next }
+    { skip = 0 }
+    /^keys:/ { print; print "  " key ": " secret; skip = 1; next }
+    /^  api_key:/ { print "  api_key: " key; next }
+    public_rtc && /^  use_external_ip:/ { print "  use_external_ip: true"; next }
+    public_rtc && /^  node_ip:/ { next }
     /^rtc:/ {
       print
-      if (node != "") print "  node_ip: \"" node "\""
+      if (public_rtc && node != "") print "  node_ip: \"" node "\""
       next
     }
-    /^  node_ip:/ { next }
     { print }
-  ' "${ROOT}/livekit/config.yaml" > "$dest"
-  LK_CONFIG="$dest"
+  ' "$ROOT/livekit/config.yaml" > "$LK_CONFIG")
+
+  EGRESS_CONFIG="$runtime/egress.yaml"
+  awk -v key="$lk_key" -v secret="$lk_secret" '
+    /^api_key:/ { print "api_key: " key; next }
+    /^api_secret:/ { print "api_secret: " secret; next }
+    { print }
+  ' "$ROOT/egress/config.yaml" > "$EGRESS_CONFIG"
+  chmod 644 "$EGRESS_CONFIG"
 }
+
+# --- 0. Env files + credentials (LiveKit reads the key pair from token-service/.env) ---
+ensure_npm_env token-service
+ensure_npm_env test-call
+ensure_real_credentials
+align_shared_secret
 
 # --- 1. Redis (LiveKit Egress job queue; calling still works without it) ---
 install_redis_if_needed || true
@@ -268,22 +345,26 @@ fi
 
 # --- 2. LiveKit Server ---
 # --dev cannot sign egress webhooks (no webhook.api_key), so recordings would start
-# but never notify token-service. Use livekit/config.yaml whenever Redis is up.
+# but never notify token-service. Use the runtime copy of livekit/config.yaml whenever Redis is up.
 install_livekit_if_needed || true
-write_livekit_runtime_config
+write_runtime_configs
 REDIS_UP=0
 if have redis-cli && redis-cli -h 127.0.0.1 ping >/dev/null 2>&1; then
   REDIS_UP=1
 fi
+LK_ENV=()
 if [ -n "$REDIS_PID" ] || [ "$REDIS_UP" = "1" ]; then
   LK_ARGS=(--config "$LK_CONFIG")
 else
   LK_ARGS=(--dev --bind 0.0.0.0)
+  # --dev defaults to devkey/secret; on a VPS token-service holds generated keys instead. Passed via
+  # env (LIVEKIT_KEYS), not --keys, so the secret doesn't show up in `ps`.
+  LK_ENV=("LIVEKIT_KEYS=$(env_get token-service/.env LIVEKIT_API_KEY): $(env_get token-service/.env LIVEKIT_API_SECRET)")
 fi
 
 if have livekit-server; then
   echo "📡 Starting LiveKit Server..."
-  livekit-server "${LK_ARGS[@]}" > /tmp/livekit.log 2>&1 &
+  env "${LK_ENV[@]}" livekit-server "${LK_ARGS[@]}" > /tmp/livekit.log 2>&1 &
   LK_PID=$!
 else
   echo "❌ livekit-server is not on PATH. Calling will not work. Install it and re-run."
@@ -318,7 +399,7 @@ else
       --cap-add=SYS_ADMIN \
       --shm-size=1g \
       -e EGRESS_CONFIG_FILE=/etc/egress.yaml \
-      -v "${ROOT}/egress/config.yaml:/etc/egress.yaml" \
+      -v "${EGRESS_CONFIG}:/etc/egress.yaml" \
       -v "${ROOT}/egress:/out" \
       livekit/egress:latest > /tmp/egress-container-id.txt 2>/tmp/egress.log; then
     EGRESS_STARTED=1
@@ -332,9 +413,6 @@ sleep 1
 
 # --- 4. Token Service ---
 echo "🔑 Starting Token Service on :8880..."
-ensure_npm_env token-service
-ensure_npm_env test-call
-align_shared_secret
 cd token-service
 npm run dev > /tmp/token-service.log 2>&1 &
 TS_PID=$!

@@ -148,3 +148,6 @@ egress/compressed/
 
 # Redis dump
 dump.rdb
+
+# start-all.sh runtime configs (contain the real LiveKit key pair on a VPS)
+.runtime/

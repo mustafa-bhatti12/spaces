@@ -2,8 +2,11 @@
   "name": "test-call",
   "version": "0.1.0",
   "private": true,
-  "description": "Throwaway static site for manually testing the LiveKit media server between two machines. Not a product, not deployed anywhere — delete once the real Petition Studio UI has been click-tested.",
+  "description": "Throwaway call UI for testing the LiveKit stack. Deployed on Railway as a stand-in for Petition Studio (same token-service + public LiveKit path) — delete once the real Petition Studio UI has been click-tested.",
   "type": "commonjs",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "start": "node server.js"
   },

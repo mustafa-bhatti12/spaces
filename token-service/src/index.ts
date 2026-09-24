@@ -12,6 +12,7 @@ import {
   stopRecording,
 } from './livekit';
 import { requireSharedSecret } from './auth';
+import { adminRoutes } from './admin';
 
 const fastify = Fastify();
 
@@ -178,6 +179,8 @@ fastify.register(async (scoped) => {
     }
   });
 });
+
+fastify.register(adminRoutes, { prefix: '/admin' });
 
 const port = Number(process.env.PORT ?? 8880);
 fastify

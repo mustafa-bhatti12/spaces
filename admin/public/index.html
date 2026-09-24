@@ -1,0 +1,476 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex" />
+  <title>Space Control Center</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #121316;
+      --surface-1: #1a1c20;
+      --surface-2: #24272e;
+      --surface-3: #2d313a;
+      --border-subtle: rgba(255, 255, 255, 0.08);
+      --border-strong: rgba(255, 255, 255, 0.16);
+      --text-primary: #f8fafc;
+      --text-secondary: #94a3b8;
+      --text-tertiary: #64748b;
+      --primary: #38bdf8;
+      --primary-hover: #0ea5e9;
+      --primary-dim: rgba(56, 189, 248, 0.12);
+      --accent: #22c55e;
+      --accent-dim: rgba(34, 197, 94, 0.15);
+      --danger: #ea4335;
+      --danger-hover: #d93025;
+      --danger-dim: rgba(234, 67, 53, 0.2);
+      --warn: #f59e0b;
+      --warn-dim: rgba(245, 158, 11, 0.15);
+      --radius-sm: 8px;
+      --radius-md: 14px;
+      --radius-full: 9999px;
+      --font-main: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-font-smoothing: antialiased; }
+    body { font-family: var(--font-main); background: var(--bg); color: var(--text-primary); min-height: 100vh; font-size: 14px; }
+    button { font: inherit; cursor: pointer; }
+    button:disabled { cursor: not-allowed; opacity: 0.5; }
+
+    .app-header {
+      height: 64px; padding: 0 24px; display: flex; align-items: center; justify-content: space-between;
+      border-bottom: 1px solid var(--border-subtle); background: rgba(18, 19, 22, 0.85);
+      backdrop-filter: blur(12px); position: sticky; top: 0; z-index: 10;
+    }
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 16px; }
+    .brand-logo {
+      width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center;
+      background: linear-gradient(135deg, var(--primary), #6366f1); font-size: 16px;
+    }
+    .header-right { display: flex; align-items: center; gap: 14px; color: var(--text-secondary); font-size: 13px; }
+    .live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); display: inline-block; margin-right: 6px; }
+    .live-dot.stale { background: var(--warn); }
+
+    main { max-width: 1180px; margin: 0 auto; padding: 28px 24px 64px; display: flex; flex-direction: column; gap: 28px; }
+    h2 { font-size: 15px; font-weight: 600; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+    .count { color: var(--text-tertiary); font-weight: 500; }
+
+    .btn {
+      border: 1px solid var(--border-strong); background: var(--surface-2); color: var(--text-primary);
+      padding: 6px 12px; border-radius: var(--radius-full); font-size: 12.5px; font-weight: 600; white-space: nowrap;
+    }
+    .btn:hover:not(:disabled) { background: var(--surface-3); }
+    .btn.primary { background: var(--primary); border-color: var(--primary); color: #0b1220; }
+    .btn.primary:hover:not(:disabled) { background: var(--primary-hover); }
+    .btn.danger { color: #fca5a5; border-color: rgba(234, 67, 53, 0.4); background: var(--danger-dim); }
+    .btn.danger:hover:not(:disabled) { background: var(--danger); color: white; }
+    .btn.rec { color: #fecaca; border-color: rgba(234, 67, 53, 0.5); }
+
+    .card { background: var(--surface-1); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); }
+    .empty { padding: 28px; text-align: center; color: var(--text-tertiary); }
+
+    /* Health */
+    .health-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+    .health { padding: 16px; display: flex; flex-direction: column; gap: 6px; }
+    .health-name { font-size: 12px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; }
+    .health-status { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 15px; }
+    .health-detail { color: var(--text-tertiary); font-size: 12.5px; word-break: break-word; }
+    .status-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--text-tertiary); flex-shrink: 0; }
+    .status-dot.ok { background: var(--accent); box-shadow: 0 0 0 4px var(--accent-dim); }
+    .status-dot.bad { background: var(--danger); box-shadow: 0 0 0 4px var(--danger-dim); }
+    .status-dot.warn { background: var(--warn); box-shadow: 0 0 0 4px var(--warn-dim); }
+    .meter { height: 6px; border-radius: var(--radius-full); background: var(--surface-3); overflow: hidden; margin-top: 4px; }
+    .meter > div { height: 100%; background: var(--primary); }
+
+    /* Rooms */
+    .rooms { display: flex; flex-direction: column; gap: 12px; }
+    .room-head { padding: 14px 16px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; border-bottom: 1px solid var(--border-subtle); }
+    .room-name { font-weight: 700; font-size: 15px; font-family: var(--font-mono); }
+    .room-meta { color: var(--text-tertiary); font-size: 12.5px; }
+    .room-actions { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
+    .rec-badge {
+      display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: var(--radius-full);
+      background: var(--danger-dim); color: #fecaca; font-size: 11.5px; font-weight: 700; letter-spacing: 0.04em;
+    }
+    .rec-badge::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--danger); animation: pulse 1.4s infinite; }
+    @keyframes pulse { 50% { opacity: 0.3; } }
+    .participant { padding: 12px 16px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .participant + .participant { border-top: 1px solid var(--border-subtle); }
+    .avatar {
+      width: 34px; height: 34px; border-radius: 50%; background: var(--primary-dim); color: var(--primary);
+      display: grid; place-items: center; font-weight: 700; flex-shrink: 0;
+    }
+    .p-info { display: flex; flex-direction: column; min-width: 160px; }
+    .p-name { font-weight: 600; }
+    .p-sub { color: var(--text-tertiary); font-size: 12px; font-family: var(--font-mono); }
+    .tracks { display: flex; gap: 6px; flex-wrap: wrap; }
+    .track {
+      display: inline-flex; align-items: center; gap: 6px; padding: 3px 4px 3px 10px; border-radius: var(--radius-full);
+      background: var(--surface-2); border: 1px solid var(--border-subtle); font-size: 12px;
+    }
+    .track.muted { color: var(--text-tertiary); }
+    .track .btn { padding: 2px 8px; font-size: 11px; }
+    .p-actions { margin-left: auto; }
+
+    /* Recordings */
+    table { width: 100%; border-collapse: collapse; }
+    th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--border-subtle); vertical-align: middle; }
+    th { color: var(--text-tertiary); font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; }
+    tr:last-child td { border-bottom: none; }
+    .mono { font-family: var(--font-mono); font-size: 12.5px; word-break: break-all; }
+    .kind { padding: 2px 8px; border-radius: var(--radius-full); font-size: 11px; font-weight: 700; }
+    .kind.compressed { background: var(--accent-dim); color: #86efac; }
+    .kind.raw { background: var(--warn-dim); color: #fcd34d; }
+    .file-actions { display: flex; gap: 6px; justify-content: flex-end; align-items: center; flex-wrap: wrap; }
+    audio { height: 32px; max-width: 260px; }
+    a.btn { text-decoration: none; display: inline-block; }
+
+    /* Login */
+    .login-wrap { min-height: calc(100vh - 64px); display: grid; place-items: center; padding: 24px; }
+    .login { width: 100%; max-width: 360px; padding: 28px; display: flex; flex-direction: column; gap: 14px; }
+    .login h1 { font-size: 20px; }
+    .login p { color: var(--text-secondary); font-size: 13px; }
+    .login input {
+      background: var(--surface-2); border: 1px solid var(--border-strong); color: var(--text-primary);
+      padding: 11px 14px; border-radius: var(--radius-sm); font: inherit;
+    }
+    .login input:focus { outline: 2px solid var(--primary); outline-offset: 1px; }
+    .login .btn { padding: 11px; font-size: 14px; }
+    .error { color: #fca5a5; font-size: 13px; min-height: 18px; }
+
+    .toast {
+      position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(20px); opacity: 0;
+      background: var(--surface-3); border: 1px solid var(--border-strong); padding: 10px 18px; border-radius: var(--radius-full);
+      transition: opacity 0.2s, transform 0.2s; pointer-events: none; font-size: 13px; z-index: 20;
+    }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+    .toast.error { border-color: rgba(234, 67, 53, 0.6); color: #fecaca; }
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+  <header class="app-header">
+    <div class="brand"><div class="brand-logo">⚙️</div> Space Control Center</div>
+    <div class="header-right" id="header-right" hidden>
+      <span><span class="live-dot" id="live-dot"></span><span id="updated">Loading…</span></span>
+      <button class="btn" id="logout">Log out</button>
+    </div>
+  </header>
+
+  <div class="login-wrap" id="login-view" hidden>
+    <form class="card login" id="login-form">
+      <h1>Admin login</h1>
+      <p>Operator access to rooms, recordings and service health.</p>
+      <input type="password" id="password" placeholder="Admin password" autocomplete="current-password" required autofocus />
+      <div class="error" id="login-error"></div>
+      <button class="btn primary" type="submit">Log in</button>
+    </form>
+  </div>
+
+  <main id="dashboard" hidden>
+    <section>
+      <h2>Service health</h2>
+      <div class="health-grid" id="health"></div>
+    </section>
+    <section>
+      <h2>Live rooms <span class="count" id="rooms-count"></span></h2>
+      <div class="rooms" id="rooms"></div>
+    </section>
+    <section>
+      <h2>Recordings <span class="count" id="files-count"></span></h2>
+      <div class="card" id="files"></div>
+    </section>
+  </main>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const OVERVIEW_EVERY_MS = 5000;
+    const HEALTH_EVERY_MS = 15000;
+    let overviewTimer = null;
+    let healthTimer = null;
+    let lastFilesSignature = null; // null = force the next render
+
+    // Every string rendered below can come from a call participant (names, identities, room names).
+    const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+
+    function formatBytes(bytes) {
+      if (bytes < 1024) return `${bytes} B`;
+      const units = ['KB', 'MB', 'GB', 'TB'];
+      let value = bytes / 1024;
+      let unit = 0;
+      while (value >= 1024 && unit < units.length - 1) { value /= 1024; unit++; }
+      return `${value.toFixed(value < 10 ? 1 : 0)} ${units[unit]}`;
+    }
+
+    function since(iso) {
+      const seconds = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 1000));
+      if (seconds < 60) return `${seconds}s ago`;
+      if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+      if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m ago`;
+      return new Date(iso).toLocaleString();
+    }
+
+    let toastTimer = null;
+    function toast(message, isError = false) {
+      const el = $('toast');
+      el.textContent = message;
+      el.classList.toggle('error', isError);
+      el.classList.add('show');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => el.classList.remove('show'), 3200);
+    }
+
+    async function api(method, path, body) {
+      const res = await fetch(`/api${path}`, {
+        method,
+        headers: body ? { 'Content-Type': 'application/json' } : {},
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      if (res.status === 401) {
+        showLogin();
+        throw new Error('Session expired, please log in again.');
+      }
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || data.message || `Request failed (${res.status})`);
+      return data;
+    }
+
+    // ---- Views ----
+    function showLogin() {
+      clearInterval(overviewTimer);
+      clearInterval(healthTimer);
+      $('dashboard').hidden = true;
+      $('header-right').hidden = true;
+      $('login-view').hidden = false;
+      $('password').focus();
+    }
+
+    function showDashboard() {
+      $('login-view').hidden = true;
+      $('dashboard').hidden = false;
+      $('header-right').hidden = false;
+      lastFilesSignature = null;
+      refreshOverview();
+      refreshHealth();
+      overviewTimer = setInterval(refreshOverview, OVERVIEW_EVERY_MS);
+      healthTimer = setInterval(refreshHealth, HEALTH_EVERY_MS);
+    }
+
+    // ---- Health ----
+    function healthCard(name, state, label, detail, extra = '') {
+      return `<div class="card health">
+        <div class="health-name">${esc(name)}</div>
+        <div class="health-status"><span class="status-dot ${state}"></span>${esc(label)}</div>
+        <div class="health-detail">${esc(detail)}</div>${extra}
+      </div>`;
+    }
+
+    async function refreshHealth() {
+      try {
+        const h = await api('GET', '/health');
+        const cards = [
+          healthCard('LiveKit server', h.livekit.ok ? 'ok' : 'bad', h.livekit.ok ? 'Running' : 'Unreachable', h.livekit.detail),
+          healthCard('Recording worker', h.egressWorker.ok ? 'ok' : 'bad', h.egressWorker.ok ? 'Running' : 'Not running', h.egressWorker.detail),
+          healthCard('Compressor', h.compressor.ok ? 'ok' : 'bad', h.compressor.ok ? 'Running' : 'Unreachable', h.compressor.detail),
+        ];
+        if (h.disk) {
+          const usedPct = Math.round(((h.disk.totalBytes - h.disk.freeBytes) / h.disk.totalBytes) * 100);
+          const state = usedPct >= 90 ? 'bad' : usedPct >= 75 ? 'warn' : 'ok';
+          cards.push(healthCard('Disk', state, `${formatBytes(h.disk.freeBytes)} free`, `${usedPct}% of ${formatBytes(h.disk.totalBytes)} used`,
+            `<div class="meter"><div style="width:${usedPct}%"></div></div>`));
+        } else {
+          cards.push(healthCard('Disk', '', 'Unknown', 'Could not read disk usage'));
+        }
+        $('health').innerHTML = cards.join('');
+      } catch (err) {
+        if (!$('dashboard').hidden) $('health').innerHTML = healthCard('Health', 'bad', 'Unavailable', err.message);
+      }
+    }
+
+    // ---- Rooms ----
+    const SOURCE_LABELS = { MICROPHONE: '🎙️ Mic', CAMERA: '📷 Camera', SCREEN_SHARE: '🖥️ Screen', SCREEN_SHARE_AUDIO: '🔊 Screen audio' };
+
+    function renderRooms(rooms, activeRecordings) {
+      $('rooms-count').textContent = rooms.length ? `(${rooms.length})` : '';
+      if (!rooms.length) {
+        $('rooms').innerHTML = '<div class="card empty">No active rooms. Rooms appear here as soon as someone joins.</div>';
+        return;
+      }
+      const recordingByRoom = new Map(activeRecordings.map((r) => [r.roomName, r]));
+      $('rooms').innerHTML = rooms.map((room) => {
+        const rec = recordingByRoom.get(room.name);
+        const recControls = rec
+          ? `<span class="rec-badge">REC${rec.startedBy ? ` · ${esc(rec.startedBy)}` : ''}</span>
+             <button class="btn" data-action="stop-rec" data-egress="${esc(rec.egressId)}">Stop recording</button>`
+          : `<button class="btn rec" data-action="start-rec" data-room="${esc(room.name)}">● Start recording</button>`;
+        const participants = room.participants.length
+          ? room.participants.map((p) => {
+              const tracks = p.tracks.length
+                ? p.tracks.map((t) => `<span class="track ${t.muted ? 'muted' : ''}">
+                    ${esc(SOURCE_LABELS[t.source] || t.kind)}${t.muted ? ' (muted)' : ''}
+                    ${t.muted || t.kind !== 'AUDIO' && t.kind !== 'VIDEO' ? '' : `<button class="btn" data-action="mute" data-room="${esc(room.name)}" data-identity="${esc(p.identity)}" data-track="${esc(t.sid)}">Mute</button>`}
+                  </span>`).join('')
+                : '<span class="p-sub">Not publishing</span>';
+              return `<div class="participant">
+                <div class="avatar">${esc((p.name || p.identity).trim().charAt(0).toUpperCase() || '?')}</div>
+                <div class="p-info">
+                  <span class="p-name">${esc(p.name || '(no name)')}</span>
+                  <span class="p-sub" title="identity">${esc(p.identity)} · joined ${esc(since(p.joinedAt))}</span>
+                </div>
+                <div class="tracks">${tracks}</div>
+                <div class="p-actions"><button class="btn danger" data-action="remove" data-room="${esc(room.name)}" data-identity="${esc(p.identity)}" data-name="${esc(p.name || p.identity)}">Remove</button></div>
+              </div>`;
+            }).join('')
+          : '<div class="participant p-sub">Nobody connected right now.</div>';
+        return `<div class="card">
+          <div class="room-head">
+            <span class="room-name">${esc(room.name)}</span>
+            <span class="room-meta">${room.participants.length} participant${room.participants.length === 1 ? '' : 's'} · started ${esc(since(room.createdAt))}</span>
+            <div class="room-actions">
+              ${recControls}
+              <button class="btn danger" data-action="close" data-room="${esc(room.name)}">Close room</button>
+            </div>
+          </div>
+          ${participants}
+        </div>`;
+      }).join('');
+    }
+
+    // ---- Recordings ----
+    function fileUrl(f, download) {
+      return `/api/files/${encodeURIComponent(f.kind)}/${encodeURIComponent(f.name)}${download ? '?download=1' : ''}`;
+    }
+
+    function renderFiles(files) {
+      // Re-rendering would reset any <audio> that is playing, so only redraw when the set changes.
+      const signature = files.map((f) => `${f.kind}/${f.name}/${f.bytes}`).join('|');
+      if (signature === lastFilesSignature) return;
+      lastFilesSignature = signature;
+      $('files-count').textContent = files.length ? `(${files.length})` : '';
+      if (!files.length) {
+        $('files').innerHTML = '<div class="empty">No recordings yet. Start one from a live room above or with REC on the call page.</div>';
+        return;
+      }
+      $('files').innerHTML = `<table>
+        <thead><tr><th>File</th><th>Type</th><th>Size</th><th>Saved</th><th></th></tr></thead>
+        <tbody>${files.map((f) => `<tr>
+          <td class="mono">${esc(f.name)}</td>
+          <td><span class="kind ${esc(f.kind)}" title="${f.kind === 'raw' ? 'Still recording, or waiting to be compressed' : 'Final compressed copy'}">${esc(f.kind)}</span></td>
+          <td>${esc(formatBytes(f.bytes))}</td>
+          <td title="${esc(new Date(f.modifiedAt).toLocaleString())}">${esc(since(f.modifiedAt))}</td>
+          <td><div class="file-actions">
+            <span data-player="${esc(f.kind)}/${esc(f.name)}"><button class="btn" data-action="play" data-kind="${esc(f.kind)}" data-name="${esc(f.name)}">▶ Play</button></span>
+            <a class="btn" href="${esc(fileUrl(f, true))}">Download</a>
+            <button class="btn danger" data-action="delete" data-kind="${esc(f.kind)}" data-name="${esc(f.name)}">Delete</button>
+          </div></td>
+        </tr>`).join('')}</tbody>
+      </table>`;
+    }
+
+    async function refreshOverview() {
+      try {
+        const data = await api('GET', '/overview');
+        renderRooms(data.rooms, data.activeRecordings);
+        renderFiles(data.files);
+        const problems = Object.entries(data.errors || {}).map(([part, message]) => `${part}: ${message}`);
+        $('updated').textContent = problems.length
+          ? `Partial update (${problems.join('; ')})`
+          : `Updated ${new Date().toLocaleTimeString()}`;
+        $('live-dot').classList.toggle('stale', problems.length > 0);
+      } catch (err) {
+        $('updated').textContent = `Update failed: ${err.message}`;
+        $('live-dot').classList.add('stale');
+      }
+    }
+
+    // ---- Actions ----
+    async function runAction(button, work, successMessage) {
+      button.disabled = true;
+      try {
+        await work();
+        toast(successMessage);
+        await refreshOverview();
+      } catch (err) {
+        toast(err.message, true);
+      } finally {
+        button.disabled = false;
+      }
+    }
+
+    document.addEventListener('click', (event) => {
+      const button = event.target.closest('button[data-action]');
+      if (!button) return;
+      const d = button.dataset;
+      switch (d.action) {
+        case 'start-rec':
+          runAction(button, () => api('POST', '/recordings/start', { room: d.room }), `Recording started in ${d.room}`);
+          break;
+        case 'stop-rec':
+          runAction(button, () => api('POST', '/recordings/stop', { egressId: d.egress }), 'Recording stopped; it will appear below once saved');
+          break;
+        case 'mute':
+          runAction(button, () => api('POST', '/tracks/mute', { room: d.room, identity: d.identity, trackSid: d.track, muted: true }), 'Track muted');
+          break;
+        case 'remove':
+          if (!confirm(`Remove ${d.name} from ${d.room}? They can rejoin with the room link.`)) return;
+          runAction(button, () => api('POST', '/participants/remove', { room: d.room, identity: d.identity }), `${d.name} removed`);
+          break;
+        case 'close':
+          if (!confirm(`Close ${d.room}? Everyone is disconnected and any recording in it stops.`)) return;
+          runAction(button, () => api('POST', '/rooms/close', { room: d.room }), `${d.room} closed`);
+          break;
+        case 'play': {
+          const audio = document.createElement('audio');
+          audio.controls = true;
+          audio.autoplay = true;
+          audio.src = fileUrl({ kind: d.kind, name: d.name }, false);
+          audio.addEventListener('error', () => toast('Could not play this file (it may still be recording).', true));
+          button.parentElement.replaceChildren(audio);
+          break;
+        }
+        case 'delete':
+          if (!confirm(`Permanently delete ${d.name}? This cannot be undone.`)) return;
+          runAction(button, async () => {
+            await api('DELETE', `/files/${encodeURIComponent(d.kind)}/${encodeURIComponent(d.name)}`);
+            lastFilesSignature = null;
+          }, 'Recording deleted');
+          break;
+      }
+    });
+
+    // ---- Auth ----
+    $('login-form').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      $('login-error').textContent = '';
+      const res = await fetch('/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: $('password').value }),
+      });
+      if (res.ok) {
+        $('password').value = '';
+        showDashboard();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        $('login-error').textContent = data.error || `Login failed (${res.status})`;
+      }
+    });
+
+    $('logout').addEventListener('click', async () => {
+      await fetch('/logout', { method: 'POST' });
+      showLogin();
+    });
+
+    fetch('/session')
+      .then((res) => res.json())
+      .then((s) => (s.authenticated ? showDashboard() : showLogin()))
+      .catch(() => showLogin());
+  </script>
+</body>
+</html>

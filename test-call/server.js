@@ -3,7 +3,6 @@ const Fastify = require('fastify');
 const fastifyStatic = require('@fastify/static');
 const fs = require('fs');
 const path = require('path');
-const https = require('https');
 const httpProxy = require('http-proxy');
 
 const TOKEN_SERVICE_URL = process.env.TOKEN_SERVICE_URL ?? 'http://localhost:8880';
@@ -15,7 +14,6 @@ if (!TOKEN_SERVICE_SHARED_SECRET) {
 }
 
 const port = Number(process.env.PORT ?? 8888);
-const wssProxyPort = Number(process.env.WSS_PROXY_PORT ?? 8889);
 const certPath = path.join(__dirname, 'certs', 'cert.pem');
 const keyPath = path.join(__dirname, 'certs', 'key.pem');
 // Codespaces / SPACE_HTTP=1: TLS is terminated at github.dev (or nginx/Caddy). Serving a
@@ -62,18 +60,21 @@ proxy.on('proxyRes', (proxyRes) => {
   proxyRes.headers['access-control-allow-headers'] = '*';
 });
 
-// Forward LiveKit HTTP endpoints (/rtc/*, /twirp/*) directly on this server port. Fastify's router
-// needs the wildcard on its own path segment (unlike Express's glued `/rtc*`), so register both the
-// bare prefix and everything under it. `reply.hijack()` hands the raw response to http-proxy so
-// Fastify doesn't also try to send one.
+// Forward LiveKit's client signaling endpoint (/rtc, /rtc/*) directly on this server port. Only
+// /rtc: LiveKit's admin API (/twirp) is server-to-server and must never be reachable through this
+// public proxy — token-service talks to it on localhost. Fastify's router needs the wildcard on its
+// own path segment (unlike Express's glued `/rtc*`), so register both the bare prefix and everything
+// under it. `reply.hijack()` hands the raw response to http-proxy so Fastify doesn't also try to
+// send one.
+function isLiveKitClientPath(url) {
+  return url === '/rtc' || url.startsWith('/rtc/') || url.startsWith('/rtc?');
+}
 function forwardToLiveKit(request, reply) {
   reply.hijack();
   proxy.web(request.raw, reply.raw);
 }
 fastify.all('/rtc', forwardToLiveKit);
 fastify.all('/rtc/*', forwardToLiveKit);
-fastify.all('/twirp', forwardToLiveKit);
-fastify.all('/twirp/*', forwardToLiveKit);
 
 fastify.register(fastifyStatic, { root: path.join(__dirname, 'public') });
 
@@ -122,11 +123,14 @@ fastify.get('/connect', async (request, reply) => {
       return;
     }
     const details = await upstream.json();
-    // Point the browser at the same host & port (or wss proxy), so Firefox only needs
-    // one certificate acceptance for both the web app and WebSockets/LiveKit signaling.
-    const host = clientFacingHost(request);
-    const protocol = clientFacingHttps(request) ? 'wss' : 'ws';
-    details.serverUrl = `${protocol}://${host}`;
+    // A deployed token-service (LIVEKIT_PUBLIC_URL set) hands back the public wss:// LiveKit host:
+    // use it as-is, exactly like Petition Studio will. Otherwise (local dev) it returns the
+    // internal ws://localhost URL, so point the browser at this server's own /rtc proxy instead —
+    // same host & cert, so Firefox only needs one certificate acceptance for page + signaling.
+    if (!String(details.serverUrl ?? '').startsWith('wss://')) {
+      const protocol = clientFacingHttps(request) ? 'wss' : 'ws';
+      details.serverUrl = `${protocol}://${clientFacingHost(request)}`;
+    }
     reply.send(details);
   } catch (err) {
     console.error('Failed to reach token-service:', err);
@@ -269,17 +273,15 @@ fastify
     // WebSocket upgrades (LiveKit signaling) are proxied below the Fastify request pipeline
     // entirely, straight off the real Node server Fastify creates and exposes as `fastify.server`.
     fastify.server.on('upgrade', (req, socket, head) => {
+      if (!isLiveKitClientPath(req.url)) {
+        socket.destroy();
+        return;
+      }
+      // Without a listener, a client resetting its socket (e.g. after LiveKit rejects a bad token)
+      // is an unhandled 'error' event and takes the whole process down.
+      socket.on('error', (err) => console.error('LiveKit WS client socket error:', err.message));
       proxy.ws(req, socket, head);
     });
-
-    if (hasCert) {
-      // Keep standalone proxy on wssProxyPort (8889) as fallback
-      const proxyServer = https.createServer(tlsOptions, (req, res) => proxy.web(req, res));
-      proxyServer.on('upgrade', (req, socket, head) => proxy.ws(req, socket, head));
-      proxyServer.listen(wssProxyPort, '0.0.0.0', () => {
-        console.log(`wss proxy fallback listening on wss://0.0.0.0:${wssProxyPort}`);
-      });
-    }
   })
   .catch((err) => {
     console.error(err);

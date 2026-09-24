@@ -59,7 +59,11 @@ You can run and test this entire stack on a free cloud Linux VPS via **GitHub Co
 
 ---
 
-## 🖥️ Bare VPS (Ubuntu / Debian)
+## 🖥️ Production-style deployment (droplet + Caddy + Railway)
+
+Media, token-service, recording and compression run on one Linux VPS (Ubuntu / Debian) behind Caddy. The two web apps, `test-call` and `admin`, run on Railway and reach the VPS over HTTPS, which is the same path a real consumer app takes.
+
+### 1. VPS
 
 Prerequisites the script does **not** install: Node.js 20+ and Docker (Docker is only needed for recording):
 
@@ -68,26 +72,65 @@ curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - && sudo apt-ge
 curl -fsSL https://get.docker.com | sh
 ```
 
-Then the same command as Codespaces. On a machine with a public IP the script generates a self-signed cert covering that IP (valid 30 days — delete `test-call/certs/*.pem` to regenerate), and LiveKit advertises it for WebRTC. It runs in the foreground, so start it inside `tmux` to survive SSH disconnects:
+Start everything inside `tmux` so it survives SSH disconnects:
 
 ```bash
 tmux new -s space
 ./start-all.sh
 ```
 
-Open these ports on the firewall (DigitalOcean Cloud Firewall / security group preferred over `ufw`): **22/tcp**, **8888/tcp** (the app), **8889/tcp** (wss fallback), **7881/tcp** and **7882/udp** (LiveKit media). Keep **6379, 7880, 8880, 8890 closed** — they listen on all interfaces with the committed dev credentials. Then share `https://<vps-ip>:8888` — browsers will warn once about the self-signed cert; proceed past it.
+On Linux, the first run replaces the public dev credentials with generated ones in `token-service/.env` and `test-call/.env`: the LiveKit key pair, `TOKEN_SERVICE_SHARED_SECRET` and `ADMIN_SHARED_SECRET`. LiveKit and Egress run from `.runtime/*.yaml` copies that contain those keys. The committed YAML files only ever hold `devkey`/`secret`.
 
-Optional overrides:
+Tell token-service which public URL to give browsers, then restart the script:
 
 ```bash
-export SPACE_PUBLIC_IP=203.0.113.10
-export SPACE_PUBLIC_HOST=meet.example.com
-# If nginx/Caddy already terminates TLS in front of :8888:
-export SPACE_HTTP=1
-./start-all.sh
+echo "LIVEKIT_PUBLIC_URL=wss://space.example.com" >> token-service/.env
 ```
 
-If Docker is missing, recording is skipped (calling still works). Install it with `curl -fsSL https://get.docker.com | sh`.
+### 2. Caddy (TLS)
+
+Point an A record for your host at the VPS, then:
+
+```bash
+apt install -y debian-keyring debian-archive-keyring apt-transport-https curl
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | tee /etc/apt/sources.list.d/caddy-stable.list
+apt update && apt install -y caddy
+cat > /etc/caddy/Caddyfile <<'EOF'
+space.example.com {
+	@livekit path /rtc /rtc/*
+	handle @livekit {
+		reverse_proxy 127.0.0.1:7880
+	}
+	@blocked path /twirp /twirp/* /recording/webhook
+	handle @blocked {
+		respond 404
+	}
+	handle {
+		reverse_proxy 127.0.0.1:8880
+	}
+}
+EOF
+caddy validate --config /etc/caddy/Caddyfile && systemctl reload caddy
+```
+
+Firewall (a cloud firewall is preferred over `ufw`, because `ufw` also blocks the Egress container's traffic to the host):
+- Inbound open: **22/tcp**, **80/tcp**, **443/tcp**, **7881/tcp**, **7882/udp**.
+- Everything else closed, including 6379, 7880, 8880, 8888 and 8890.
+- Outbound: leave the default allow-all, or media breaks.
+
+### 3. Railway
+
+Create two services from this repo, each with its **Root Directory** set to its folder. Railway runs `npm start` and sets `PORT`.
+
+| Service | Root Directory | Variables |
+|---|---|---|
+| test-call | `test-call` | `TOKEN_SERVICE_URL=https://space.example.com`, `TOKEN_SERVICE_SHARED_SECRET=<from VPS test-call/.env>`, `SPACE_HTTP=1` |
+| admin | `admin` | `TOKEN_SERVICE_URL=https://space.example.com`, `ADMIN_SHARED_SECRET=<from VPS token-service/.env>`, `ADMIN_PASSWORD=<choose one>` |
+
+The call page gets `wss://space.example.com` from token-service and connects to LiveKit directly. The admin page is at its Railway URL, behind `ADMIN_PASSWORD`.
+
+Optional `start-all.sh` overrides: `SPACE_PUBLIC_IP=203.0.113.10`, `SPACE_PUBLIC_HOST=meet.example.com`, and `SPACE_HTTP=1` when a TLS proxy sits in front of the local test-call on :8888. If Docker is missing, recording is skipped and calling still works.
 
 ---
 
@@ -146,6 +189,15 @@ cp -n .env.example .env
 node server.js
 ```
 *Binds `:8888` (HTTPS & WSS). Serves the Google Meet UI and proxies WebSocket signaling to LiveKit.*
+
+#### 4. Admin control center (optional)
+```bash
+cd admin
+npm install
+cp -n .env.example .env   # set ADMIN_PASSWORD, and ADMIN_SHARED_SECRET to match token-service/.env
+npm start
+```
+*Binds `:8870`. Operator login page for live rooms (remove participants, mute tracks, close rooms), starting and stopping recordings, playing, downloading and deleting recordings, and service health.*
 
 ---
 

@@ -5,7 +5,10 @@ import {
   EgressInfo,
   EncodedFileOutput,
   EncodedFileType,
+  ParticipantInfo_State,
   RoomServiceClient,
+  TrackSource,
+  TrackType,
   WebhookConfig,
 } from 'livekit-server-sdk';
 
@@ -43,7 +46,9 @@ export async function mintToken(params: {
   });
 
   return {
-    serverUrl,
+    // The browser connects to this, so it must be the public wss:// URL on a real deployment;
+    // LIVEKIT_URL is how this process itself reaches LiveKit (usually ws://localhost:7880).
+    serverUrl: process.env.LIVEKIT_PUBLIC_URL || serverUrl,
     roomName: params.room,
     participantName: params.name,
     participantToken: await at.toJwt(),
@@ -67,6 +72,72 @@ export async function listActiveRooms(): Promise<ActiveRoom[]> {
   const svc = new RoomServiceClient(serverUrl, apiKey, apiSecret);
   const rooms = await svc.listRooms();
   return rooms.map((room) => ({ name: room.name, numParticipants: room.numParticipants }));
+}
+
+export interface AdminTrack {
+  sid: string;
+  kind: string; // AUDIO / VIDEO / DATA
+  source: string; // CAMERA / MICROPHONE / SCREEN_SHARE / SCREEN_SHARE_AUDIO / UNKNOWN
+  muted: boolean;
+}
+
+export interface AdminParticipant {
+  identity: string;
+  name: string;
+  state: string; // JOINING / JOINED / ACTIVE / DISCONNECTED
+  joinedAt: string; // ISO timestamp
+  tracks: AdminTrack[];
+}
+
+export interface AdminRoom {
+  name: string;
+  createdAt: string; // ISO timestamp
+  participants: AdminParticipant[];
+}
+
+/**
+ * Every active room with its participants and their published tracks, for the operator's admin
+ * page. Operator-only: exposed solely under token-service's shared-secret-gated /admin routes.
+ */
+export async function listRoomsWithParticipants(): Promise<AdminRoom[]> {
+  const svc = roomService();
+  const rooms = await svc.listRooms();
+  return Promise.all(
+    rooms.map(async (room) => ({
+      name: room.name,
+      createdAt: new Date(Number(room.creationTime) * 1000).toISOString(),
+      participants: (await svc.listParticipants(room.name)).map((p) => ({
+        identity: p.identity,
+        name: p.name,
+        state: ParticipantInfo_State[p.state] ?? 'UNKNOWN',
+        joinedAt: new Date(Number(p.joinedAt) * 1000).toISOString(),
+        tracks: p.tracks.map((t) => ({
+          sid: t.sid,
+          kind: TrackType[t.type] ?? 'UNKNOWN',
+          source: TrackSource[t.source] ?? 'UNKNOWN',
+          muted: t.muted,
+        })),
+      })),
+    })),
+  );
+}
+
+export async function removeParticipant(room: string, identity: string): Promise<void> {
+  await roomService().removeParticipant(room, identity);
+}
+
+export async function setTrackMuted(room: string, identity: string, trackSid: string, muted: boolean): Promise<void> {
+  await roomService().mutePublishedTrack(room, identity, trackSid, muted);
+}
+
+/** Disconnects everyone and ends the room (its recording, if any, stops with it). */
+export async function closeRoom(room: string): Promise<void> {
+  await roomService().deleteRoom(room);
+}
+
+function roomService(): RoomServiceClient {
+  const { apiKey, apiSecret, serverUrl } = requireLiveKitEnv();
+  return new RoomServiceClient(serverUrl, apiKey, apiSecret);
 }
 
 /**
@@ -116,7 +187,7 @@ function toRecordingInfo(info: EgressInfo): RecordingInfo {
 // Everything server-side (this process, the compressor) needs the real host path instead; this is
 // the one place that mapping is defined.
 const EGRESS_CONTAINER_RAW_DIR = '/out/raw';
-const EGRESS_HOST_RAW_DIR = process.env.EGRESS_RAW_DIR ?? path.join(__dirname, '..', '..', 'egress', 'raw');
+export const EGRESS_HOST_RAW_DIR = process.env.EGRESS_RAW_DIR ?? path.join(__dirname, '..', '..', 'egress', 'raw');
 
 export function containerPathToHostPath(containerPath: string): string {
   // path.posix (not the bare string) so a sibling directory that merely shares the prefix --
@@ -192,6 +263,14 @@ export async function getActiveRecordings(room: string): Promise<RecordingInfo[]
   const { apiKey, apiSecret, serverUrl } = requireLiveKitEnv();
   const egress = new EgressClient(serverUrl, apiKey, apiSecret);
   const active = await egress.listEgress({ roomName: room, active: true });
+  return active.map(toRecordingInfo);
+}
+
+/** Every recording currently in progress, across all rooms. */
+export async function listAllActiveRecordings(): Promise<RecordingInfo[]> {
+  const { apiKey, apiSecret, serverUrl } = requireLiveKitEnv();
+  const egress = new EgressClient(serverUrl, apiKey, apiSecret);
+  const active = await egress.listEgress({ active: true });
   return active.map(toRecordingInfo);
 }
 
