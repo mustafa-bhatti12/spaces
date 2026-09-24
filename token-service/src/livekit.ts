@@ -236,7 +236,13 @@ export async function startRoomAudioRecording(room: string, startedByName?: stri
     const filename = `${room}-${Date.now()}.ogg`;
     const info = await egress.startRoomCompositeEgress(
       room,
-      new EncodedFileOutput({ fileType: EncodedFileType.OGG, filepath: path.posix.join(EGRESS_CONTAINER_RAW_DIR, filename) }),
+      // disableManifest: otherwise egress also writes EG_<id>.json next to the audio, and it shows up
+      // in the recordings list as a "raw" recording that can't be played.
+      new EncodedFileOutput({
+        fileType: EncodedFileType.OGG,
+        filepath: path.posix.join(EGRESS_CONTAINER_RAW_DIR, filename),
+        disableManifest: true,
+      }),
       {
         audioOnly: true, // leaving layout/customBaseUrl unset is what keeps this on the audio-only billing rate
         webhooks: [new WebhookConfig({ url: process.env.RECORDING_WEBHOOK_URL ?? 'http://localhost:8880/recording/webhook' })],
