@@ -4,7 +4,7 @@
   "private": true,
   "description": "Space demo: LiveKit React-components call UI (stand-in for Petition Studio) + /admin operator control center. Deployed on Railway.",
   "engines": {
-    "node": ">=20.9"
+    "node": ">=22.22"
   },
   "scripts": {
     "dev": "next dev",

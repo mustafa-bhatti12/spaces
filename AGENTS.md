@@ -58,7 +58,7 @@ graph LR
 | Redis | — | droplet | 6379 | — | Job queue LiveKit server ↔ Egress worker use to coordinate. Recording-only; calling works without it. |
 | Egress worker | Docker (`livekit/egress`) | droplet | — | LiveKit key pair (runtime config) | Joins a room as a hidden participant, records mixed audio to `egress/raw/`. |
 | Caddy | — | droplet | 80/443 | Let's Encrypt cert | TLS for `spaces.hofmigration.com`: `/rtc` → LiveKit, `/twirp` + `/recording/webhook` blocked, everything else → token-service. |
-| `demo` | TypeScript, Next.js 16, React 19, `@livekit/components-react` | Railway `https://spaces-demo.up.railway.app` (also local via `start-all.sh`) | `$PORT` (8888 locally) | `TOKEN_SERVICE_SHARED_SECRET`; plus `ADMIN_SHARED_SECRET` + `ADMIN_PASSWORD` for `/admin` | `/` + `/rooms/[room]`: full call UI (pre-join, grid/focus, chat, people, devices, background blur/virtual backgrounds, reactions, raise hand, record, invite, reconnect banner) — throwaway, simulates Petition Studio's path. `/admin`: the permanent operator control center. Server routes under `app/api/*` and `app/admin/*` hold the secrets; the browser never sees them. |
+| `demo` | TypeScript, Next.js 16, React 19, Node ≥ 22.22 (`livekit-client`'s `machina` requires it), `@livekit/components-react` | Railway `https://spaces-demo.up.railway.app` (also local via `start-all.sh`) | `$PORT` (8888 locally) | `TOKEN_SERVICE_SHARED_SECRET`; plus `ADMIN_SHARED_SECRET` + `ADMIN_PASSWORD` for `/admin` | `/` + `/rooms/[room]`: full call UI (pre-join, grid/focus, chat, people, devices, background blur/virtual backgrounds, reactions, raise hand, record, invite, reconnect banner) — throwaway, simulates Petition Studio's path. `/admin`: the permanent operator control center. Server routes under `app/api/*` and `app/admin/*` hold the secrets; the browser never sees them. |
 
 ## Security model
 
@@ -149,7 +149,7 @@ What `start-all.sh` does and doesn't do on a bare Linux host:
   once (see "Security model"), writes `.runtime/livekit.yaml` (key pair + `use_external_ip: true` +
   `node_ip: <public IPv4>` so ICE candidates are reachable) and `.runtime/egress.yaml`.
   `SPACE_PUBLIC_IP` overrides IP detection. It does **not** start the demo on a VPS (Railway hosts it).
-- **Doesn't:** install Node (need Node 20.9+ first — `ensure_npm_env` only runs `npm install`),
+- **Doesn't:** install Node (need Node 20+ first — `ensure_npm_env` only runs `npm install`),
   install Docker (`curl -fsSL https://get.docker.com | sh`), install/configure Caddy, or daemonize —
   it runs in the foreground and Ctrl+C / SSH hangup stops everything, so run it inside `tmux`
   (session `space`). Ghostty's `TERM=xterm-ghostty` isn't known on the droplet:

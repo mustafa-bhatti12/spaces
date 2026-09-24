@@ -252,7 +252,13 @@ write_runtime_configs() {
 
 # --- 0. Env files + credentials (LiveKit reads the key pair from token-service/.env) ---
 ensure_npm_env token-service
-ensure_npm_env demo
+# The demo only runs locally (Railway hosts it for the droplet), but its .env is where the consumer
+# secret lives for align_shared_secret, so a VPS gets the .env without the npm install.
+if [ "$(uname)" = "Darwin" ]; then
+  ensure_npm_env demo
+elif [ ! -f demo/.env ]; then
+  cp demo/.env.example demo/.env
+fi
 ensure_real_credentials
 align_shared_secret
 
