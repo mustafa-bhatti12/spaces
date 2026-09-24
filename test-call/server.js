@@ -4,6 +4,7 @@ const fastifyStatic = require('@fastify/static');
 const fs = require('fs');
 const path = require('path');
 const httpProxy = require('http-proxy');
+const { registerAdmin } = require('./admin');
 
 const TOKEN_SERVICE_URL = process.env.TOKEN_SERVICE_URL ?? 'http://localhost:8880';
 const TOKEN_SERVICE_SHARED_SECRET = process.env.TOKEN_SERVICE_SHARED_SECRET;
@@ -251,6 +252,12 @@ fastify.get('/recording/status', async (request, reply) => {
     console.error('Failed to reach token-service:', err);
     reply.code(502).send({ error: 'Could not reach token-service. Is it running?' });
   }
+});
+
+registerAdmin(fastify, {
+  tokenServiceUrl: TOKEN_SERVICE_URL,
+  isHttps: clientFacingHttps,
+  trustForwardedFor: behindProxy,
 });
 
 fastify

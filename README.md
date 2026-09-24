@@ -61,7 +61,7 @@ You can run and test this entire stack on a free cloud Linux VPS via **GitHub Co
 
 ## 🖥️ Production-style deployment (droplet + Caddy + Railway)
 
-Media, token-service, recording and compression run on one Linux VPS (Ubuntu / Debian) behind Caddy. The two web apps, `test-call` and `admin`, run on Railway and reach the VPS over HTTPS, which is the same path a real consumer app takes.
+Media, token-service, recording and compression run on one Linux VPS (Ubuntu / Debian) behind Caddy. One web app, `test-call`, runs on Railway: it serves the call page at `/` and the admin control center at `/admin`, and reaches the VPS over HTTPS, which is the same path a real consumer app takes.
 
 ### 1. VPS
 
@@ -121,14 +121,13 @@ Firewall (a cloud firewall is preferred over `ufw`, because `ufw` also blocks th
 
 ### 3. Railway
 
-Create two services from this repo, each with its **Root Directory** set to its folder. Railway runs `npm start` and sets `PORT`.
+Create one service from this repo with its **Root Directory** set to `test-call`. Railway runs `npm start` and sets `PORT`.
 
 | Service | Root Directory | Variables |
 |---|---|---|
-| test-call | `test-call` | `TOKEN_SERVICE_URL=https://space.example.com`, `TOKEN_SERVICE_SHARED_SECRET=<from VPS test-call/.env>`, `SPACE_HTTP=1` |
-| admin | `admin` | `TOKEN_SERVICE_URL=https://space.example.com`, `ADMIN_SHARED_SECRET=<from VPS token-service/.env>`, `ADMIN_PASSWORD=<choose one>` |
+| test-call | `test-call` | `TOKEN_SERVICE_URL=https://space.example.com`, `TOKEN_SERVICE_SHARED_SECRET=<from VPS test-call/.env>`, `ADMIN_SHARED_SECRET=<from VPS token-service/.env>`, `ADMIN_PASSWORD=<choose one>`, `SPACE_HTTP=1` |
 
-The call page gets `wss://space.example.com` from token-service and connects to LiveKit directly. The admin page is at its Railway URL, behind `ADMIN_PASSWORD`.
+The call page is at the Railway URL; it gets `wss://space.example.com` from token-service and connects to LiveKit directly. The admin control center is at `<Railway URL>/admin`, behind `ADMIN_PASSWORD`. Leave the two `ADMIN_*` variables unset and `/admin` is disabled.
 
 Optional `start-all.sh` overrides: `SPACE_PUBLIC_IP=203.0.113.10`, `SPACE_PUBLIC_HOST=meet.example.com`, and `SPACE_HTTP=1` when a TLS proxy sits in front of the local test-call on :8888. If Docker is missing, recording is skipped and calling still works.
 
@@ -191,13 +190,7 @@ node server.js
 *Binds `:8888` (HTTPS & WSS). Serves the Google Meet UI and proxies WebSocket signaling to LiveKit.*
 
 #### 4. Admin control center (optional)
-```bash
-cd admin
-npm install
-cp -n .env.example .env   # set ADMIN_PASSWORD, and ADMIN_SHARED_SECRET to match token-service/.env
-npm start
-```
-*Binds `:8870`. Operator login page for live rooms (remove participants, mute tracks, close rooms), starting and stopping recordings, playing, downloading and deleting recordings, and service health.*
+Set `ADMIN_PASSWORD` and `ADMIN_SHARED_SECRET` in `test-call/.env`; the secret must match `ADMIN_SHARED_SECRET` in `token-service/.env`. Restart `test-call` and open `/admin`. That page is the operator login for live rooms (remove participants, mute tracks, close rooms), starting and stopping recordings, playing, downloading and deleting recordings, and service health.
 
 ---
 

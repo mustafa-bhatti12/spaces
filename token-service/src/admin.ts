@@ -19,7 +19,7 @@ type Check = { ok: boolean; detail: string };
 
 /**
  * Operator control center API: live rooms, moderation, recording control, recording files and
- * service health. Gated by ADMIN_SHARED_SECRET, not the consumer secret — the admin app (which holds
+ * service health. Gated by ADMIN_SHARED_SECRET, not the consumer secret — the /admin control center (which holds
  * the operator login) is the only caller; this service still has no concept of a logged-in person.
  */
 export async function adminRoutes(app: FastifyInstance): Promise<void> {

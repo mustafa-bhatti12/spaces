@@ -5,8 +5,8 @@ Read this before changing anything in this repo.
 **The stack in one line:** a self-hosted LiveKit video-calling stack — `livekit-server` (media),
 `token-service` (TS/Fastify, the only holder of LiveKit credentials), `compressor` (JS/Fastify,
 internal-only), Redis and a Dockerized LiveKit Egress worker for audio recording, all on one
-DigitalOcean droplet behind Caddy — plus two small web apps deployed on Railway: `test-call` (the
-Google-Meet-style call UI, a stand-in consumer) and `admin` (the permanent operator control center).
+DigitalOcean droplet behind Caddy — plus one small web app on Railway, `test-call`, serving both the
+Google-Meet-style call UI at `/` (a stand-in consumer) and the operator control center at `/admin`.
 
 This repo is also infrastructure for a consumer app, `hof-petition-studio` (sibling repo, in the
 parent `space-repos/` workspace) — it decides who may join which room and calls this repo's token
@@ -21,8 +21,8 @@ keep this repo generic so any future consumer can reuse it the same way. Don't e
 ```mermaid
 graph LR
   subgraph Railway
-    TC["test-call\n(call UI, consumer stand-in)"]
-    AD["admin\n(operator control center)"]
+    TC["test-call /\n(call UI, consumer stand-in)"]
+    AD["test-call /admin\n(operator control center)"]
   end
   subgraph Droplet
     CA["Caddy :443\nspaces.hofmigration.com"]
@@ -57,8 +57,7 @@ graph LR
 | Redis | — | droplet | 6379 | — | Job queue LiveKit server ↔ Egress worker use to coordinate. Recording-only; calling works without it. |
 | Egress worker | Docker (`livekit/egress`) | droplet | — | LiveKit key pair (runtime config) | Joins a room as a hidden participant, records mixed audio to `egress/raw/`. |
 | Caddy | — | droplet | 80/443 | Let's Encrypt cert | TLS for `spaces.hofmigration.com`: `/rtc` → LiveKit, `/twirp` + `/recording/webhook` blocked, everything else → token-service. |
-| `test-call` | JS, Fastify | Railway (also local via `start-all.sh`) | `$PORT` (8888 locally) | `TOKEN_SERVICE_SHARED_SECRET` | Call UI + `/connect`/`/rooms`/`/whoami`/`/recording/*` proxies. Throwaway: simulates Petition Studio's path; delete once PS has its own call UI. |
-| `admin` | JS, Fastify | Railway (manual `npm start` locally) | `$PORT` (8870 locally) | `ADMIN_SHARED_SECRET`, `ADMIN_PASSWORD` | Permanent operator control center: live rooms, remove/mute/close, start/stop recording, play/download/delete recordings, service health. |
+| `test-call` | JS, Fastify | Railway, one service (also local via `start-all.sh`) | `$PORT` (8888 locally) | `TOKEN_SERVICE_SHARED_SECRET`; plus `ADMIN_SHARED_SECRET` + `ADMIN_PASSWORD` for `/admin` | `/`: call UI + `/connect`/`/rooms`/`/whoami`/`/recording/*` proxies — throwaway, simulates Petition Studio's path. `/admin` (`admin.js` + `admin.html`): the permanent operator control center — live rooms, remove/mute/close, start/stop recording, play/download/delete recordings, service health. Disabled unless both admin variables are set. |
 
 ## Security model
 
@@ -67,13 +66,17 @@ graph LR
 - **Two bearer secrets, checked in `token-service/src/auth.ts`:** `TOKEN_SERVICE_SHARED_SECRET` for
   consumer routes (`/token`, `/rooms`, `/participant`, `/recording/*`) — held by `test-call` and later
   Petition Studio's API; `ADMIN_SHARED_SECRET` for the operator-only `/admin/*` routes (remove people,
-  close rooms, delete recordings) — held only by `admin`. Never give a consumer the admin secret; a
-  leaked consumer secret must not be able to moderate or delete. Neither is a user-auth system —
+  close rooms, delete recordings) — held only by the `/admin` control center (`test-call/admin.js`,
+  server-side; the call UI's routes never use it). Never give a consumer the admin secret; a leaked
+  consumer secret must not be able to moderate or delete. Neither is a user-auth system —
   `token-service` has no concept of a logged-in person.
-- **`admin` is the only login in the repo:** `ADMIN_PASSWORD`, a per-process HMAC-signed
-  `HttpOnly; SameSite=Strict; Secure` session cookie (12 h), and 5-failures-per-15-min rate limiting by
-  client IP. It runs with Fastify `trustProxy: true` because it's always behind Railway's edge; don't
-  expose it directly or the IP-based rate limit becomes spoofable.
+- **`/admin` is the only login in the repo:** `ADMIN_PASSWORD`, a per-process HMAC-signed
+  `HttpOnly; SameSite=Strict; Secure; Path=/admin` session cookie (12 h), and 5-failures-per-15-min
+  rate limiting by client IP. `X-Forwarded-For` is trusted only when `test-call` runs behind a TLS
+  proxy (`SPACE_HTTP=1` / Codespaces), because otherwise a direct client could spoof it past the limit.
+- **The admin lives inside the throwaway app by choice** (one Railway URL for both). When `test-call`
+  is deleted, move `test-call/admin.js` + `admin.html` into their own small Fastify service (they're
+  self-contained: nothing else in `test-call` depends on them) — don't delete them with it.
 - **`test-call` has no login** — anyone with its URL can join rooms and press REC. That's accepted for
   a throwaway stand-in; Petition Studio will gate who joins which room.
 - `compressor` has **no auth at all** — deliberately. It's bound to `127.0.0.1`, so nothing outside
@@ -113,10 +116,10 @@ is unreliable, so Bangalore was rejected. 4 GB is the floor with recording on �
 Chrome with `--shm-size=1g`; don't downsize to 2 GB. Public host: `spaces.hofmigration.com` (A record
 at Bluehost, which hosts `hofmigration.com` DNS) → Caddy on the droplet.
 
-**Railway:** `test-call` and `admin`, each a separate Railway service from this repo with its Root
-Directory set to that folder (`npm start`). Both reach token-service at
+**Railway:** one service, `test-call` (Root Directory `test-call`, `npm start`), serving the call page
+at `/` and the control center at `/admin`. It reaches token-service at
 `https://spaces.hofmigration.com` — the same path Petition Studio's API (also on Railway) will use.
-`test-call` runs with `SPACE_HTTP=1` (Railway terminates TLS).
+It runs with `SPACE_HTTP=1` (Railway terminates TLS).
 
 Firewall (DigitalOcean Cloud Firewall — it filters outside the droplet, so it can't block the
 Egress container → host traffic the way host `ufw` can):
@@ -220,15 +223,15 @@ What `start-all.sh` does and doesn't do on a bare Linux host:
   proves the whole chain (Fastify → `http-proxy` → real server) end-to-end.
 - `token-service` has real unit tests (`npm test`, Node's built-in test runner) for `mintToken` /
   `listActiveRooms` and `resolveRecordingFile` (the only gate between an admin-supplied filename and
-  `fs.unlink`/reads — keep its traversal cases). `test-call`, `admin` and `compressor` don't have a
-  test suite — they're thin enough that manual curl/`lk`-CLI/browser verification is the norm; don't
-  add a test framework to them speculatively.
+  `fs.unlink`/reads — keep its traversal cases). `test-call` and `compressor` don't have a test suite
+  — they're thin enough that manual curl/`lk`-CLI/browser verification is the norm; don't add a test
+  framework to them speculatively.
 - On the droplet the `lk` CLI needs the generated pair, not `devkey`/`secret`:
   `--api-key "$(grep ^LIVEKIT_API_KEY= token-service/.env | cut -d= -f2)"` (same for the secret).
 
 ## Conventions
 
-- `token-service` is TypeScript (it's the one with real logic and tests); `test-call`, `admin` and
+- `token-service` is TypeScript (it's the one with real logic and tests); `test-call` and
   `compressor` are plain JS (small, mechanical, not worth a build step).
 - All HTTP services use **Fastify**, not Express (migrated — see git history "Migrate token-service
   and test-call from Express to Fastify" for the full rationale if touching that layer).
@@ -252,8 +255,8 @@ What `start-all.sh` does and doesn't do on a bare Linux host:
 - `token-service/src/auth.ts` — the two bearer-secret `preHandler`s.
 - `test-call/server.js` — static files, CORS, LiveKit `/rtc` HTTP/WS proxy (local dev), `/connect`/`/rooms`/`/whoami`/`/recording/*` proxy routes.
 - `test-call/public/index.html` — the entire call UI (single file: lobby, in-call layouts, controls).
-- `admin/server.js` — login/session, rate limit, `/api/*` → token-service `/admin/*` proxy.
-- `admin/public/index.html` — the entire control center UI (single file).
+- `test-call/admin.js` — `/admin` login/session, rate limit, `/admin/api/*` → token-service `/admin/*` proxy.
+- `test-call/admin.html` — the entire control center UI (single file; outside `public/` so it's not served while `/admin` is disabled).
 - `compressor/server.js` — the one `/compress` endpoint.
 - `livekit/config.yaml`, `egress/config.yaml` — real (non-`--dev`) server config templates with the dev key pair; read the comments in each before editing.
 - `start-all.sh` — local / Codespaces / VPS orchestration for the droplet side (plus a local
