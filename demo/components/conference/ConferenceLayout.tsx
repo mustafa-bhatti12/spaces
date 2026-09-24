@@ -5,7 +5,6 @@ import { isEqualTrackRef } from '@livekit/components-core';
 import {
   CarouselLayout,
   Chat,
-  ConnectionStateToast,
   FocusLayout,
   FocusLayoutContainer,
   GridLayout,
@@ -21,23 +20,24 @@ import {
 } from '@livekit/components-react';
 import { ConnectionState, RoomEvent, Track } from 'livekit-client';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ConferenceControlBar } from './ConferenceControlBar';
+import { WifiOff } from 'lucide-react';
+import type { Panel } from './Dock';
+import { Dock } from './Dock';
 import { ParticipantsPanel } from './ParticipantsPanel';
 import { SettingsPanel } from './SettingsPanel';
 import { Tile } from './Tile';
-import { TopBar } from './TopBar';
 import { useBackgroundEffect } from './useBackgroundEffect';
 import { useReactions } from './useReactions';
 import { useRecording } from './useRecording';
 
 /**
  * LiveKit's VideoConference prefab, expanded so the demo can add its own panels and controls:
- * same grid ⇄ focus layouts (auto-focus on screen share, click a tile to pin), LiveKit Chat and
- * settings modal, plus a participants panel, top bar, reactions and recording.
+ * same grid ⇄ focus layouts (auto-focus on screen share, click a tile to pin) and LiveKit Chat, plus
+ * people and settings panels, the dock, reactions and recording. One side panel at a time.
  */
 export function ConferenceLayout({ roomName }: { roomName: string }) {
   const [widget, setWidget] = useState<WidgetState>({ showChat: false, unreadMessages: 0, showSettings: false });
-  const [participantsOpen, setParticipantsOpen] = useState(false);
+  const [sidePanel, setSidePanel] = useState<Exclude<Panel, 'chat'>>(null);
   const [toast, setToast] = useState('');
   const layoutContext = useCreateLayoutContext();
   const connectionState = useConnectionState();
@@ -86,14 +86,16 @@ export function ConferenceLayout({ roomName }: { roomName: string }) {
     // Dependencies mirror LiveKit's VideoConference prefab (keyed on track sids, not array identity).
   }, [screenShareKey, focusTrack?.publication?.trackSid, tracks]);
 
-  // One side panel at a time: opening chat closes people, and vice versa.
+  // One side panel at a time. Chat's visibility lives in LiveKit's layout context (ChatToggle drives
+  // it); people/settings are ours. Opening chat closes ours, and opening ours closes chat.
   useEffect(() => {
-    if (widget.showChat) setParticipantsOpen(false);
+    if (widget.showChat) setSidePanel(null);
   }, [widget.showChat]);
-  const toggleParticipants = () => {
+  const togglePanel = (next: Exclude<Panel, 'chat' | null>) => {
     if (widget.showChat) layoutContext.widget.dispatch?.({ msg: 'toggle_chat' });
-    setParticipantsOpen((open) => !open);
+    setSidePanel((open) => (open === next ? null : next));
   };
+  const panel: Panel = widget.showChat ? 'chat' : sidePanel;
 
   const flash = useCallback((message: string) => {
     setToast(message);
@@ -113,59 +115,56 @@ export function ConferenceLayout({ roomName }: { roomName: string }) {
       await navigator.clipboard.writeText(url);
       flash('Invite link copied');
     } catch {
-      flash(url);
+      flash(`Copy this link: ${url}`);
     }
   };
 
   return (
     <div className="conference">
-      <TopBar roomName={roomName} participantCount={participants.length} recording={rec.recording} onInvite={invite} />
-      {connectionState === ConnectionState.Reconnecting && (
-        <div className="conference-banner reconnecting" role="status">
-          Connection lost — reconnecting…
-        </div>
-      )}
-      {connectionState === ConnectionState.Disconnected && (
-        <div className="conference-banner" role="status">
-          Disconnected
-        </div>
-      )}
       <div className="lk-video-conference">
         <LayoutContextProvider value={layoutContext} onWidgetChange={setWidget}>
           <div className="lk-video-conference-inner">
-            {!focusTrack ? (
-              <div className="lk-grid-layout-wrapper">
-                <GridLayout tracks={tracks}>
-                  <Tile />
-                </GridLayout>
-              </div>
-            ) : (
-              <div className="lk-focus-layout-wrapper">
-                <FocusLayoutContainer>
-                  <CarouselLayout tracks={carouselTracks}>
+            <div className="stage">
+              {connectionState === ConnectionState.Reconnecting && (
+                <div className="stage-banner" role="status">
+                  <WifiOff aria-hidden="true" />
+                  Connection lost. Reconnecting…
+                </div>
+              )}
+              {!focusTrack ? (
+                <div className="lk-grid-layout-wrapper">
+                  <GridLayout tracks={tracks}>
                     <Tile />
-                  </CarouselLayout>
-                  <FocusLayout trackRef={focusTrack} />
-                </FocusLayoutContainer>
-              </div>
-            )}
-            <ConferenceControlBar
+                  </GridLayout>
+                </div>
+              ) : (
+                <div className="lk-focus-layout-wrapper">
+                  <FocusLayoutContainer>
+                    <CarouselLayout tracks={carouselTracks}>
+                      <Tile />
+                    </CarouselLayout>
+                    <FocusLayout trackRef={focusTrack} />
+                  </FocusLayoutContainer>
+                </div>
+              )}
+            </div>
+            <Dock
+              roomName={roomName}
               participantCount={participants.length}
-              participantsOpen={participantsOpen}
-              onToggleParticipants={toggleParticipants}
+              panel={panel}
+              onTogglePanel={togglePanel}
               onReact={react}
+              onInvite={invite}
               recording={{
-                active: Boolean(rec.recording),
+                current: rec.recording,
                 busy: rec.busy,
                 onToggle: () => void (rec.recording ? rec.stop() : rec.start()),
               }}
             />
           </div>
-          <Chat style={{ display: widget.showChat ? 'grid' : 'none' }} />
-          {participantsOpen && <ParticipantsPanel onClose={() => setParticipantsOpen(false)} />}
-          <div className="lk-settings-menu-modal" style={{ display: widget.showSettings ? 'block' : 'none' }}>
-            {widget.showSettings && <SettingsPanel background={background} />}
-          </div>
+          <Chat style={{ display: widget.showChat ? undefined : 'none' }} />
+          {sidePanel === 'people' && <ParticipantsPanel onClose={() => setSidePanel(null)} />}
+          {sidePanel === 'settings' && <SettingsPanel background={background} onClose={() => setSidePanel(null)} />}
         </LayoutContextProvider>
       </div>
       <div className="reactions-layer" aria-hidden="true">
@@ -177,8 +176,13 @@ export function ConferenceLayout({ roomName }: { roomName: string }) {
         ))}
       </div>
       <RoomAudioRenderer />
-      <ConnectionStateToast />
-      {toast && <div className="lk-toast app-toast">{toast}</div>}
+      <div className="toast-slot" role="status" aria-live="polite">
+        {toast && (
+          <div className="toast" key={toast}>
+            {toast}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

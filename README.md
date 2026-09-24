@@ -102,7 +102,7 @@ This script automatically launches:
 2. **Redis & LiveKit Egress** (installs Redis when missing; starts Egress if Docker is available)
 3. **Token Service** on `http://localhost:8880`
 4. **Compressor Service** on `http://localhost:8890`
-5. **Space Meet demo** (Next.js dev server) on `http://localhost:8888`. The browser connects to LiveKit at `ws://localhost:7880`, so local calls work from this machine only. Test calls between devices on the Railway deployment.
+5. **Space demo** (Next.js dev server) on `http://localhost:8888`. The browser connects to LiveKit at `ws://localhost:7880`, so local calls work from this machine only. Test calls between devices on the Railway deployment.
 
 ---
 
@@ -125,7 +125,7 @@ npm run dev
 ```
 *Binds `:8880`. Mints LiveKit access tokens and manages room state.*
 
-#### 3. Space Meet demo (Next.js)
+#### 3. Space demo (Next.js)
 ```bash
 cd demo
 npm install
@@ -155,16 +155,15 @@ Set `ADMIN_PASSWORD` and `ADMIN_SHARED_SECRET` in `demo/.env`; the secret must m
 
 ---
 
-## 🎨 UI Features (Space Meet demo)
+## 🎨 UI Features (Space demo)
 
-Built on LiveKit's React components (`@livekit/components-react`) with LiveKit's default theme.
+Built on LiveKit's React components and hooks (`@livekit/components-react`), with Space's own look: warm graphite, signal-light colours, and one grouped control dock.
 
 - **Lobby:** start a new room (random name) or join by name, plus a live list of active rooms.
 - **Pre-join:** LiveKit `PreJoin` with camera preview, mic and camera on/off, device pickers, and a remembered display name.
 - **Layouts:** adaptive grid, and a focus view with a thumbnail strip. Click a tile to pin it; screen shares take the stage automatically.
-- **Controls:** mic and camera with device menus, screen share (including tab audio), raise hand, emoji reactions, chat with an unread badge, a people panel, audio recording, settings, and leave.
+- **Dock:** a status readout (room, people, `REC` timer and who started it), then three key groups: mic, camera and screen share (device menus included); react (emoji, plus raise hand), chat with an unread badge, and people; and More (record, copy invite link, settings, full screen). Leave sits on its own. The mic key's ring is green when live, red when muted, and brighter while you speak.
 - **People panel:** everyone in the room with speaking state, mic/camera status, connection quality and raised hands (listed first).
-- **Settings:** camera preview; camera, microphone and speaker selection; background blur (light or strong) or virtual backgrounds.
-- **Top bar:** room name, participant count, `REC` badge with a timer and who started it, copy invite link, fullscreen.
-- **Resilience:** a reconnecting banner, LiveKit connection toasts, and end screens that say why the call ended (left, removed by the host, room closed, or joined from another tab).
+- **Settings (side panel):** camera preview; camera, microphone and speaker selection; background blur (light or strong) or virtual backgrounds.
+- **Resilience:** a reconnecting banner, and end screens that say why the call ended (left, removed by the host, room closed, or joined from another tab).
 - **Admin (`/admin`):** password-protected operator console. Service health; live rooms and participants; remove, mute and close room; start and stop recording; play, download and delete recordings.

@@ -184,6 +184,11 @@ works from the same machine; test multi-device calls on the Railway deployment.
 - **LiveKit's webhook auth header is the standard `Authorization`**, despite
   `livekit-server-sdk`'s own `WebhookReceiver.ts` exporting a constant named `authorizeHeader =
   'Authorize'`. That constant is misleading for this purpose; trust the wire behavior, not the name.
+- **On Linux the egress container can't write to a root-owned `egress/raw`.** The `livekit/egress`
+  image runs as uid 1001. Docker Desktop (macOS) ignores bind-mount permissions; a Linux VPS doesn't,
+  so the recording goes `egress_active` → `egress_failed` with `Local upload failed: open
+  /out/raw/<file>.ogg: permission denied` only when it's finalized. `start-all.sh` `chmod 0777`s
+  `egress/raw` before starting the container; keep that.
 - **The Docker volume mount shifts the path by one segment.** `docker run -v egress:/out` means
   `/out/raw/<file>` on the container side is `egress/raw/<file>` on the host — *not*
   `egress/recordings/raw/<file>`. The container-path→host-path mapping lives in exactly one place:
@@ -211,8 +216,9 @@ works from the same machine; test multi-device calls on the Railway deployment.
 - **`supportsBackgroundProcessors()` creates a WebGL context per call.** Calling it on every render
   hit Chrome's context limit ("Too many active WebGL contexts") — check once (`useState`
   initializer in `useBackgroundEffect.ts`).
-- **`SettingsMenuToggle` isn't exported by `@livekit/components-react`** (alpha). The demo's
-  `SettingsToggle` dispatches the same `toggle_settings` layout-context action instead.
+- **Some LiveKit components replace your `className` instead of merging it** (`Chat`,
+  `MediaDeviceMenu`'s button). Style `Chat` via `.conference .lk-chat`, and pass `lk-button-menu`
+  yourself on a `MediaDeviceMenu` you give a class to (that class draws its chevron).
 - **Next bundles each route separately, so module-level state isn't shared between routes.** The
   admin session key is derived from `ADMIN_SHARED_SECRET` + `ADMIN_PASSWORD` (not random per module),
   and the login rate limit lives on `globalThis`.
@@ -247,11 +253,15 @@ works from the same machine; test multi-device calls on the Railway deployment.
   handlers in `app/**/route.ts`, async `params`, `PageProps`/`RouteContext` generated types (run
   `npx next typegen` or a build before `tsc`). Read `demo/node_modules/next/dist/docs/` before using
   an unfamiliar Next API — `demo/AGENTS.md` is Next's own generated notice to that effect.
-- Call UI uses **LiveKit's components and hooks** for anything they cover (TrackToggle,
-  MediaDeviceMenu/Select, ParticipantTile children, Chat, GridLayout/FocusLayout, useTracks,
-  useParticipants, useDataChannel, useParticipantAttribute) with LiveKit's default theme
-  (`@livekit/components-styles`, `data-lk-theme="default"`). Custom CSS in `demo/app/globals.css`
-  only for pieces LiveKit has no component for, using its `--lk-*` variables.
+- Call UI uses **LiveKit's components and hooks** for anything they cover (useTrackToggle,
+  MediaDeviceMenu/Select, ParticipantTile children, Chat, PreJoin, GridLayout/FocusLayout, useTracks,
+  useParticipants, useDataChannel, useParticipantAttribute). The **look is Space's own**: a
+  "conference speakerphone" system in `demo/app/globals.css`. It uses warm graphite surfaces, and its
+  colors come only from signal lights (green = live, red = muted/recording/destructive, amber =
+  attention). A recessed mono "status screen" (`Readout`) shows facts. Fonts are Hanken Grotesk +
+  JetBrains Mono (`next/font`), and icons come from `lucide-react`. `@livekit/components-styles`
+  stays underneath for layout mechanics, with its `--lk-*` theme variables remapped to Space tokens.
+  Rationale lives in `PRODUCT.md`.
 - `devkey` / `secret` appearing everywhere (`.env.example`, `livekit/config.yaml`,
   `egress/config.yaml`) is LiveKit's own published fixed dev credential, not a real secret — fine to
   commit, fine to see in logs. Real values exist only in gitignored `.env` files / `.runtime/` on the
@@ -275,7 +285,8 @@ works from the same machine; test multi-device calls on the Railway deployment.
 - `demo/app/admin/*` — `/admin` page + `login`/`logout`/`session` routes + `api/[...path]` streaming proxy → token-service `/admin/*`.
 - `demo/lib/server/tokenService.ts` — the only token-service client (both secrets); `demo/lib/server/adminSession.ts` — admin cookie + rate limit.
 - `demo/components/RoomClient.tsx` — pre-join (LiveKit `PreJoin`) → join → end screen.
-- `demo/components/conference/*` — `Conference` (Room lifecycle, duplicate-identity heartbeat), `ConferenceLayout` (VideoConference prefab expanded), `ConferenceControlBar`, `Tile`, `ParticipantsPanel`, `SettingsPanel` + `useBackgroundEffect`, `useReactions`, `useRecording`, `TopBar`.
+- `demo/components/conference/*` — `Conference` (Room lifecycle, duplicate-identity heartbeat), `ConferenceLayout` (VideoConference prefab expanded; one side panel at a time), `Dock` (status readout · media · talk · more · Leave), `Tile`, `SidePanel`, `ParticipantsPanel`, `SettingsPanel` + `useBackgroundEffect`, `useReactions`, `useRecording`.
+- `demo/components/ui/*` — `Menu` (dock popover), `Device` (wordmark, LED, readout, initials).
 - `demo/components/admin/AdminDashboard.tsx` — the control center UI.
 - `demo/public/backgrounds/*.jpg` — virtual-background images.
 - `compressor/server.js` — the one `/compress` endpoint.

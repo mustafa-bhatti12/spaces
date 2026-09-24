@@ -1,8 +1,10 @@
 'use client';
 
+import { ArrowRight, Dices, Users } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { normalizeRoomName } from '@/lib/room';
+import { Led, Readout, ReadoutSegment, Wordmark } from './ui/Device';
 
 interface ActiveRoom {
   name: string;
@@ -16,6 +18,8 @@ function randomRoomName(): string {
   const pick = (list: string[]) => list[Math.floor(Math.random() * list.length)];
   return `${pick(ADJECTIVES)}-${pick(NOUNS)}-${Math.floor(100 + Math.random() * 900)}`;
 }
+
+const people = (n: number) => `${n} ${n === 1 ? 'person' : 'people'}`;
 
 export function Lobby() {
   const router = useRouter();
@@ -35,7 +39,7 @@ export function Lobby() {
           setRoomsError('');
         }
       } catch {
-        if (!cancelled) setRoomsError('Could not load active rooms.');
+        if (!cancelled) setRoomsError('Could not load active rooms. Retrying every few seconds.');
       }
     };
     load();
@@ -50,53 +54,102 @@ export function Lobby() {
     const normalized = normalizeRoomName(name);
     if (normalized) router.push(`/rooms/${normalized}`);
   };
+  const typed = normalizeRoomName(room);
+  const liveCount = rooms?.length ?? 0;
 
   return (
     <main className="lobby">
-      <form
-        className="lobby-card"
-        onSubmit={(event) => {
-          event.preventDefault();
-          join(room || randomRoomName());
-        }}
-      >
-        <h1>Space Meet</h1>
-        <p>Start a new room or join one by name. Anyone with the room link can join.</p>
-        <div className="lobby-row">
-          <input
-            className="lk-form-control"
-            placeholder="Room name (leave empty for a new one)"
-            value={room}
-            onChange={(event) => setRoom(event.target.value)}
-            aria-label="Room name"
-            autoFocus
-          />
-          <button type="button" className="lk-button" onClick={() => setRoom(randomRoomName())} title="Random room name">
-            🎲
+      <header className="page-top">
+        <Wordmark />
+      </header>
+
+      <section className="lobby-start" aria-labelledby="lobby-title">
+        <h1 id="lobby-title" className="display">
+          Start a call, or&nbsp;join&nbsp;one.
+        </h1>
+        <p className="lede">Pick a room name and share the link. Whoever opens it joins you, with no account needed.</p>
+
+        <form
+          className="face lobby-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            join(room || randomRoomName());
+          }}
+        >
+          <label className="field-label" htmlFor="room-name">
+            Room name
+          </label>
+          <div className="field-row">
+            <input
+              id="room-name"
+              className="field mono"
+              placeholder="Leave empty for a new room"
+              value={room}
+              onChange={(event) => setRoom(event.target.value)}
+              autoComplete="off"
+              spellCheck={false}
+              autoFocus
+            />
+            <button
+              type="button"
+              className="key key-square"
+              onClick={() => setRoom(randomRoomName())}
+              aria-label="Suggest a room name"
+              title="Suggest a room name"
+            >
+              <Dices aria-hidden="true" />
+            </button>
+          </div>
+          <button type="submit" className="key key-go key-wide">
+            {typed ? (
+              <>
+                Join <span className="mono">{typed}</span>
+              </>
+            ) : (
+              'Start a new room'
+            )}
+            <ArrowRight aria-hidden="true" />
           </button>
-        </div>
-        <button type="submit" className="lk-button lk-join-button">
-          {room ? `Join ${normalizeRoomName(room) || 'room'}` : 'Start a new room'}
-        </button>
-        <section className="lobby-rooms">
-          <h2>Active rooms</h2>
-          {roomsError ? (
-            <span className="error-text">{roomsError}</span>
-          ) : rooms === null ? (
-            <span className="muted">Loading…</span>
-          ) : rooms.length === 0 ? (
-            <span className="muted">No one is in a call right now.</span>
-          ) : (
-            <div className="lobby-room-list">
-              {rooms.map((r) => (
-                <button key={r.name} type="button" className="lk-button" onClick={() => join(r.name)}>
-                  {r.name} · {r.numParticipants}
+        </form>
+      </section>
+
+      <section className="lobby-live" aria-labelledby="live-title">
+        <Readout className="lobby-live-head" live>
+          <ReadoutSegment strong>
+            <Led signal={liveCount ? 'live' : 'idle'} pulse={liveCount > 0} />
+            <span id="live-title">Live now</span>
+          </ReadoutSegment>
+          <ReadoutSegment>{rooms === null ? '…' : `${liveCount} ${liveCount === 1 ? 'room' : 'rooms'}`}</ReadoutSegment>
+        </Readout>
+
+        {roomsError ? (
+          <p className="note note-alert" role="alert">
+            {roomsError}
+          </p>
+        ) : rooms === null ? (
+          <p className="note">Checking for live rooms…</p>
+        ) : rooms.length === 0 ? (
+          <p className="note">Nobody is in a call right now. Rooms show up here as soon as someone joins.</p>
+        ) : (
+          <ul className="room-list">
+            {rooms.map((r) => (
+              <li key={r.name}>
+                <button type="button" className="room-row" onClick={() => join(r.name)}>
+                  <span className="room-row-name mono">{r.name}</span>
+                  <span className="room-row-count">
+                    <Users aria-hidden="true" />
+                    {people(r.numParticipants)}
+                  </span>
+                  <span className="room-row-go">
+                    Join
+                    <ArrowRight aria-hidden="true" />
+                  </span>
                 </button>
-              ))}
-            </div>
-          )}
-        </section>
-      </form>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
     </main>
   );
 }

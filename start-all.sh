@@ -330,6 +330,10 @@ elif ! have redis-cli || ! redis-cli -h 127.0.0.1 ping >/dev/null 2>&1; then
 else
   echo "🎙️  Starting LiveKit Egress worker (Docker)..."
   mkdir -p egress/raw egress/compressed
+  # The egress image runs as its own non-root user (uid 1001). Docker Desktop ignores bind-mount
+  # permissions, but on Linux it gets "Local upload failed: ... permission denied" writing to a
+  # root-owned egress/raw — the recording "starts" and then fails when it's finalized.
+  chmod 0777 egress/raw
   docker rm -f space-egress >/dev/null 2>&1 || true
   # host.docker.internal + host-gateway works on Docker Desktop and Linux.
   # Volume is egress:/out so /out/raw/<file> is egress/raw/<file>.

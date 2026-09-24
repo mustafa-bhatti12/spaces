@@ -2,36 +2,44 @@
 
 import {
   ConnectionQualityIndicator,
-  TrackMutedIndicator,
   useIsSpeaking,
   useParticipantAttribute,
+  useParticipantInfo,
   useParticipants,
+  useTrackMutedIndicator,
 } from '@livekit/components-react';
-import { type Participant, Track } from 'livekit-client';
+import type { Participant } from 'livekit-client';
+import { Track } from 'livekit-client';
+import { Hand, Mic, MicOff, Video, VideoOff } from 'lucide-react';
+import { SidePanel } from './SidePanel';
+import { initials } from '../ui/Device';
 import { HAND_ATTRIBUTE } from './Tile';
 
 function ParticipantRow({ participant }: { participant: Participant }) {
   const speaking = useIsSpeaking(participant);
   const hand = useParticipantAttribute(HAND_ATTRIBUTE, { participant });
-  const name = participant.name || participant.identity;
+  const { name: infoName, identity } = useParticipantInfo({ participant });
+  const { isMuted: micMuted } = useTrackMutedIndicator({ participant, source: Track.Source.Microphone });
+  const { isMuted: camMuted } = useTrackMutedIndicator({ participant, source: Track.Source.Camera });
+  const name = infoName || identity || 'Guest';
+  const status = hand ? 'Hand raised' : speaking ? 'Speaking' : participant.isScreenShareEnabled ? 'Sharing screen' : '';
+
   return (
-    <li className={`participant-row${speaking ? ' speaking' : ''}`}>
-      <span className="participant-avatar">{name.trim().charAt(0).toUpperCase() || '?'}</span>
-      <span className="participant-info">
-        <span className="name">
-          {name}
-          {participant.isLocal && ' (you)'}
-        </span>
-        <span className="sub">{speaking ? 'Speaking' : participant.isScreenShareEnabled ? 'Sharing screen' : ' '}</span>
+    <li className={`person${speaking ? ' person-speaking' : ''}`}>
+      <span className="avatar" aria-hidden="true">
+        {initials(name)}
       </span>
-      <span className="participant-icons">
-        {hand && (
-          <span className="hand" title="Hand raised">
-            ✋
-          </span>
-        )}
-        <TrackMutedIndicator trackRef={{ participant, source: Track.Source.Microphone }} />
-        <TrackMutedIndicator trackRef={{ participant, source: Track.Source.Camera }} />
+      <span className="person-info">
+        <span className="person-name">
+          {name}
+          {participant.isLocal && <span className="person-you"> (you)</span>}
+        </span>
+        {status && <span className={`person-status${hand ? ' person-status-hand' : ''}`}>{status}</span>}
+      </span>
+      <span className="person-icons">
+        {hand && <Hand className="icon-hand" aria-label="Hand raised" />}
+        {micMuted ? <MicOff className="icon-off" aria-label="Mic off" /> : <Mic aria-label="Mic on" />}
+        {camMuted ? <VideoOff className="icon-off" aria-label="Camera off" /> : <Video aria-label="Camera on" />}
         <ConnectionQualityIndicator participant={participant} />
       </span>
     </li>
@@ -49,18 +57,12 @@ export function ParticipantsPanel({ onClose }: { onClose: () => void }) {
     return (a.name || a.identity).localeCompare(b.name || b.identity);
   });
   return (
-    <aside className="side-panel" aria-label="Participants">
-      <div className="side-panel-header">
-        <span>People ({participants.length})</span>
-        <button type="button" className="lk-button lk-close-button" onClick={onClose} aria-label="Close participants">
-          ✕
-        </button>
-      </div>
-      <ul className="side-panel-body lk-list">
+    <SidePanel title="People" count={participants.length} onClose={onClose}>
+      <ul className="people-list">
         {sorted.map((p) => (
           <ParticipantRow key={p.identity} participant={p} />
         ))}
       </ul>
-    </aside>
+    </SidePanel>
   );
 }
