@@ -4,68 +4,13 @@ This repository provides self-hosted LiveKit WebRTC video calling, room token mi
 
 ---
 
-## 🚀 Quick Start with GitHub Codespaces (Free Remote VPS)
-
-You can run and test this entire stack on a free cloud Linux VPS via **GitHub Codespaces** with zero local dependencies and no credit card required.
-
-### Method A: Web Browser (Zero Installation)
-
-1. Open this repository on GitHub: [`mustafa-bhatti12/spaces`](https://github.com/mustafa-bhatti12/spaces).
-2. Click the green **`<> Code`** button $\rightarrow$ select the **Codespaces** tab.
-3. Click **Create codespace on main**.
-4. Once the terminal loads, start all services:
-   ```bash
-   ./start-all.sh
-   ```
-   The script installs Redis / LiveKit / ffmpeg when it can. In Codespaces the app itself speaks **HTTP** on `:8888` — that is expected. GitHub's port proxy already provides HTTPS, so you will **not** see `certs/` or a `wss proxy` log line.
-5. In the **PORTS** tab (bottom panel next to Terminal):
-   - Locate port **`8888`** (`Space Meet Web App`).
-   - Right-click $\rightarrow$ **Port Visibility** $\rightarrow$ set to **`Public`**.
-   - Click the **Open in Browser** (globe) icon or copy the public `https://*.app.github.dev` link.
-   - Open that URL on your phone or share it with other participants to test the call!
-
----
-
-### Method B: Terminal / SSH (Using GitHub CLI)
-
-1. Authenticate with GitHub CLI on your local machine (if not already logged in):
-   ```bash
-   gh auth login
-   ```
-
-2. Create the Codespace cloud VPS:
-   ```bash
-   gh codespace create -R mustafa-bhatti12/spaces -b main
-   ```
-
-3. SSH into the remote Ubuntu terminal:
-   ```bash
-   gh codespace ssh
-   ```
-
-4. Launch all services inside the SSH session:
-   ```bash
-   ./start-all.sh
-   ```
-
-5. In a new local terminal tab on your machine, expose port 8888:
-   ```bash
-   # Make port 8888 publicly accessible
-   gh codespace ports visibility 8888:public
-
-   # View your live public URL
-   gh codespace ports
-   ```
-
----
-
 ## 🖥️ Production-style deployment (droplet + Caddy + Railway)
 
-Media, token-service, recording and compression run on one Linux VPS (Ubuntu / Debian) behind Caddy. One web app, `test-call`, runs on Railway: it serves the call page at `/` and the admin control center at `/admin`, and reaches the VPS over HTTPS, which is the same path a real consumer app takes.
+Media, token-service, recording and compression run on one Linux VPS (Ubuntu / Debian) behind Caddy. One Next.js app, `demo`, runs on Railway: it serves the call page at `/` and the admin control center at `/admin`, and reaches the VPS over HTTPS, which is the same path a real consumer app takes.
 
 ### 1. VPS
 
-Prerequisites the script does **not** install: Node.js 20+ and Docker (Docker is only needed for recording):
+Prerequisites the script does **not** install: Node.js 20.9+ and Docker (Docker is only needed for recording):
 
 ```bash
 curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - && sudo apt-get install -y nodejs
@@ -79,7 +24,7 @@ tmux new -s space
 ./start-all.sh
 ```
 
-On Linux, the first run replaces the public dev credentials with generated ones in `token-service/.env` and `test-call/.env`: the LiveKit key pair, `TOKEN_SERVICE_SHARED_SECRET` and `ADMIN_SHARED_SECRET`. LiveKit and Egress run from `.runtime/*.yaml` copies that contain those keys. The committed YAML files only ever hold `devkey`/`secret`.
+On Linux, the first run replaces the public dev credentials with generated ones in `token-service/.env` and `demo/.env`: the LiveKit key pair, `TOKEN_SERVICE_SHARED_SECRET` and `ADMIN_SHARED_SECRET`. LiveKit and Egress run from `.runtime/*.yaml` copies that contain those keys. The committed YAML files only ever hold `devkey`/`secret`.
 
 Tell token-service which public URL to give browsers, then restart the script:
 
@@ -121,22 +66,22 @@ Firewall (a cloud firewall is preferred over `ufw`, because `ufw` also blocks th
 
 ### 3. Railway
 
-Create one service from this repo with its **Root Directory** set to `test-call`. Railway runs `npm start` and sets `PORT`.
+Create one service from this repo with its **Root Directory** set to `demo`. Railway runs `npm run build` and `npm start`, and sets `PORT`.
 
 | Service | Root Directory | Variables |
 |---|---|---|
-| test-call | `test-call` | `TOKEN_SERVICE_URL=https://space.example.com`, `TOKEN_SERVICE_SHARED_SECRET=<from VPS test-call/.env>`, `ADMIN_SHARED_SECRET=<from VPS token-service/.env>`, `ADMIN_PASSWORD=<choose one>`, `SPACE_HTTP=1` |
+| demo | `demo` | `TOKEN_SERVICE_URL=https://space.example.com`, `TOKEN_SERVICE_SHARED_SECRET=<from VPS token-service/.env>`, `ADMIN_SHARED_SECRET=<from VPS token-service/.env>`, `ADMIN_PASSWORD=<choose one>`, `TRUST_PROXY=1` |
 
 The call page is at the Railway URL; it gets `wss://space.example.com` from token-service and connects to LiveKit directly. The admin control center is at `<Railway URL>/admin`, behind `ADMIN_PASSWORD`. Leave the two `ADMIN_*` variables unset and `/admin` is disabled.
 
-Optional `start-all.sh` overrides: `SPACE_PUBLIC_IP=203.0.113.10`, `SPACE_PUBLIC_HOST=meet.example.com`, and `SPACE_HTTP=1` when a TLS proxy sits in front of the local test-call on :8888. If Docker is missing, recording is skipped and calling still works.
+Optional `start-all.sh` override: `SPACE_PUBLIC_IP=203.0.113.10`. On a VPS the script doesn't start the demo (Railway hosts it). If Docker is missing, recording is skipped and calling still works.
 
 ---
 
 ## 💻 Local Development Setup
 
 ### Prerequisites
-- **Node.js** (v20+ or v22+)
+- **Node.js** (v20.9+)
 - **LiveKit Server binary**:
   - macOS: `brew install livekit`
   - Linux: `curl -sSL https://get.livekit.io | bash`
@@ -157,7 +102,7 @@ This script automatically launches:
 2. **Redis & LiveKit Egress** (installs Redis when missing; starts Egress if Docker is available)
 3. **Token Service** on `http://localhost:8880`
 4. **Compressor Service** on `http://localhost:8890`
-5. **Space Meet Web App** on `https://localhost:8888` locally (self-signed cert, generated if missing) or `http://localhost:8888` in Codespaces (the `*.app.github.dev` proxy already terminates TLS)
+5. **Space Meet demo** (Next.js dev server) on `http://localhost:8888`. The browser connects to LiveKit at `ws://localhost:7880`, so local calls work from this machine only. Test calls between devices on the Railway deployment.
 
 ---
 
@@ -180,29 +125,28 @@ npm run dev
 ```
 *Binds `:8880`. Mints LiveKit access tokens and manages room state.*
 
-#### 3. Space Meet Frontend & Unified Proxy
+#### 3. Space Meet demo (Next.js)
 ```bash
-cd test-call
+cd demo
 npm install
 cp -n .env.example .env
-node server.js
+npx next dev -p 8888
 ```
-*Binds `:8888` (HTTPS & WSS). Serves the Google Meet UI and proxies WebSocket signaling to LiveKit.*
+*Binds `:8888`. The call UI (LiveKit React components) plus its server routes, which call token-service with the shared secret so the browser never sees it.*
 
 #### 4. Admin control center (optional)
-Set `ADMIN_PASSWORD` and `ADMIN_SHARED_SECRET` in `test-call/.env`; the secret must match `ADMIN_SHARED_SECRET` in `token-service/.env`. Restart `test-call` and open `/admin`. That page is the operator login for live rooms (remove participants, mute tracks, close rooms), starting and stopping recordings, playing, downloading and deleting recordings, and service health.
+Set `ADMIN_PASSWORD` and `ADMIN_SHARED_SECRET` in `demo/.env`; the secret must match `ADMIN_SHARED_SECRET` in `token-service/.env`. Restart the demo and open `/admin`. That page is the operator login for live rooms (remove participants, mute tracks, close rooms), starting and stopping recordings, playing, downloading and deleting recordings, and service health.
 
 ---
 
 ## 🎙️ Audio Recording & Transcription Pipeline
 
 1. **Recording Initiation:**
-   - Any participant can click the **REC** button in the top bar.
-   - Client sends `POST /recording/start?room=<name>&startedBy=<name>`.
-   - `token-service` starts a LiveKit **RoomCompositeEgress** (audio-only) and broadcasts the `REC` badge to all active participants.
+   - Any participant can click **Record** in the control bar, or the operator can start it from `/admin`.
+   - The demo's `/api/recording/start` calls token-service's `POST /recording/start`, which starts a LiveKit **RoomCompositeEgress** (audio-only). Everyone in the room sees the `REC` badge, with a timer and who started it.
 
 2. **Storage & Auto-Stop:**
-   - The audio stream is captured by the Egress worker container to `./egress/raw/<egress-id>.ogg`.
+   - The audio stream is captured by the Egress worker container to `./egress/raw/<room>-<timestamp>.ogg`.
    - Recordings automatically stop if all participants leave the room (`room_finished` webhook).
 
 3. **Compression & Archival:**
@@ -211,14 +155,16 @@ Set `ADMIN_PASSWORD` and `ADMIN_SHARED_SECRET` in `test-call/.env`; the secret m
 
 ---
 
-## 🎨 UI Features (Space Meet)
+## 🎨 UI Features (Space Meet demo)
 
-- **Lobby Join Card:** Centered Google Meet-style join card with pre-call camera/mic check, audio level visualizer, initialed avatar fallback, room name randomizer ("Shuffle"), and active room chips.
-- **In-Call Controls:** Floating bottom dock with circular action buttons for Microphone, Camera, Screen Share, Raise Hand (`✋`), Layout Switcher, Fullscreen, and Red Pill End Call.
-- **Layout Modes:**
-  - **Tiled (Grid):** Adaptive responsive grid (1, 2, 3–4, 5+ participants).
-  - **Sidebar (Focus):** Large center stage for active speaker / presenter + right-hand thumbnail strip.
-  - **Spotlight (Single):** Maximized view of the pinned participant or presentation.
-- **Fullscreen Support:** Per-tile hover buttons (Pin / Fullscreen) and global fullscreen mode (<kbd>F</kbd> shortcut).
-- **Aspect-Safe Screen Sharing:** Dedicated presentation stream rendered with `object-fit: contain`, presenter status banner, and automatic spotlight focus.
-- **Browser Compatibility:** Single-port WSS/HTTPS architecture eliminating TLS certificate isolation errors in Firefox and Chromium.
+Built on LiveKit's React components (`@livekit/components-react`) with LiveKit's default theme.
+
+- **Lobby:** start a new room (random name) or join by name, plus a live list of active rooms.
+- **Pre-join:** LiveKit `PreJoin` with camera preview, mic and camera on/off, device pickers, and a remembered display name.
+- **Layouts:** adaptive grid, and a focus view with a thumbnail strip. Click a tile to pin it; screen shares take the stage automatically.
+- **Controls:** mic and camera with device menus, screen share (including tab audio), raise hand, emoji reactions, chat with an unread badge, a people panel, audio recording, settings, and leave.
+- **People panel:** everyone in the room with speaking state, mic/camera status, connection quality and raised hands (listed first).
+- **Settings:** camera preview; camera, microphone and speaker selection; background blur (light or strong) or virtual backgrounds.
+- **Top bar:** room name, participant count, `REC` badge with a timer and who started it, copy invite link, fullscreen.
+- **Resilience:** a reconnecting banner, LiveKit connection toasts, and end screens that say why the call ended (left, removed by the host, room closed, or joined from another tab).
+- **Admin (`/admin`):** password-protected operator console. Service health; live rooms and participants; remove, mute and close room; start and stop recording; play, download and delete recordings.

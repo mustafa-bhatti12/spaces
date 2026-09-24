@@ -43,6 +43,9 @@ export async function mintToken(params: {
     canPublish: true,
     canPublishData: true,
     canSubscribe: true,
+    // Lets the client set its own participant attributes (the demo's raised hand). Scoped to the
+    // participant's own metadata/attributes only, never anyone else's.
+    canUpdateOwnMetadata: true,
   });
 
   return {
@@ -61,8 +64,8 @@ export interface ActiveRoom {
 }
 
 /**
- * Lists rooms that currently have at least one connection. Used only by the throwaway test-call
- * site's room picker so a second person can see what the first person already started instead of
+ * Lists rooms that currently have at least one connection. Used only by the demo's lobby
+ * room picker so a second person can see what the first person already started instead of
  * having to type an exact room name. Never expose this over an unauthenticated endpoint — it's
  * gated by the same shared secret as /token.
  */
@@ -142,7 +145,7 @@ function roomService(): RoomServiceClient {
 
 /**
  * Looks up the SID (connection id) LiveKit currently has on file for an identity in a room, or
- * null if that identity isn't present at all. Used by the throwaway test-call site as a pull-based
+ * null if that identity isn't present at all. Used by the demo's call page as a pull-based
  * heartbeat: LiveKit's own push-based "you were disconnected" signal to the losing side of a
  * duplicate-identity join wasn't observed firing promptly in local testing, so the losing client
  * instead polls this and self-disconnects the moment its own sid no longer matches the current

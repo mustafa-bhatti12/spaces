@@ -119,7 +119,7 @@ fastify.get<{ Querystring: { room?: string } }>('/recording/status', { preHandle
   }
 });
 
-// LiveKit itself calls this -- not the browser, not test-call -- so it's authenticated by
+// LiveKit itself calls this -- not the browser, not the demo -- so it's authenticated by
 // LiveKit's own webhook signature (a standard `Authorization` header, JWT-signed with the same
 // devkey/secret livekit-server signs with -- see livekit/config.yaml's `webhook.api_key`) rather
 // than TOKEN_SERVICE_SHARED_SECRET. Registered in its own encapsulated context because the

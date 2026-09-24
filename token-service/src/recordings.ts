@@ -20,7 +20,7 @@ export interface RecordingFile {
 }
 
 // Egress names files `<room>-<epoch ms>.ogg`, and room names are normalized to lowercase + dashes
-// by test-call; anything outside this set (separators, `..`, a leading dot) is never one of ours.
+// by the demo; anything outside this set (separators, `..`, a leading dot) is never one of ours.
 const SAFE_FILE_NAME = /^[A-Za-z0-9_-][A-Za-z0-9._-]*$/;
 
 /**

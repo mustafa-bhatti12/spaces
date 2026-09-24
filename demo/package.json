@@ -1,0 +1,32 @@
+{
+  "name": "demo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Space demo: LiveKit React-components call UI (stand-in for Petition Studio) + /admin operator control center. Deployed on Railway.",
+  "engines": {
+    "node": ">=20.9"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
+  },
+  "dependencies": {
+    "@livekit/components-core": "^0.12.15",
+    "@livekit/components-react": "^2.9.24",
+    "@livekit/components-styles": "^1.2.0",
+    "@livekit/track-processors": "^0.8.1",
+    "livekit-client": "^2.22.3",
+    "next": "16.3.6",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "server-only": "^0.0.1",
+    "tslib": "^2.8.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "typescript": "^5"
+  }
+}

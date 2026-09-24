@@ -2,7 +2,7 @@ import { timingSafeEqual } from 'node:crypto';
 import type { FastifyReply, FastifyRequest, preHandlerAsyncHookHandler } from 'fastify';
 
 // Service-to-service auth: the caller must present the bearer secret this instance was configured
-// with. Two separate secrets so a consumer app's credential (test-call, Petition Studio) can mint
+// with. Two separate secrets so a consumer app's credential (the demo, Petition Studio) can mint
 // tokens and drive recording for its own calls, but can't reach the operator-only /admin routes
 // (removing people, closing rooms, deleting recordings) — only the /admin control center holds that one.
 function requireBearer(envName: string): preHandlerAsyncHookHandler {
