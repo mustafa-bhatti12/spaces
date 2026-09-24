@@ -54,6 +54,13 @@ graph LR
   the bind address already solves.
 - LiveKit webhooks are verified via `WebhookReceiver` (JWT in the `Authorization` header, signed with
   `devkey`'s secret) — see gotchas below for the header-name trap.
+- **Only `compressor` is loopback-bound.** `token-service` (8880), `livekit-server` (7880) and the
+  Redis that `start-all.sh` launches (6379, `--bind 0.0.0.0 --protected-mode no`, no password) all
+  listen on `0.0.0.0`. That's harmless on a laptop but not on a public host: with the committed
+  `devkey`/`secret` and `local-dev-secret-not-for-production`, reaching 7880 or 8880 means minting
+  any token, and reaching 6379 means an unauthenticated Redis. On a VPS the host firewall is what keeps
+  them private — see "Deployment" below. Redis must stay `0.0.0.0` (the Egress container reaches it
+  over the Docker bridge, not loopback), so don't "fix" this by rebinding it to `127.0.0.1`.
 
 ## Why Egress is the only thing in Docker
 
@@ -62,6 +69,46 @@ so `livekit-server` runs as the native binary. Egress doesn't need inbound WebRT
 *out* to the already-running server as a client — so running it in Docker while the server stays
 native works fine, and Docker is genuinely required there since LiveKit only ships Egress as a Docker
 image (no native binary like `livekit-server --dev`).
+
+## Deployment
+
+Current target: **DigitalOcean droplet, Singapore (SGP1), 2 vCPU / 4 GB RAM, Ubuntu 24.04 x64,
+IPv4 only.** Singapore was picked for the client base (Pakistan + UAE); Pakistan→India routing is
+unreliable, so Bangalore was rejected. 4 GB is the floor with recording on — Egress runs headless
+Chrome with `--shm-size=1g`; don't downsize to 2 GB. The droplet's IP isn't recorded in the repo.
+
+Firewall (prefer a DigitalOcean Cloud Firewall — it filters outside the droplet, so it can't block the
+Egress container → host traffic the way host `ufw` can):
+
+|Open to the internet|Keep closed|
+|---|---|
+|22/tcp SSH, 8888/tcp app (HTTPS), 8889/tcp wss fallback, 7881/tcp + 7882/udp LiveKit media|6379 Redis, 7880 LiveKit API/signaling (browsers reach it through 8888), 8880 token-service, 8890 compressor|
+
+Those are inbound rules. **Outbound stays DigitalOcean's default allow-all (all TCP, all UDP, ICMP).**
+Don't tighten it: LiveKit sends media to each caller's random high UDP/TCP port, so any outbound
+port allowlist silently breaks calls (people join and then get no audio or video). `start-all.sh`
+also needs outbound 443 for apt, npm, Docker Hub, GitHub, `get.livekit.io` and `api.ipify.org`,
+which is how it finds the public IP, plus 53 for DNS.
+
+What `start-all.sh` does and doesn't do on a bare Linux host:
+
+- **Does:** `apt-get` installs Redis/ffmpeg, installs `livekit-server`, writes
+  `/tmp/space-livekit.yaml` (a copy of `livekit/config.yaml` with `use_external_ip: true` and
+  `node_ip: <public IPv4>` so ICE candidates are reachable), and generates a self-signed cert for
+  the public IPv4 in `test-call/certs/`. `SPACE_PUBLIC_IP` / `SPACE_PUBLIC_HOST` override detection.
+- **Doesn't:** install Node (need Node 20+ first — `ensure_npm_env` only runs `npm install`), install
+  Docker (`curl -fsSL https://get.docker.com | sh`), generate real LiveKit keys or a real
+  `TOKEN_SERVICE_SHARED_SECRET`, or daemonize — it runs in the foreground and Ctrl+C / SSH hangup
+  stops everything, so run it inside `tmux` (or a systemd unit) on the droplet.
+- **Cert expiry:** the self-signed cert is `-days 30` and only regenerated when missing. After 30 days
+  delete `test-call/certs/*.pem` and restart. A real domain + Caddy/nginx with `SPACE_HTTP=1` is the
+  long-term fix.
+- **Host `ufw`:** if enabled with default-deny incoming, it also drops the Egress container's traffic
+  to host Redis/LiveKit over `docker0`. [Not yet observed on this droplet — expected from how ufw
+  filters the INPUT chain.] Either leave `ufw` off and use the Cloud Firewall, or
+  `ufw allow from 172.17.0.0/16`.
+- **Logs:** `/tmp/livekit.log`, `/tmp/token-service.log`, `/tmp/compressor.log`, `/tmp/redis.log`,
+  `docker logs space-egress`. `test-call` logs to the terminal running the script.
 
 ## Non-obvious gotchas (already hit, already fixed — don't rediscover these)
 
@@ -132,7 +179,7 @@ image (no native binary like `livekit-server --dev`).
 - `egress/raw/` and `egress/compressed/` are gitignored — never commit recordings, and don't remove
   the gitignore entries to "fix" an empty-looking directory.
 - Multiple terminals/processes may already be running these services manually outside any single
-  agent's process tree (this is a hands-on local dev repo, not CI) — `ps aux` / `lsof -i :<port>`
+  agent's process tree (local dev laptop *and* the shared droplet) — `ps aux` / `lsof -i :<port>`
   before assuming a port is free or a service isn't already up, and expect that restarting a service
   may interrupt someone else's live call.
 
@@ -150,4 +197,6 @@ image (no native binary like `livekit-server --dev`).
   aren't there. Codespaces and `SPACE_HTTP=1` stay on HTTP and let the upstream proxy terminate
   TLS; a bare VPS gets a self-signed cert covering the public IP. `/connect` honors
   `X-Forwarded-Proto` / `X-Forwarded-Host` so the browser gets `wss://` on the public host.
+- Runtime logs: `/tmp/*.log` (see "Deployment"); the Linux-only generated LiveKit config is
+  `/tmp/space-livekit.yaml`, never edit that — edit `livekit/config.yaml`.
 - `README.md` — user-facing quick start (Codespaces, local setup, UI feature list). This file is agent-facing; keep the two in sync but don't duplicate wholesale.

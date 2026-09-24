@@ -61,13 +61,21 @@ You can run and test this entire stack on a free cloud Linux VPS via **GitHub Co
 
 ## 🖥️ Bare VPS (Ubuntu / Debian)
 
-Same command as Codespaces. On a machine with a public IP the script generates a self-signed cert covering that IP, and LiveKit advertises it for WebRTC:
+Prerequisites the script does **not** install: Node.js 20+ and Docker (Docker is only needed for recording):
 
 ```bash
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - && sudo apt-get install -y nodejs
+curl -fsSL https://get.docker.com | sh
+```
+
+Then the same command as Codespaces. On a machine with a public IP the script generates a self-signed cert covering that IP (valid 30 days — delete `test-call/certs/*.pem` to regenerate), and LiveKit advertises it for WebRTC. It runs in the foreground, so start it inside `tmux` to survive SSH disconnects:
+
+```bash
+tmux new -s space
 ./start-all.sh
 ```
 
-Open these ports on the firewall (ufw/security group): **8888/tcp** (the app), **7881/tcp** and **7882/udp** (LiveKit media). Then share `https://<vps-ip>:8888` — browsers will warn once about the self-signed cert; proceed past it.
+Open these ports on the firewall (DigitalOcean Cloud Firewall / security group preferred over `ufw`): **22/tcp**, **8888/tcp** (the app), **8889/tcp** (wss fallback), **7881/tcp** and **7882/udp** (LiveKit media). Keep **6379, 7880, 8880, 8890 closed** — they listen on all interfaces with the committed dev credentials. Then share `https://<vps-ip>:8888` — browsers will warn once about the self-signed cert; proceed past it.
 
 Optional overrides:
 
