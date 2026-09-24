@@ -25,7 +25,7 @@ graph LR
     AD["admin\n(operator control center)"]
   end
   subgraph Droplet
-    CA["Caddy :443\nspace.hofmigration.com"]
+    CA["Caddy :443\nspaces.hofmigration.com"]
     TS["token-service :8880"]
     LK["livekit-server\n:7880 / 7881 tcp / 7882 udp"]
     CO["compressor\n127.0.0.1:8890"]
@@ -56,7 +56,7 @@ graph LR
 | `compressor` | JS, Fastify | droplet | 8890, bound `127.0.0.1` | nothing | Shrinks a finished recording via `ffmpeg`. Never LAN-reachable, so no auth. |
 | Redis | — | droplet | 6379 | — | Job queue LiveKit server ↔ Egress worker use to coordinate. Recording-only; calling works without it. |
 | Egress worker | Docker (`livekit/egress`) | droplet | — | LiveKit key pair (runtime config) | Joins a room as a hidden participant, records mixed audio to `egress/raw/`. |
-| Caddy | — | droplet | 80/443 | Let's Encrypt cert | TLS for `space.hofmigration.com`: `/rtc` → LiveKit, `/twirp` + `/recording/webhook` blocked, everything else → token-service. |
+| Caddy | — | droplet | 80/443 | Let's Encrypt cert | TLS for `spaces.hofmigration.com`: `/rtc` → LiveKit, `/twirp` + `/recording/webhook` blocked, everything else → token-service. |
 | `test-call` | JS, Fastify | Railway (also local via `start-all.sh`) | `$PORT` (8888 locally) | `TOKEN_SERVICE_SHARED_SECRET` | Call UI + `/connect`/`/rooms`/`/whoami`/`/recording/*` proxies. Throwaway: simulates Petition Studio's path; delete once PS has its own call UI. |
 | `admin` | JS, Fastify | Railway (manual `npm start` locally) | `$PORT` (8870 locally) | `ADMIN_SHARED_SECRET`, `ADMIN_PASSWORD` | Permanent operator control center: live rooms, remove/mute/close, start/stop recording, play/download/delete recordings, service health. |
 
@@ -110,12 +110,12 @@ image (no native binary like `livekit-server --dev`).
 **Droplet:** DigitalOcean, Singapore (SGP1), 2 vCPU / 4 GB RAM, Ubuntu 24.04 x64, IPv4 only, SSH
 alias `space-do`. Singapore was picked for the client base (Pakistan + UAE); Pakistan→India routing
 is unreliable, so Bangalore was rejected. 4 GB is the floor with recording on — Egress runs headless
-Chrome with `--shm-size=1g`; don't downsize to 2 GB. Public host: `space.hofmigration.com` (A record
+Chrome with `--shm-size=1g`; don't downsize to 2 GB. Public host: `spaces.hofmigration.com` (A record
 at Bluehost, which hosts `hofmigration.com` DNS) → Caddy on the droplet.
 
 **Railway:** `test-call` and `admin`, each a separate Railway service from this repo with its Root
 Directory set to that folder (`npm start`). Both reach token-service at
-`https://space.hofmigration.com` — the same path Petition Studio's API (also on Railway) will use.
+`https://spaces.hofmigration.com` — the same path Petition Studio's API (also on Railway) will use.
 `test-call` runs with `SPACE_HTTP=1` (Railway terminates TLS).
 
 Firewall (DigitalOcean Cloud Firewall — it filters outside the droplet, so it can't block the
@@ -132,7 +132,7 @@ random high UDP/TCP port, so any outbound port allowlist silently breaks calls (
 get no audio or video). `start-all.sh` also needs outbound 443 for apt, npm, Docker Hub, GitHub,
 `get.livekit.io` and `api.ipify.org` (public-IP discovery), plus 53 for DNS.
 
-Droplet-only settings in `token-service/.env` (gitignored): `LIVEKIT_PUBLIC_URL=wss://space.hofmigration.com`
+Droplet-only settings in `token-service/.env` (gitignored): `LIVEKIT_PUBLIC_URL=wss://spaces.hofmigration.com`
 (what `/token` returns as `serverUrl` — `test-call` passes any `wss://` value straight to the browser
 and only falls back to its own `/rtc` proxy for the local `ws://` default) plus the generated key
 pair and secrets. Caddy config lives in `/etc/caddy/Caddyfile` on the droplet (see README).
