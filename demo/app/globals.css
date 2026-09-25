@@ -686,33 +686,32 @@ code { font: 0.875em var(--mono); background: var(--key); padding: 1px 6px; bord
 }
 .dock .key-mic[data-state='on'] svg { color: var(--live); }
 
-/* Muted State (Unified alert capsule for mic & camera off) */
+/* Muted & Off States (Unified alert capsule for mic & camera off) */
 .key-pair:has(.key-mic[data-state='off']),
-.key-pair:has([data-state='off']) {
+.key-pair:has(.key[data-state='off']) {
   background: var(--alert);
   color: #fff;
 }
 @media (hover: hover) and (pointer: fine) {
   .key-pair:has(.key-mic[data-state='off']):hover,
-  .key-pair:has([data-state='off']):hover {
+  .key-pair:has(.key[data-state='off']):hover {
     background: var(--alert-hover);
   }
 }
 .key-pair:has(.key-mic[data-state='off']) .key-chevron::before,
-.key-pair:has([data-state='off']) .key-chevron::before {
+.key-pair:has(.key[data-state='off']) .key-chevron::before {
   background: rgba(255, 255, 255, 0.25);
 }
 .key-pair:has(.key-mic[data-state='off']) .dock .key-chevron,
 .key-pair:has(.key-mic[data-state='off']) [data-lk-theme] .dock .lk-button.key-chevron,
-.key-pair:has([data-state='off']) .dock .key-chevron,
-.key-pair:has([data-state='off']) [data-lk-theme] .dock .lk-button.key-chevron {
+.key-pair:has(.key[data-state='off']) .dock .key-chevron,
+.key-pair:has(.key[data-state='off']) [data-lk-theme] .dock .lk-button.key-chevron {
   color: #fff;
 }
 .key-pair:has(.key-mic[data-state='off']) svg,
-.key-pair:has([data-state='off']) svg {
+.key-pair:has(.key[data-state='off']) svg {
   color: #fff;
 }
-
 .mic-ring-speaking .key-mic[data-state='on'] {
   box-shadow: 0 0 14px rgba(7, 213, 135, 0.45);
 }

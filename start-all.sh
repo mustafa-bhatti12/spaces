@@ -407,7 +407,7 @@ if [ "$(uname)" != "Darwin" ]; then
 else
   echo "💻 Starting Space Meet demo on :8888..."
   cd demo
-  npx next dev -p 8888 > /tmp/demo.log 2>&1 &
+  NEXT_TELEMETRY_DISABLED=1 npx next dev -p 8888 > /tmp/demo.log 2>&1 &
   DEMO_PID=$!
   cd "$ROOT"
 fi

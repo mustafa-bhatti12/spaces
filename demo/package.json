@@ -7,9 +7,9 @@
     "node": ">=22.22"
   },
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start"
+    "dev": "NEXT_TELEMETRY_DISABLED=1 next dev",
+    "build": "NEXT_TELEMETRY_DISABLED=1 next build",
+    "start": "NEXT_TELEMETRY_DISABLED=1 next start"
   },
   "dependencies": {
     "@livekit/components-core": "^0.12.15",
