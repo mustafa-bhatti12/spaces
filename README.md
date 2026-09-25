@@ -40,35 +40,41 @@ systemctl daemon-reload && systemctl enable --now spaces
 systemctl status spaces                # logs: journalctl -u spaces -f, plus /tmp/*.log per service
 ```
 
-### 2. Caddy (TLS)
+### 2. Caddy (TLS) and TURN
 
-Point an A record for your host at the VPS, then:
+Point an A record for your host at the VPS, and a second one for the TURN relay (e.g. `turn.space.example.com`), then install Caddy from its apt repository:
 
 ```bash
 apt install -y debian-keyring debian-archive-keyring apt-transport-https curl
 curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
 curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | tee /etc/apt/sources.list.d/caddy-stable.list
 apt update && apt install -y caddy
-cat > /etc/caddy/Caddyfile <<'EOF'
-space.example.com {
-	@livekit path /rtc /rtc/*
-	handle @livekit {
-		reverse_proxy 127.0.0.1:7880
-	}
-	@blocked path /twirp /twirp/* /recording/webhook
-	handle @blocked {
-		respond 404
-	}
-	handle {
-		reverse_proxy 127.0.0.1:8880
-	}
-}
-EOF
-caddy validate --config /etc/caddy/Caddyfile && systemctl reload caddy
 ```
 
+TURN relays call media over TLS on 443 for callers whose network blocks 7881/7882 (offices, hotels, some mobile carriers). It shares 443 with the site, which needs Caddy's `layer4` plugin. Install that build next to the packaged one, so `apt upgrade` keeps updating the stock binary without overwriting yours:
+
+```bash
+curl -fsSL -o /usr/bin/caddy.custom "https://caddyserver.com/api/download?os=linux&arch=amd64&p=github.com/mholt/caddy-l4"
+chmod 755 /usr/bin/caddy.custom
+dpkg-divert --divert /usr/bin/caddy.default --rename /usr/bin/caddy
+update-alternatives --install /usr/bin/caddy caddy /usr/bin/caddy.default 10
+update-alternatives --install /usr/bin/caddy caddy /usr/bin/caddy.custom 50
+caddy list-modules | grep -q '^layer4' && echo layer4-ok   # upgrade later with: caddy upgrade
+```
+
+Install `deploy/Caddyfile` with your hosts, turn on TURN in LiveKit, and restart both (a restart, not a reload, the first time, so the new binary runs):
+
+```bash
+sed -e 's/turn.space.example.com/turn.your-host/g' -e 's/space.example.com/your-host/g' deploy/Caddyfile > /etc/caddy/Caddyfile
+caddy validate --config /etc/caddy/Caddyfile && systemctl restart caddy
+echo "TURN_DOMAIN=turn.your-host" >> token-service/.env   # needs livekit-server 1.13.7+
+systemctl restart spaces
+```
+
+Without the TURN record and `TURN_DOMAIN`, skip the plugin and the `layer4` block in `deploy/Caddyfile`; calls work, except on networks that only allow HTTPS.
+
 Firewall (a cloud firewall is preferred over `ufw`, because `ufw` also blocks the Egress container's traffic to the host):
-- Inbound open: **22/tcp**, **80/tcp**, **443/tcp**, **7881/tcp**, **7882/udp**.
+- Inbound open: **22/tcp**, **80/tcp**, **443/tcp** (site and TURN), **7881/tcp**, **7882/udp**.
 - Everything else closed, including 6379, 7880, 8880, 8888 and 8890.
 - Outbound: leave the default allow-all, or media breaks.
 

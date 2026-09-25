@@ -1,0 +1,43 @@
+# /etc/caddy/Caddyfile for the VPS. Replace space.example.com / turn.space.example.com with your
+# hosts. Needs a Caddy build with the layer4 plugin (github.com/mholt/caddy-l4); see README.md.
+{
+	servers :443 {
+		listener_wrappers {
+			# TURN over TLS shares 443 with the site: connections whose TLS SNI is the TURN host
+			# are decrypted here and handed to LiveKit's TURN listener as plain TCP, with a PROXY
+			# v2 header carrying the caller's real address (turn.proxy_protocol in LiveKit).
+			# Every other connection falls through to the normal HTTPS server below.
+			layer4 {
+				@turn tls sni turn.space.example.com
+				route @turn {
+					tls
+					proxy {
+						proxy_protocol v2
+						upstream 127.0.0.1:5349
+					}
+				}
+			}
+			tls
+		}
+	}
+}
+
+space.example.com {
+	@livekit path /rtc /rtc/*
+	handle @livekit {
+		reverse_proxy 127.0.0.1:7880
+	}
+	@blocked path /twirp /twirp/* /recording/webhook
+	handle @blocked {
+		respond 404
+	}
+	handle {
+		reverse_proxy 127.0.0.1:8880
+	}
+}
+
+# Only here so Caddy obtains and renews the TURN host's certificate (over HTTP-01 on port 80).
+# TLS connections for this name never reach it: the layer4 route above takes them first.
+turn.space.example.com {
+	respond 404
+}

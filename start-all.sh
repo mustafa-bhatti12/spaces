@@ -174,7 +174,7 @@ install_livekit_if_needed() {
     echo "📡 Falling back to GitHub release (linux_${lk_arch})..."
     local tmp
     tmp="$(mktemp -d)"
-    curl -fsSL "https://github.com/livekit/livekit/releases/download/v1.9.1/livekit_1.9.1_linux_${lk_arch}.tar.gz" | tar -xz -C "$tmp"
+    curl -fsSL "https://github.com/livekit/livekit/releases/download/v1.13.7/livekit_1.13.7_linux_${lk_arch}.tar.gz" | tar -xz -C "$tmp"
     if [ -f "$tmp/livekit-server" ]; then
       if mkdir -p "$HOME/.local/bin" && mv "$tmp/livekit-server" "$HOME/.local/bin/livekit-server"; then
         chmod +x "$HOME/.local/bin/livekit-server"
@@ -208,6 +208,12 @@ wait_for_docker() {
 #
 # A real VPS also needs ICE candidates a phone on the public internet can reach, so there the
 # LiveKit copy also gets use_external_ip + node_ip; local macOS stays on the private LAN IPs.
+#
+# TURN_DOMAIN (token-service/.env) turns on LiveKit's built-in TURN relay for networks that only
+# let HTTPS out. Browsers are told turns:<domain>:443 (LiveKit hardcodes 443); Caddy's layer4
+# listener wrapper terminates TLS for that SNI and forwards plain TCP with a PROXY v2 header to
+# 127.0.0.1:5349 (see deploy/Caddyfile). Without the header TURN would report Caddy's loopback
+# address to the browser, which Firefox rejects. No UDP port: UDP 443 is Caddy's HTTP/3.
 write_runtime_configs() {
   local runtime="$ROOT/.runtime"
   mkdir -p "$runtime"
@@ -240,6 +246,25 @@ write_runtime_configs() {
     }
     { print }
   ' "$ROOT/livekit/config.yaml" > "$LK_CONFIG")
+
+  local turn_domain lk_version
+  turn_domain="$(env_get "$ROOT/token-service/.env" TURN_DOMAIN)"
+  if [ -n "$turn_domain" ]; then
+    # turn.proxy_protocol first shipped in 1.13.7; older servers refuse the whole config.
+    lk_version="$(livekit-server --version 2>/dev/null | awk '{ print $NF }')"
+    if [ "$(printf '%s\n' 1.13.7 "$lk_version" | sort -V | head -1)" != 1.13.7 ]; then
+      echo "⚠️  TURN_DOMAIN is set but livekit-server $lk_version is older than 1.13.7 -- TURN stays off."
+    else
+      printf '%s\n' \
+        '' \
+        'turn:' \
+        '  enabled: true' \
+        "  domain: $turn_domain" \
+        '  tls_port: 5349' \
+        '  external_tls: true' \
+        '  proxy_protocol: true' >> "$LK_CONFIG"
+    fi
+  fi
 
   EGRESS_CONFIG="$runtime/egress.yaml"
   awk -v key="$lk_key" -v secret="$lk_secret" '

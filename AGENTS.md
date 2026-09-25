@@ -39,7 +39,9 @@ graph LR
   AD -->|"Bearer ADMIN_SHARED_SECRET\n/admin/*"| CA
   Browser -->|"wss /rtc (signaling)"| CA
   Browser -->|"media 7881/7882"| LK
+  Browser -->|"TURN/TLS 443 (blocked networks)"| CA
   CA -->|/rtc| LK
+  CA -->|"SNI turn.* → PROXY v2 → :5349"| LK
   CA -->|everything else| TS
   TS -->|holds LIVEKIT_API_KEY/SECRET| LK
   LK -->|redis pub/sub| RD
@@ -57,7 +59,7 @@ graph LR
 | `compressor` | JS, Fastify | droplet | 8890, bound `127.0.0.1` | nothing | Shrinks a finished recording via `ffmpeg`. Never LAN-reachable, so no auth. |
 | Redis | — | droplet | 6379 | — | Job queue LiveKit server ↔ Egress worker use to coordinate. Recording-only; calling works without it. |
 | Egress worker | Docker (`livekit/egress`) | droplet | — | LiveKit key pair (runtime config) | Joins a room as a hidden participant, records mixed audio to `egress/raw/`. |
-| Caddy | — | droplet | 80/443 | Let's Encrypt cert | TLS for `spaces.hofmigration.com`: `/rtc` → LiveKit, `/twirp` + `/recording/webhook` blocked, everything else → token-service. |
+| Caddy | — | droplet | 80/443 | Let's Encrypt certs | TLS for `spaces.hofmigration.com`: `/rtc` → LiveKit, `/twirp` + `/recording/webhook` blocked, everything else → token-service. Also, via the `layer4` plugin (custom build, see README), TURN/TLS for `turn.hofmigration.com` → LiveKit's TURN on `127.0.0.1:5349`. Config: `deploy/Caddyfile`. |
 | `demo` | TypeScript, Next.js 16, React 19, Node ≥ 22.22 (`livekit-client`'s `machina` requires it), `@livekit/components-react` | Railway `https://spaces-demo.up.railway.app` (also local via `start-all.sh`) | `$PORT` (8888 locally) | `TOKEN_SERVICE_SHARED_SECRET`; plus `ADMIN_SHARED_SECRET` + `ADMIN_PASSWORD` for `/admin` | `/` + `/rooms/[room]`: full call UI (pre-join, grid/focus, chat, people, devices, background blur/virtual backgrounds, reactions, raise hand, record, invite, reconnect banner) — throwaway, simulates Petition Studio's path. `/admin`: the permanent operator control center. Server routes under `app/api/*` and `app/admin/*` hold the secrets; the browser never sees them. |
 
 ## Security model
@@ -149,8 +151,22 @@ get no audio or video). `start-all.sh` also needs outbound 443 for apt, npm, Doc
 `get.livekit.io` and `api.ipify.org` (public-IP discovery), plus 53 for DNS.
 
 Droplet-only settings in `token-service/.env` (gitignored): `LIVEKIT_PUBLIC_URL=wss://spaces.hofmigration.com`
-(what `/token` returns as `serverUrl`; the demo hands it straight to the browser) plus the generated
-key pair and secrets. Caddy config lives in `/etc/caddy/Caddyfile` on the droplet (see README).
+(what `/token` returns as `serverUrl`; the demo hands it straight to the browser),
+`TURN_DOMAIN=turn.hofmigration.com` (see TURN below), plus the generated key pair and secrets.
+Caddy config is `deploy/Caddyfile` with the real hosts, installed as `/etc/caddy/Caddyfile`.
+
+**TURN (relay for networks that only allow HTTPS):** LiveKit's built-in TURN, switched on by
+`TURN_DOMAIN` (`start-all.sh` appends the `turn:` block to `.runtime/livekit.yaml`; needs
+livekit-server 1.13.7+ for `proxy_protocol`, older versions get a warning and no TURN). LiveKit
+always advertises `turns:<domain>:443` (hardcoded) but listens on `tls_port` 5349, so Caddy owns
+443: its `layer4` listener wrapper matches the TURN host's SNI, terminates TLS with its own
+Let's Encrypt cert (the `turn.hofmigration.com { respond 404 }` site block exists only to get
+that cert) and forwards plain TCP with a PROXY v2 header (`external_tls` + `proxy_protocol`).
+Without the header TURN reports Caddy's `127.0.0.1` as the caller's address, which Firefox
+rejects; with `proxy_protocol` on, connections without a header are refused. No UDP TURN: UDP 443
+is Caddy's HTTP/3. Caddy is the `caddy-l4` build at `/usr/bin/caddy.custom`, chosen by
+`update-alternatives` over the apt one (diverted to `/usr/bin/caddy.default`), so `apt upgrade`
+doesn't overwrite it; update it with `caddy upgrade`, which keeps the plugin.
 
 What `start-all.sh` does and doesn't do on a bare Linux host:
 
@@ -330,6 +346,7 @@ works from the same machine; test multi-device calls on the Railway deployment.
 - `demo/public/backgrounds/*.jpg` — virtual-background images.
 - `compressor/server.js` — the one `/compress` endpoint.
 - `livekit/config.yaml`, `egress/config.yaml` — real (non-`--dev`) server config templates with the dev key pair; read the comments in each before editing.
+- `deploy/spaces.service` (systemd unit running `start-all.sh`), `deploy/Caddyfile` (site + TURN SNI route, example hosts).
 - `start-all.sh` — local (macOS) / VPS orchestration for the droplet side, plus `next dev` for
   the demo when not on a VPS. Tries to install Redis / LiveKit / ffmpeg when they're missing.
   Degrades gracefully (calling still works) if Redis/Docker still aren't there.
