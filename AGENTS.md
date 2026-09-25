@@ -233,6 +233,18 @@ works from the same machine; test multi-device calls on the Railway deployment.
   and the login rate limit lives on `globalThis`.
 - **Browser code that needs `window` (livekit-client, track processors) loads via
   `next/dynamic(..., { ssr: false })`** from a client component (`RoomClient.tsx`).
+- **`livekit-server` drains on the first SIGTERM**: it keeps running (and holding 7880/7881/7882)
+  until every participant leaves, so a replacement started right away just dies on the busy ports.
+  A second SIGTERM forces it down. Restarting it on the droplet drops live calls; check
+  `/admin/api/overview` for rooms first.
+- **Audio first is split between server and client.** Downlink: the SFU's congestion control never
+  throttles audio and steps video down per subscriber; `allow_pause: true` (`livekit/config.yaml`,
+  default `false`) lets it pause video when even the lowest layer won't fit. Uplink: the SDK sends
+  the mic at priority `high`; `Conference.tsx` marks the camera `very-low` (Chrome takes a sender's
+  priority from `encodings[0]`, so the SDK only sets that one) with a 540p top layer, and
+  `useAudioFirst` pauses the camera after 10 s of Poor/Lost quality, resuming after 10 s of Good.
+  Don't cap layers with `setPublishingQuality()` for this: dynacast's own `setPublishingLayers()`
+  overwrites it on the next subscription update.
 
 ## Testing / verification notes
 
@@ -294,7 +306,7 @@ works from the same machine; test multi-device calls on the Railway deployment.
 - `demo/app/admin/*` — `/admin` page + `login`/`logout`/`session` routes + `api/[...path]` streaming proxy → token-service `/admin/*`.
 - `demo/lib/server/tokenService.ts` — the only token-service client (both secrets); `demo/lib/server/adminSession.ts` — admin cookie + rate limit.
 - `demo/components/RoomClient.tsx` — pre-join (LiveKit `PreJoin`) → join → end screen.
-- `demo/components/conference/*` — `Conference` (Room lifecycle, duplicate-identity heartbeat, host's end-for-everyone), `ConferenceLayout` (VideoConference prefab expanded; one side panel at a time), `Dock` (status readout · media · talk · more · Leave), `LeaveDialog` (leave confirmation for everyone; host also gets end-for-everyone), `Tile`, `SidePanel`, `ParticipantsPanel`, `SettingsPanel` + `useBackgroundEffect`, `useReactions`, `useRecording`.
+- `demo/components/conference/*` — `Conference` (Room lifecycle, audio-first publish defaults, duplicate-identity heartbeat, host's end-for-everyone), `ConferenceLayout` (VideoConference prefab expanded; one side panel at a time), `Dock` (status readout · media · talk · more · Leave), `LeaveDialog` (leave confirmation for everyone; host also gets end-for-everyone), `Tile`, `SidePanel`, `ParticipantsPanel`, `SettingsPanel` + `useBackgroundEffect`, `useAudioFirst` (pauses the camera on a weak uplink), `useReactions`, `useRecording`.
 - `demo/components/ui/*` — `Menu` (dock popover), `Device` (wordmark, LED, readout, initials).
 - `demo/components/admin/AdminDashboard.tsx` — the control center UI.
 - `demo/public/backgrounds/*.jpg` — virtual-background images.

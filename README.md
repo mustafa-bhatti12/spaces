@@ -167,4 +167,5 @@ Built on LiveKit's React components and hooks (`@livekit/components-react`), wit
 - **People panel:** everyone in the room with speaking state, mic/camera status, connection quality and raised hands (listed first).
 - **Settings (side panel):** camera preview; camera, microphone and speaker selection; background blur (light or strong) or virtual backgrounds.
 - **Resilience:** a reconnecting banner, and end screens that say why the call ended (left, ended by you, ended for everyone, removed, or joined from another tab).
+- **Audio first on weak connections:** video gives way before audio. The server pauses video for a viewer whose connection can't carry even the smallest video layer; the camera is sent at lower priority than the mic (540p max), and after 10 seconds of a poor connection your camera pauses on its own, coming back once the connection has been good for 10 seconds.
 - **Admin (`/admin`):** password-protected operator console. Service health; live rooms and participants; remove, mute and close room; start and stop recording; play, download and delete recordings.
