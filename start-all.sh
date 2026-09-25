@@ -337,7 +337,8 @@ else
   docker rm -f space-egress >/dev/null 2>&1 || true
   # host.docker.internal + host-gateway works on Docker Desktop and Linux.
   # Volume is egress:/out so /out/raw/<file> is egress/raw/<file>.
-  if docker run -d --name space-egress \
+  # --restart on-failure: Docker restarts a crashed worker itself; cleanup() still removes it.
+  if docker run -d --name space-egress --restart on-failure \
       --add-host=host.docker.internal:host-gateway \
       --cap-add=SYS_ADMIN \
       --shm-size=1g \
@@ -412,8 +413,23 @@ cleanup() {
   if [ "$EGRESS_STARTED" = "1" ]; then
     docker rm -f space-egress >/dev/null 2>&1 || true
   fi
-  exit 0
+  exit "${1:-0}"
 }
 
 trap cleanup SIGINT SIGTERM
-wait
+
+# Supervise instead of a bare `wait` (which only returns once *every* child has exited, leaving a
+# half-dead stack): if a core service exits, stop the rest and exit 1, so systemd (spaces.service,
+# Restart=on-failure) brings the whole stack back; run by hand, you see which one died.
+# `sleep & wait` keeps the Ctrl+C / SIGTERM trap responsive.
+while true; do
+  for entry in "LiveKit:$LK_PID" "token-service:$TS_PID" "compressor:$CO_PID" "Redis:$REDIS_PID"; do
+    pid="${entry#*:}"
+    if [ -n "$pid" ] && ! kill -0 "$pid" 2>/dev/null; then
+      echo "❌ ${entry%%:*} (pid $pid) exited -- stopping the rest."
+      cleanup 1
+    fi
+  done
+  sleep 5 &
+  wait $! || true
+done

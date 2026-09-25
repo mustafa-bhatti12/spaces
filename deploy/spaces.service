@@ -1,0 +1,38 @@
+# Runs the droplet side of Spaces (Redis, LiveKit, the recording worker container, token-service,
+# compressor) via start-all.sh at boot, and restarts the stack if one of those services dies.
+# Caddy and Docker are their own system services; Ubuntu's redis-server.service stays disabled
+# because start-all.sh runs a Redis the recording container can reach (0.0.0.0, not 127.0.0.1).
+#
+# Install on the droplet (repo at /root/space):
+#   ln -sf /root/space/deploy/spaces.service /etc/systemd/system/spaces.service
+#   systemctl disable --now redis-server
+#   systemctl daemon-reload && systemctl enable --now spaces
+# Then: systemctl status spaces / systemctl restart spaces / journalctl -u spaces -f.
+# Per-service logs stay in /tmp/*.log (see AGENTS.md "Deployment").
+
+[Unit]
+Description=Spaces (LiveKit, token-service, compressor, Redis, recording worker)
+Wants=network-online.target docker.service
+After=network-online.target docker.service
+# A crash loop (e.g. a broken config) stops retrying after 5 failures in 5 minutes.
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=root
+Environment=HOME=/root
+WorkingDirectory=/root/space
+ExecStart=/root/space/start-all.sh
+# SIGTERM goes to start-all.sh, whose cleanup() stops the services it started (and removes the
+# recording container); anything left after TimeoutStopSec is killed. LiveKit drains on SIGTERM
+# (it waits for participants to leave), so the timeout is what ends a stop during a live call.
+KillMode=mixed
+TimeoutStopSec=20
+# Belt and braces: the container lives in dockerd's cgroup, not ours.
+ExecStopPost=-/usr/bin/docker rm -f space-egress
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
