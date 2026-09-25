@@ -163,7 +163,7 @@ Built on LiveKit's React components and hooks (`@livekit/components-react`), wit
 - **Pre-join:** LiveKit `PreJoin` with camera preview, mic and camera on/off, device pickers, and a remembered display name.
 - **Layouts:** adaptive grid, and a focus view with a thumbnail strip. Click a tile to pin it; screen shares take the stage automatically.
 - **Dock:** a status readout (room, people, `REC` timer and who started it), then three key groups: mic, camera and screen share (device menus included); react (emoji, plus raise hand), chat with an unread badge, and people; and More (record, copy invite link, settings, full screen). Leave sits on its own. The mic key's ring is green when live, red when muted, and brighter while you speak.
-- **Host:** whoever starts a room hosts it (and still does after rejoining), marked `HOST` in the people panel. The host's Leave asks whether to leave (the call goes on) or end the call for everyone.
+- **Host:** whoever starts a room hosts it (and still does after rejoining), marked `HOST` in the people panel. Leave always asks for confirmation; only the host's dialog also offers ending the call for everyone.
 - **People panel:** everyone in the room with speaking state, mic/camera status, connection quality and raised hands (listed first).
 - **Settings (side panel):** camera preview; camera, microphone and speaker selection; background blur (light or strong) or virtual backgrounds.
 - **Resilience:** a reconnecting banner, and end screens that say why the call ended (left, ended by you, ended for everyone, removed, or joined from another tab).

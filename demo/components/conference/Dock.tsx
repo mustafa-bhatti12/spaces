@@ -4,7 +4,6 @@ import type { CaptureOptionsBySource, ToggleSource } from '@livekit/components-c
 import { supportsScreenSharing } from '@livekit/components-core';
 import {
   ChatToggle,
-  DisconnectButton,
   MediaDeviceMenu,
   StartMediaButton,
   useIsSpeaking,
@@ -162,16 +161,16 @@ interface DockProps {
   onTogglePanel: (panel: Exclude<Panel, 'chat' | null>) => void;
   onReact: (emoji: string) => void;
   onInvite: () => void;
-  /** Present only for the host: Leave then asks whether to end the call for everyone. */
+  /** Present only for the host: the Leave dialog then also offers "End call for everyone". */
   onEndForAll?: () => Promise<void>;
   recording: { current: ActiveRecording | null; busy: boolean; onToggle: () => void };
 }
 
 /**
  * The call's one control surface, laid out like a conference speakerphone: a status screen on the
- * left, three key clusters (media · talk · more) in the middle, and Leave on its own at the right.
- * Built from LiveKit's hooks and controls (useTrackToggle, MediaDeviceMenu, ChatToggle,
- * DisconnectButton) so behavior stays LiveKit's.
+ * left, three key clusters (media · talk · more) in the middle, and Leave on its own at the right
+ * (always confirmed in LeaveDialog). Built from LiveKit's hooks and controls (useTrackToggle,
+ * MediaDeviceMenu, ChatToggle) so behavior stays LiveKit's.
  */
 export function Dock({ roomName, participantCount, panel, onTogglePanel, onReact, onInvite, onEndForAll, recording }: DockProps) {
   const { localParticipant } = useLocalParticipant();
@@ -369,25 +368,18 @@ export function Dock({ roomName, participantCount, panel, onTogglePanel, onReact
 
       <div className="dock-end">
         <StartMediaButton className="key" />
-        {onEndForAll ? (
-          <button
-            type="button"
-            className="key key-leave"
-            aria-haspopup="dialog"
-            aria-label="Leave or end call"
-            title="Leave or end call"
-            onClick={() => setLeaveOpen(true)}
-          >
-            <LogOut aria-hidden="true" />
-            <span className="legend">Leave</span>
-          </button>
-        ) : (
-          <DisconnectButton className="key key-leave" aria-label="Leave call" title="Leave call">
-            <LogOut aria-hidden="true" />
-            <span className="legend">Leave</span>
-          </DisconnectButton>
-        )}
-        {leaveOpen && onEndForAll && <LeaveDialog onClose={() => setLeaveOpen(false)} onEndForAll={onEndForAll} />}
+        <button
+          type="button"
+          className="key key-leave"
+          aria-haspopup="dialog"
+          aria-label={onEndForAll ? 'Leave or end call' : 'Leave call'}
+          title={onEndForAll ? 'Leave or end call' : 'Leave call'}
+          onClick={() => setLeaveOpen(true)}
+        >
+          <LogOut aria-hidden="true" />
+          <span className="legend">Leave</span>
+        </button>
+        {leaveOpen && <LeaveDialog onClose={() => setLeaveOpen(false)} onEndForAll={onEndForAll} />}
       </div>
     </div>
   );

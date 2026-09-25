@@ -294,7 +294,7 @@ works from the same machine; test multi-device calls on the Railway deployment.
 - `demo/app/admin/*` — `/admin` page + `login`/`logout`/`session` routes + `api/[...path]` streaming proxy → token-service `/admin/*`.
 - `demo/lib/server/tokenService.ts` — the only token-service client (both secrets); `demo/lib/server/adminSession.ts` — admin cookie + rate limit.
 - `demo/components/RoomClient.tsx` — pre-join (LiveKit `PreJoin`) → join → end screen.
-- `demo/components/conference/*` — `Conference` (Room lifecycle, duplicate-identity heartbeat, host's end-for-everyone), `ConferenceLayout` (VideoConference prefab expanded; one side panel at a time), `Dock` (status readout · media · talk · more · Leave), `LeaveDialog` (host's leave / end-for-everyone modal), `Tile`, `SidePanel`, `ParticipantsPanel`, `SettingsPanel` + `useBackgroundEffect`, `useReactions`, `useRecording`.
+- `demo/components/conference/*` — `Conference` (Room lifecycle, duplicate-identity heartbeat, host's end-for-everyone), `ConferenceLayout` (VideoConference prefab expanded; one side panel at a time), `Dock` (status readout · media · talk · more · Leave), `LeaveDialog` (leave confirmation for everyone; host also gets end-for-everyone), `Tile`, `SidePanel`, `ParticipantsPanel`, `SettingsPanel` + `useBackgroundEffect`, `useReactions`, `useRecording`.
 - `demo/components/ui/*` — `Menu` (dock popover), `Device` (wordmark, LED, readout, initials).
 - `demo/components/admin/AdminDashboard.tsx` — the control center UI.
 - `demo/public/backgrounds/*.jpg` — virtual-background images.
