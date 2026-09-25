@@ -1,7 +1,7 @@
 'use client';
 
 import type { LocalUserChoices } from '@livekit/components-react';
-import { PreJoin } from '@livekit/components-react';
+import { PreJoin } from './PreJoin';
 import type { LucideIcon } from 'lucide-react';
 import { ArrowLeft, CircleSlash, DoorClosed, LogOut, RefreshCw, UserX, WifiOff } from 'lucide-react';
 import dynamic from 'next/dynamic';
@@ -114,6 +114,9 @@ export function RoomClient({ roomName }: { roomName: string }) {
 
   // Stable identity: Conference must not see a new onLeave each render (it's an effect dependency).
   const handleLeave = useCallback((reason: LeaveReason) => setStage({ kind: 'ended', reason }), []);
+  // Same for PreJoin: onError is a dependency of its preview-track effect, so a new function per
+  // render stops the camera and reopens it on every re-render (name load, occupancy polls).
+  const handlePreviewError = useCallback((err: Error) => setStage({ kind: 'prejoin', error: err.message }), []);
 
   if (stage.kind === 'in-call') {
     return (
@@ -182,13 +185,12 @@ export function RoomClient({ roomName }: { roomName: string }) {
           <p className="lede">Check your camera and mic, then enter the name others will see.</p>
         </div>
         <PreJoin
-          persistUserChoices
           defaults={{ username: defaultName }}
           joinLabel={stage.kind === 'joining' ? 'Joining…' : 'Join call'}
           userLabel="Enter your name (e.g. Alex)"
           onValidate={(values) => values.username.trim().length > 0 && stage.kind !== 'joining'}
           onSubmit={handleSubmit}
-          onError={(err) => setStage({ kind: 'prejoin', error: err.message })}
+          onError={handlePreviewError}
         />
         <p className="prejoin-hint">Others in the room will see this name on your video tile.</p>
         <p className="prejoin-error note note-alert" role="alert" hidden={!error}>

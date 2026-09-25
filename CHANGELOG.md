@@ -5,6 +5,7 @@ the detail. Agents: add a line here with every change that ships (see `AGENTS.md
 
 ## 2026-09-25
 
+- **Faster camera preview on the join screen:** the camera now opens once instead of up to five times (LiveKit's pre-join reopened it on re-renders, on a first-visit placeholder id, and when its device menus mounted), so your video appears about a second or more sooner, most on a first visit.
 - **TURN relay over HTTPS:** callers on networks that only allow port 443 now get audio and video, relayed by LiveKit's built-in TURN at `turn.hofmigration.com` behind Caddy's `layer4` route. Verified with a relay-only Chrome call. (`c296561`, `e98b931`)
 - **Virtual backgrounds:** eight 1080p photos (coast, forest, golden hour, loft, ocean, studio, sunset, workspace); reworked display-name entry on the phone pre-join screen. (`9d0df1d`)
 - **Reboot-safe droplet:** the stack runs as `spaces.service`, starts on boot, and restarts itself if LiveKit, token-service, the compressor or Redis dies; the recording worker restarts on crash. (`fb6b5ff`, `ba131ae`)

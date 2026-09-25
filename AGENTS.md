@@ -281,6 +281,14 @@ works from the same machine; test multi-device calls on the Railway deployment.
   connects through `useSequentialRoomConnectDisconnect` (`components/conference/Conference.tsx`);
   props/handlers passed into it (`onLeave`, `details`, `choices`) must be referentially stable or the
   effect reconnects — LiveKit's "don't remount LiveKitRoom" guidance.
+- **Every camera open costs a real camera about a second, so the pre-join must open it once.**
+  LiveKit's `PreJoin` reopened it up to 4 extra times: `usePreviewTracks` recreates tracks when its
+  `onError` prop changes identity (an inline arrow did that on every render); a first-visit camera
+  is requested as `exact: 'default'` (no camera has that id, so it fails and retries); and each
+  `MediaDeviceMenu` with an `initialSelection` calls `setDeviceId` on mount, which always restarts
+  the device (the track holds `{exact: id}`, never equal to the plain id). `components/PreJoin.tsx`
+  is `PreJoin`'s markup without those; keep its callbacks stable and its menus selection-free.
+  Measure with a `getUserMedia` counter in the page (one call per visit is the target).
 - **`supportsBackgroundProcessors()` creates a WebGL context per call.** Calling it on every render
   hit Chrome's context limit ("Too many active WebGL contexts") — check once (`useState`
   initializer in `useBackgroundEffect.ts`).
@@ -367,7 +375,7 @@ works from the same machine; test multi-device calls on the Railway deployment.
 - `demo/app/api/*` — call-page server routes (`connect`, `rooms`, `whoami`, `recording/{start,stop,status}`) → token-service consumer routes.
 - `demo/app/admin/*` — `/admin` page + `login`/`logout`/`session` routes + `api/[...path]` streaming proxy → token-service `/admin/*`.
 - `demo/lib/server/tokenService.ts` — the only token-service client (both secrets); `demo/lib/server/adminSession.ts` — admin cookie + rate limit.
-- `demo/components/RoomClient.tsx` — pre-join (LiveKit `PreJoin`) → join → end screen.
+- `demo/components/RoomClient.tsx` — pre-join (`PreJoin.tsx`, LiveKit's `PreJoin` markup with one camera open) → join → end screen.
 - `demo/components/conference/*` — `Conference` (Room lifecycle, audio-first publish defaults, duplicate-identity heartbeat, host's end-for-everyone), `ConferenceLayout` (VideoConference prefab expanded; one side panel at a time), `Dock` (status readout · media · talk · more · Leave), `LeaveDialog` (leave confirmation for everyone; host also gets end-for-everyone), `Tile`, `SidePanel`, `ParticipantsPanel`, `SettingsPanel` + `useBackgroundEffect`, `useAudioFirst` (pauses the camera on a weak uplink), `useReactions`, `useRecording`.
 - `demo/components/ui/*` — `Menu` (dock popover), `Device` (wordmark, LED, readout, initials).
 - `demo/components/admin/AdminDashboard.tsx` — the control center UI; `ServerPanel.tsx` (Server section: metric strips + processes table); `format.ts` (bytes, rates, durations).
