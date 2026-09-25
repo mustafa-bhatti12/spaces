@@ -167,6 +167,12 @@ rejects; with `proxy_protocol` on, connections without a header are refused. No 
 is Caddy's HTTP/3. Caddy is the `caddy-l4` build at `/usr/bin/caddy.custom`, chosen by
 `update-alternatives` over the apt one (diverted to `/usr/bin/caddy.default`), so `apt upgrade`
 doesn't overwrite it; update it with `caddy upgrade`, which keeps the plugin.
+To prove TURN works, connect a real browser with `rtcConfig: { iceTransportPolicy: 'relay' }` (Chrome
+needs a secure origin for the fake mic) and read `getStats()`: the transport's selected candidate
+pair should have a `relay` local candidate with `relayProtocol: 'tls'` and url
+`turns:turn.hofmigration.com:443`, and audio `bytesSent` should grow. Callers don't need a separate
+STUN server: with no UDP TURN port and no `rtc.stun_servers`, LiveKit hands browsers its default
+public STUN list, and the SFU is reached on its own public `node_ip` anyway.
 
 What `start-all.sh` does and doesn't do on a bare Linux host:
 
