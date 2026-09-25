@@ -117,9 +117,12 @@ code { font: 0.875em var(--mono); background: var(--key); padding: 1px 6px; bord
 .note-alert { color: var(--alert-ink); }
 
 /* ---------- Device primitives ---------- */
-.wordmark { display: inline-flex; align-items: center; gap: 9px; font-size: 1rem; font-weight: 650; letter-spacing: -0.015em; }
+.wordmark { display: inline-flex; align-items: center; gap: 10px; font-size: 1rem; font-weight: 650; letter-spacing: -0.015em; text-decoration: none; color: var(--ink); line-height: 1; }
+.wordmark-logo { height: 22px; width: auto; display: block; flex-shrink: 0; }
+.wordmark-suffix { color: var(--ink-3); font-size: 0.85rem; font-weight: 500; padding-left: 10px; border-left: 1px solid var(--seam); line-height: 1; }
 .wordmark-led { width: 8px; height: 8px; border-radius: 50%; background: var(--live); box-shadow: 0 0 0 3px var(--live-soft); }
-.wordmark-suffix { color: var(--ink-3); font-weight: 500; }
+.spaces-logo { display: block; height: 22px; width: auto; }
+.spaces-icon-mark { display: block; }
 
 .led { display: inline-block; width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: var(--ink-3); opacity: 0.6; }
 .led-live { background: var(--live); opacity: 1; }
@@ -798,6 +801,16 @@ code { font: 0.875em var(--mono); background: var(--key); padding: 1px 6px; bord
 .meter > div { height: 100%; border-radius: 2px; background: var(--live); }
 .meter-warn > div { background: var(--warn); }
 .meter-alert > div { background: var(--alert); }
+
+/* Server metrics */
+.server-panel { display: flex; flex-direction: column; gap: 10px; }
+.health-state .mono { font-size: 0.875rem; }
+.net-rates { display: inline-flex; flex-wrap: wrap; gap: 4px 12px; }
+.proc-table { min-width: 680px; }
+.proc-name { font-weight: 600; white-space: nowrap; }
+.proc-state { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
+.proc-detail { display: block; margin-top: 2px; }
+.proc-version { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-2); font-size: 0.8125rem; }
 
 .room-blocks { display: flex; flex-direction: column; gap: 12px; }
 .room-block { overflow: hidden; border-radius: var(--r-face); background: var(--shell); box-shadow: var(--lift); }

@@ -9,8 +9,17 @@ const sans = Hanken_Grotesk({ subsets: ['latin'], variable: '--font-sans', displ
 const mono = JetBrains_Mono({ subsets: ['latin'], variable: '--font-mono', display: 'swap' });
 
 export const metadata: Metadata = {
-  title: 'Space',
+  title: 'Spaces',
   description: 'Self-hosted video calls on LiveKit.',
+  icons: {
+    icon: [
+      { url: '/icon.svg', type: 'image/svg+xml' },
+      { url: '/favicon.ico', sizes: 'any' },
+    ],
+    apple: [
+      { url: '/apple-touch-icon.png', sizes: '180x180' },
+    ],
+  },
   robots: { index: false, follow: false },
 };
 

@@ -4,6 +4,9 @@ import type { LucideIcon } from 'lucide-react';
 import { CircleDot, CircleStop, Download, ExternalLink, Lock, LogOut, Mic, MicOff, MonitorUp, Play, Trash2, UserX, Video, Volume2, X } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { initials, Led, Readout, ReadoutSegment, Wordmark } from '../ui/Device';
+import { formatBytes, since } from './format';
+import type { SystemSnapshot } from './ServerPanel';
+import { ServerPanel } from './ServerPanel';
 
 // Operator control center. Everything goes through /admin/api/* (session-checked, then forwarded to
 // token-service's /admin/* with ADMIN_SHARED_SECRET). Names/identities come from call participants,
@@ -63,26 +66,6 @@ const SOURCES: Record<string, { label: string; icon: LucideIcon }> = {
   SCREEN_SHARE: { label: 'Screen', icon: MonitorUp },
   SCREEN_SHARE_AUDIO: { label: 'Screen audio', icon: Volume2 },
 };
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  const units = ['KB', 'MB', 'GB', 'TB'];
-  let value = bytes / 1024;
-  let unit = 0;
-  while (value >= 1024 && unit < units.length - 1) {
-    value /= 1024;
-    unit++;
-  }
-  return `${value.toFixed(value < 10 ? 1 : 0)} ${units[unit]}`;
-}
-
-function since(iso: string): string {
-  const seconds = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 1000));
-  if (seconds < 60) return `${seconds}s ago`;
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
-  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m ago`;
-  return new Date(iso).toLocaleString();
-}
 
 const fileUrl = (f: RecordingFile, download = false) =>
   `/admin/api/files/${encodeURIComponent(f.kind)}/${encodeURIComponent(f.name)}${download ? '?download=1' : ''}`;
@@ -175,7 +158,7 @@ function Login({ onLoggedIn }: { onLoggedIn: () => void }) {
           <Lock />
         </span>
         <h1 className="title">Operator sign-in</h1>
-        <p className="lede">Live rooms, recordings and service health for this Space deployment.</p>
+        <p className="lede">Live rooms, recordings and service health for this Spaces deployment.</p>
         <label className="field-label" htmlFor="admin-password">
           Password
         </label>
@@ -205,6 +188,7 @@ function Login({ onLoggedIn }: { onLoggedIn: () => void }) {
 function Dashboard({ onLoggedOut }: { onLoggedOut: () => void }) {
   const [overview, setOverview] = useState<Overview | null>(null);
   const [health, setHealth] = useState<Health | null>(null);
+  const [system, setSystem] = useState<SystemSnapshot | null>(null);
   const [status, setStatus] = useState('Loading…');
   const [stale, setStale] = useState(false);
   const [toast, setToast] = useState<{ message: string; error: boolean } | null>(null);
@@ -240,11 +224,16 @@ function Dashboard({ onLoggedOut }: { onLoggedOut: () => void }) {
   }, [handleError]);
 
   const refreshHealth = useCallback(async () => {
-    try {
-      setHealth(await api<Health>('GET', '/health'));
-    } catch (err) {
-      handleError(err);
+    const [healthResult, systemResult] = await Promise.allSettled([api<Health>('GET', '/health'), api<SystemSnapshot>('GET', '/system')]);
+    if (healthResult.status === 'fulfilled') setHealth(healthResult.value);
+    else {
+      handleError(healthResult.reason);
       setHealth(null);
+    }
+    if (systemResult.status === 'fulfilled') setSystem(systemResult.value);
+    else {
+      handleError(systemResult.reason);
+      setSystem(null);
     }
   }, [handleError]);
 
@@ -276,6 +265,15 @@ function Dashboard({ onLoggedOut }: { onLoggedOut: () => void }) {
   const recordingByRoom = new Map((overview?.activeRecordings ?? []).map((r) => [r.roomName, r]));
   const roomCount = overview?.rooms.length ?? 0;
   const peopleCount = overview?.rooms.reduce((n, r) => n + r.participants.length, 0) ?? 0;
+  const usage = overview && {
+    rooms: roomCount,
+    people: peopleCount,
+    tracks: overview.rooms.reduce((n, r) => n + r.participants.reduce((m, p) => m + p.tracks.length, 0), 0),
+    recording: overview.activeRecordings.length,
+    files: overview.files.length,
+    filesBytes: overview.files.reduce((n, f) => n + f.bytes, 0),
+    rawFiles: overview.files.filter((f) => f.kind === 'raw').length,
+  };
 
   return (
     <div className="console">
@@ -331,6 +329,18 @@ function Dashboard({ onLoggedOut }: { onLoggedOut: () => void }) {
               </div>
             )}
           </div>
+        </section>
+
+        <section aria-labelledby="h-server">
+          <h2 id="h-server" className="section-title">
+            Server
+            {system && (
+              <span className="section-meta">
+                {system.host.hostname}, updated {new Date(system.collectedAt).toLocaleTimeString()}
+              </span>
+            )}
+          </h2>
+          <ServerPanel system={system} usage={usage} />
         </section>
 
         <section aria-labelledby="h-rooms">
@@ -490,7 +500,7 @@ function Dashboard({ onLoggedOut }: { onLoggedOut: () => void }) {
             Recordings
             {overview && (
               <span className="section-meta">
-                {overview.files.length} {overview.files.length === 1 ? 'file' : 'files'}
+                {overview.files.length} {overview.files.length === 1 ? 'file' : 'files'}, {formatBytes(overview.files.reduce((n, f) => n + f.bytes, 0))}
               </span>
             )}
           </h2>

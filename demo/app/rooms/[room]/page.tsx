@@ -4,7 +4,7 @@ import { normalizeRoomName } from '@/lib/room';
 
 export async function generateMetadata({ params }: PageProps<'/rooms/[room]'>): Promise<Metadata> {
   const { room } = await params;
-  return { title: `${normalizeRoomName(room)} · Space` };
+  return { title: `${normalizeRoomName(room)} · Spaces` };
 }
 
 export default async function RoomPage({ params }: PageProps<'/rooms/[room]'>) {

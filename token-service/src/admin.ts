@@ -14,6 +14,7 @@ import {
   stopRecording,
 } from './livekit';
 import { listRecordingFiles, RECORDING_DIRS, resolveRecordingFile } from './recordings';
+import { collectSystemSnapshot } from './system';
 
 type Check = { ok: boolean; detail: string };
 
@@ -71,6 +72,9 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     );
     return { livekit, compressor, egressWorker, disk };
   });
+
+  // Host + per-service metrics (CPU, memory, network, versions, TLS expiry, deployed commit).
+  app.get('/system', async () => collectSystemSnapshot());
 
   app.post<{ Body: { room?: string } }>('/rooms/close', async (req, reply) => {
     const room = req.body?.room;

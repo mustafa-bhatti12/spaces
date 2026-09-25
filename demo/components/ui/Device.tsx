@@ -1,4 +1,7 @@
 import type { ReactNode } from 'react';
+import { Logo, LogoMark } from './Logo';
+
+export { Logo, LogoMark };
 
 /** One or two initials for an avatar: first and last word of the name. */
 export function initials(name: string): string {
@@ -7,12 +10,11 @@ export function initials(name: string): string {
   return (parts[0][0] + (parts.length > 1 ? parts[parts.length - 1][0] : '')).toUpperCase();
 }
 
-/** The device's name plate: a power LED and the product name. */
+/** The official Spaces brand mark with optional section suffix (e.g. "Control Center"). */
 export function Wordmark({ suffix }: { suffix?: string }) {
   return (
     <span className="wordmark">
-      <span className="wordmark-led" aria-hidden="true" />
-      Space
+      <Logo height={22} className="wordmark-logo" />
       {suffix && <span className="wordmark-suffix">{suffix}</span>}
     </span>
   );
