@@ -1,6 +1,8 @@
 import { useCallback, useSyncExternalStore } from 'react';
 
-const MIRROR_KEY = 'spaces-mirror-self-view';
+// New key because mirroring now applies to everyone, not only the local self-view. Starting fresh
+// also guarantees the new shared behavior defaults to on despite an older self-view preference.
+const MIRROR_KEY = 'spaces-camera-mirror';
 const CHANGE_EVENT = 'spaces-mirror-change';
 export const MIRROR_ATTRIBUTE = 'cameraMirror';
 
