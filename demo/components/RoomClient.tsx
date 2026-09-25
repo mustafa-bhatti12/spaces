@@ -7,7 +7,7 @@ import { ArrowLeft, CircleSlash, DoorClosed, LogOut, RefreshCw, UserX, WifiOff }
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
-import { getDeviceId, getSavedDisplayName, saveDisplayName } from '@/lib/client/identity';
+import { getDeviceId } from '@/lib/client/identity';
 import type { ConnectionDetails, LeaveReason } from './conference/types';
 import type { Signal } from './ui/Device';
 import { Led, Readout, ReadoutSegment, Wordmark } from './ui/Device';
@@ -84,16 +84,10 @@ function occupancyText(count: number | null): string {
 
 export function RoomClient({ roomName }: { roomName: string }) {
   const [stage, setStage] = useState<Stage>({ kind: 'prejoin' });
-  const [defaultName, setDefaultName] = useState('');
   const occupancy = useRoomOccupancy(roomName, stage.kind !== 'in-call');
-
-  useEffect(() => {
-    setDefaultName(getSavedDisplayName());
-  }, []);
 
   const handleSubmit = useCallback(
     async (choices: LocalUserChoices) => {
-      saveDisplayName(choices.username);
       setStage({ kind: 'joining' });
       const identity = getDeviceId();
       try {
@@ -185,7 +179,7 @@ export function RoomClient({ roomName }: { roomName: string }) {
           <p className="lede">Check your camera and mic, then enter the name others will see.</p>
         </div>
         <PreJoin
-          defaults={{ username: defaultName }}
+          defaults={{}}
           joinLabel={stage.kind === 'joining' ? 'Joining…' : 'Join call'}
           userLabel="Enter your name (e.g. Alex)"
           onValidate={(values) => values.username.trim().length > 0 && stage.kind !== 'joining'}

@@ -40,43 +40,14 @@ export function PreJoin({ defaults, joinLabel, userLabel, onValidate, onSubmit, 
     saveAudioInputEnabled,
     saveVideoInputDeviceId,
     saveVideoInputEnabled,
-    saveUsername,
   } = usePersistentUserChoices({ defaults });
 
   const [audioEnabled, setAudioEnabled] = useState(initial.audioEnabled);
   const [videoEnabled, setVideoEnabled] = useState(initial.videoEnabled);
   const [audioDeviceId, setAudioDeviceId] = useState(initial.audioDeviceId);
   const [videoDeviceId, setVideoDeviceId] = useState(initial.videoDeviceId);
-  const inputRef = useRef<HTMLInputElement>(null);
   const [mirror] = useMirrorVideo();
-  const [username, setUsername] = useState(defaults.username || initial.username || '');
-  const typed = useRef(false);
-
-  useEffect(() => {
-    if (defaults.username && !typed.current) {
-      setUsername(defaults.username);
-      if (inputRef.current) inputRef.current.value = defaults.username;
-    }
-  }, [defaults.username]);
-
-  // Edge and mobile autofill can happen well after mount without firing React input events. Keep the
-  // validation state synchronized while this screen exists; leaving the field uncontrolled also
-  // prevents a re-render from erasing a browser-filled value before it can be observed.
-  useEffect(() => {
-    const sync = () => {
-      const value = inputRef.current?.value ?? '';
-      setUsername((current) => (current === value ? current : value));
-    };
-    sync();
-    const timer = window.setInterval(sync, 250);
-    window.addEventListener('focus', sync);
-    window.addEventListener('pageshow', sync);
-    return () => {
-      window.clearInterval(timer);
-      window.removeEventListener('focus', sync);
-      window.removeEventListener('pageshow', sync);
-    };
-  }, []);
+  const [username, setUsername] = useState('');
 
   useEffect(() => {
     saveAudioInputEnabled(audioEnabled);
@@ -90,10 +61,6 @@ export function PreJoin({ defaults, joinLabel, userLabel, onValidate, onSubmit, 
   useEffect(() => {
     saveVideoInputDeviceId(videoDeviceId);
   }, [videoDeviceId, saveVideoInputDeviceId]);
-  useEffect(() => {
-    saveUsername(username);
-  }, [username, saveUsername]);
-
   // Like PreJoin, the preview follows the devices chosen at load (captured once: the hook's
   // userChoices update on every save, and a changed option recreates the tracks); later picks
   // switch the running track through the device menu instead.
@@ -150,7 +117,7 @@ export function PreJoin({ defaults, joinLabel, userLabel, onValidate, onSubmit, 
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    const name = (inputRef.current?.value || username).trim();
+    const name = username.trim();
     const final = { ...choices, username: name };
     if (onValidate(final)) onSubmit(final);
   };
@@ -199,18 +166,14 @@ export function PreJoin({ defaults, joinLabel, userLabel, onValidate, onSubmit, 
 
       <form className="lk-username-container" onSubmit={submit}>
         <input
-          ref={inputRef}
           className="lk-form-control"
           id="username"
-          name="username"
+          name="display-name"
           type="text"
-          defaultValue={username}
+          value={username}
           placeholder={userLabel}
-          onInput={(e) => {
-            typed.current = true;
-            setUsername(e.currentTarget.value);
-          }}
-          autoComplete="name"
+          onChange={(e) => setUsername(e.target.value)}
+          autoComplete="off"
         />
         <button className="lk-button lk-join-button" type="submit" disabled={!isValid}>
           {joinLabel}
