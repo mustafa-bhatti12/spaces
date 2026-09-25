@@ -36,9 +36,11 @@ export function Tile() {
   });
   const isCamera = trackRef.source === Track.Source.Camera;
   const label = name || identity || 'Guest';
+  // Attributes arrive just after a participant/tile is created. Mirroring defaults to on, so
+  // never render an uninitialized attribute as off and briefly show the wrong orientation.
 
   return (
-    <ParticipantTile trackRef={trackRef} data-camera-mirror={mirror === 'on' ? 'on' : 'off'}>
+    <ParticipantTile trackRef={trackRef} data-camera-mirror={mirror === 'off' ? 'off' : 'on'}>
       {isTrackReference(trackRef) &&
       (trackRef.publication?.kind === 'video' || trackRef.source === Track.Source.Camera || trackRef.source === Track.Source.ScreenShare) ? (
         <VideoTrack trackRef={trackRef} />
