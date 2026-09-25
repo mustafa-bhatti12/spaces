@@ -21,6 +21,7 @@ import {
   Ellipsis,
   Hand,
   Link,
+  LogOut,
   Maximize,
   MessageSquare,
   Mic,
@@ -28,7 +29,6 @@ import {
   Minimize,
   MonitorOff,
   MonitorUp,
-  PhoneOff,
   Settings2,
   SmilePlus,
   Users,
@@ -41,6 +41,7 @@ import { Led, Readout, ReadoutSegment } from '../ui/Device';
 import { Menu } from '../ui/Menu';
 import { HAND_ATTRIBUTE } from './Tile';
 import type { ActiveRecording } from './useRecording';
+import { LeaveDialog } from './LeaveDialog';
 import { REACTION_EMOJIS } from './useReactions';
 
 export type Panel = 'chat' | 'people' | 'settings' | null;
@@ -161,6 +162,8 @@ interface DockProps {
   onTogglePanel: (panel: Exclude<Panel, 'chat' | null>) => void;
   onReact: (emoji: string) => void;
   onInvite: () => void;
+  /** Present only for the host: Leave then asks whether to end the call for everyone. */
+  onEndForAll?: () => Promise<void>;
   recording: { current: ActiveRecording | null; busy: boolean; onToggle: () => void };
 }
 
@@ -170,12 +173,13 @@ interface DockProps {
  * Built from LiveKit's hooks and controls (useTrackToggle, MediaDeviceMenu, ChatToggle,
  * DisconnectButton) so behavior stays LiveKit's.
  */
-export function Dock({ roomName, participantCount, panel, onTogglePanel, onReact, onInvite, recording }: DockProps) {
+export function Dock({ roomName, participantCount, panel, onTogglePanel, onReact, onInvite, onEndForAll, recording }: DockProps) {
   const { localParticipant } = useLocalParticipant();
   const hand = useParticipantAttribute(HAND_ATTRIBUTE, { participant: localParticipant });
   const { saveAudioInputEnabled, saveVideoInputEnabled, saveAudioInputDeviceId, saveVideoInputDeviceId } =
     usePersistentUserChoices();
   const { fullscreen, toggle: toggleFullscreen } = useFullscreen();
+  const [leaveOpen, setLeaveOpen] = useState(false);
   const rec = recording.current;
   useSecondTick(Boolean(rec));
 
@@ -365,10 +369,25 @@ export function Dock({ roomName, participantCount, panel, onTogglePanel, onReact
 
       <div className="dock-end">
         <StartMediaButton className="key" />
-        <DisconnectButton className="key key-leave" aria-label="Leave call" title="Leave call">
-          <PhoneOff aria-hidden="true" />
-          <span className="legend">Leave</span>
-        </DisconnectButton>
+        {onEndForAll ? (
+          <button
+            type="button"
+            className="key key-leave"
+            aria-haspopup="dialog"
+            aria-label="Leave or end call"
+            title="Leave or end call"
+            onClick={() => setLeaveOpen(true)}
+          >
+            <LogOut aria-hidden="true" />
+            <span className="legend">Leave</span>
+          </button>
+        ) : (
+          <DisconnectButton className="key key-leave" aria-label="Leave call" title="Leave call">
+            <LogOut aria-hidden="true" />
+            <span className="legend">Leave</span>
+          </DisconnectButton>
+        )}
+        {leaveOpen && onEndForAll && <LeaveDialog onClose={() => setLeaveOpen(false)} onEndForAll={onEndForAll} />}
       </div>
     </div>
   );

@@ -3,7 +3,7 @@
 import type { LocalUserChoices } from '@livekit/components-react';
 import { RoomContext, useSequentialRoomConnectDisconnect } from '@livekit/components-react';
 import { DisconnectReason, Room, RoomEvent, VideoPresets } from 'livekit-client';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ConferenceLayout } from './ConferenceLayout';
 import type { ConnectionDetails, LeaveReason } from './types';
 
@@ -52,13 +52,12 @@ export function Conference({ roomName, details, choices, identity, onLeave }: Co
       }),
   );
   const { connect, disconnect } = useSequentialRoomConnectDisconnect(room);
-  // Set just before we disconnect ourselves for a duplicate identity, so the Disconnected event
-  // (reason CLIENT_INITIATED) is reported as what actually happened.
-  const leavingAsDuplicate = useRef(false);
+  // Set just before we disconnect ourselves (duplicate identity) or end the room for everyone, so
+  // the Disconnected event (CLIENT_INITIATED / ROOM_DELETED) is reported as what actually happened.
+  const leavingAs = useRef<LeaveReason | null>(null);
 
   useEffect(() => {
-    const handleDisconnected = (reason?: DisconnectReason) =>
-      onLeave(leavingAsDuplicate.current ? { kind: 'duplicate' } : leaveReasonFor(reason));
+    const handleDisconnected = (reason?: DisconnectReason) => onLeave(leavingAs.current ?? leaveReasonFor(reason));
     room.on(RoomEvent.Disconnected, handleDisconnected);
 
     connect(details.serverUrl, details.participantToken)
@@ -90,7 +89,7 @@ export function Conference({ roomName, details, choices, identity, onLeave }: Co
         if (!res.ok) return;
         const { sid } = (await res.json()) as { sid: string | null };
         if (sid && room.localParticipant.sid && sid !== room.localParticipant.sid) {
-          leavingAsDuplicate.current = true;
+          leavingAs.current = { kind: 'duplicate' };
           await room.disconnect();
         }
       } catch {
@@ -100,9 +99,26 @@ export function Conference({ roomName, details, choices, identity, onLeave }: Co
     return () => clearInterval(timer);
   }, [room, roomName, identity, onLeave]);
 
+  // Host only: token-service deletes the room, and LiveKit disconnects everyone (us included).
+  const endForAll = useCallback(async () => {
+    leavingAs.current = { kind: 'ended' };
+    try {
+      const res = await fetch('/api/rooms/end', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ room: roomName, token: details.participantToken }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `Could not end the call (HTTP ${res.status}).`);
+    } catch (err) {
+      leavingAs.current = null;
+      throw err;
+    }
+  }, [roomName, details.participantToken]);
+
   return (
     <RoomContext.Provider value={room}>
-      <ConferenceLayout roomName={roomName} />
+      <ConferenceLayout roomName={roomName} onEndForAll={details.host ? endForAll : undefined} />
     </RoomContext.Provider>
   );
 }

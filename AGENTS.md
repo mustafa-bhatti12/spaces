@@ -65,12 +65,21 @@ graph LR
 - `token-service` is the **only** thing in this repo (or any consumer) that ever holds real LiveKit
   credentials. Everything else gets a short-lived, room-scoped join token.
 - **Two bearer secrets, checked in `token-service/src/auth.ts`:** `TOKEN_SERVICE_SHARED_SECRET` for
-  consumer routes (`/token`, `/rooms`, `/participant`, `/recording/*`) — held by `demo` and later
+  consumer routes (`/token`, `/rooms`, `/participant`, `/recording/*`, `/room/end`) — held by `demo` and later
   Petition Studio's API; `ADMIN_SHARED_SECRET` for the operator-only `/admin/*` routes (remove people,
   close rooms, delete recordings) — held only by `demo`'s `/admin` server routes
   (`demo/lib/server/tokenService.ts`, `kind: 'admin'`). Never give a consumer the admin secret; a
   leaked consumer secret must not be able to moderate or delete. Neither is a user-auth system —
   `token-service` has no concept of a logged-in person.
+- **Hosting is the consumer's decision; token-service only records and enforces it.** `/token` with
+  `host: true` stores the identity in the room's LiveKit metadata (`recordRoomHost`, creating the room
+  if needed; `GET /rooms` reports it as `host`) and mints a token with `roomAdmin` + attribute
+  `space.host`. `/room/end` takes the participant's own join token and deletes the room only if the
+  token verifies and carries `roomAdmin` for that room (expired tokens accepted for 24 h, since calls
+  outlive the 2 h TTL). The demo's rule (`demo/app/api/connect/route.ts`): no recorded host, or you
+  are the recorded host → you host. Since demo identities are unauthenticated device ids, that's only
+  as strong as the demo's join itself; a real consumer passes `host` from its own auth. The
+  `space.host` attribute is display-only (participants can edit their own attributes).
 - **`/admin` is the only login in the repo** (`demo/lib/server/adminSession.ts`): `ADMIN_PASSWORD`,
   an HMAC-signed `HttpOnly; SameSite=Strict; Path=/admin` session cookie (12 h, `Secure` over HTTPS),
   and 5-failures-per-15-min rate limiting. The limit keys on `X-Forwarded-For` only when
@@ -285,7 +294,7 @@ works from the same machine; test multi-device calls on the Railway deployment.
 - `demo/app/admin/*` — `/admin` page + `login`/`logout`/`session` routes + `api/[...path]` streaming proxy → token-service `/admin/*`.
 - `demo/lib/server/tokenService.ts` — the only token-service client (both secrets); `demo/lib/server/adminSession.ts` — admin cookie + rate limit.
 - `demo/components/RoomClient.tsx` — pre-join (LiveKit `PreJoin`) → join → end screen.
-- `demo/components/conference/*` — `Conference` (Room lifecycle, duplicate-identity heartbeat), `ConferenceLayout` (VideoConference prefab expanded; one side panel at a time), `Dock` (status readout · media · talk · more · Leave), `Tile`, `SidePanel`, `ParticipantsPanel`, `SettingsPanel` + `useBackgroundEffect`, `useReactions`, `useRecording`.
+- `demo/components/conference/*` — `Conference` (Room lifecycle, duplicate-identity heartbeat, host's end-for-everyone), `ConferenceLayout` (VideoConference prefab expanded; one side panel at a time), `Dock` (status readout · media · talk · more · Leave), `LeaveDialog` (host's leave / end-for-everyone modal), `Tile`, `SidePanel`, `ParticipantsPanel`, `SettingsPanel` + `useBackgroundEffect`, `useReactions`, `useRecording`.
 - `demo/components/ui/*` — `Menu` (dock popover), `Device` (wordmark, LED, readout, initials).
 - `demo/components/admin/AdminDashboard.tsx` — the control center UI.
 - `demo/public/backgrounds/*.jpg` — virtual-background images.

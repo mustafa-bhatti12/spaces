@@ -3,9 +3,12 @@ export interface ConnectionDetails {
   roomName: string;
   participantName: string;
   participantToken: string;
+  /** This participant started the room, so they may end it for everyone. */
+  host: boolean;
 }
 
 export type LeaveReason = {
-  kind: 'left' | 'duplicate' | 'removed' | 'room-closed' | 'error';
+  /** `ended`: this participant ended the call for everyone. */
+  kind: 'left' | 'ended' | 'duplicate' | 'removed' | 'room-closed' | 'error';
   message?: string;
 };

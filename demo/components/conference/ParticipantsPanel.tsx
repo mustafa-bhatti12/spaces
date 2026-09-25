@@ -15,9 +15,13 @@ import { SidePanel } from './SidePanel';
 import { initials } from '../ui/Device';
 import { HAND_ATTRIBUTE } from './Tile';
 
+/** Set by token-service on the host's join token (see mintToken's `host`). */
+const HOST_ATTRIBUTE = 'space.host';
+
 function ParticipantRow({ participant }: { participant: Participant }) {
   const speaking = useIsSpeaking(participant);
   const hand = useParticipantAttribute(HAND_ATTRIBUTE, { participant });
+  const host = useParticipantAttribute(HOST_ATTRIBUTE, { participant }) === 'true';
   const { name: infoName, identity } = useParticipantInfo({ participant });
   const { isMuted: micMuted } = useTrackMutedIndicator({ participant, source: Track.Source.Microphone });
   const { isMuted: camMuted } = useTrackMutedIndicator({ participant, source: Track.Source.Camera });
@@ -33,6 +37,7 @@ function ParticipantRow({ participant }: { participant: Participant }) {
         <span className="person-name">
           {name}
           {participant.isLocal && <span className="person-you"> (you)</span>}
+          {host && <span className="person-host">Host</span>}
         </span>
         {status && <span className={`person-status${hand ? ' person-status-hand' : ''}`}>{status}</span>}
       </span>

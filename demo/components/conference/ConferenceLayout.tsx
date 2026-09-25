@@ -35,7 +35,7 @@ import { useRecording } from './useRecording';
  * same grid ⇄ focus layouts (auto-focus on screen share, click a tile to pin) and LiveKit Chat, plus
  * people and settings panels, the dock, reactions and recording. One side panel at a time.
  */
-export function ConferenceLayout({ roomName }: { roomName: string }) {
+export function ConferenceLayout({ roomName, onEndForAll }: { roomName: string; onEndForAll?: () => Promise<void> }) {
   const [widget, setWidget] = useState<WidgetState>({ showChat: false, unreadMessages: 0, showSettings: false });
   const [sidePanel, setSidePanel] = useState<Exclude<Panel, 'chat'>>(null);
   const [toast, setToast] = useState('');
@@ -155,6 +155,7 @@ export function ConferenceLayout({ roomName }: { roomName: string }) {
               onTogglePanel={togglePanel}
               onReact={react}
               onInvite={invite}
+              onEndForAll={onEndForAll}
               recording={{
                 current: rec.recording,
                 busy: rec.busy,

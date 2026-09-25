@@ -9,6 +9,7 @@ import {
   RoomServiceClient,
   TrackSource,
   TrackType,
+  TokenVerifier,
   WebhookConfig,
 } from 'livekit-server-sdk';
 
@@ -29,12 +30,16 @@ export async function mintToken(params: {
   room: string;
   identity: string;
   name: string;
+  /** The caller decided this participant hosts the room: they may end it for everyone. */
+  host?: boolean;
 }): Promise<CallConnectionDetails> {
   const { apiKey, apiSecret, serverUrl } = requireLiveKitEnv();
 
   const at = new AccessToken(apiKey, apiSecret, {
     identity: params.identity,
     name: params.name,
+    // Lets every client show who hosts (display only; ending a room checks roomAdmin below).
+    attributes: params.host ? { [HOST_ATTRIBUTE]: 'true' } : undefined,
   });
   at.ttl = '2h';
   at.addGrant({
@@ -46,6 +51,8 @@ export async function mintToken(params: {
     // Lets the client set its own participant attributes (the demo's raised hand). Scoped to the
     // participant's own metadata/attributes only, never anyone else's.
     canUpdateOwnMetadata: true,
+    // A host's token doubles as its proof of hosting for endRoomAsHost.
+    roomAdmin: params.host === true,
   });
 
   return {
@@ -58,9 +65,56 @@ export async function mintToken(params: {
   };
 }
 
+export const HOST_ATTRIBUTE = 'space.host';
+
+/**
+ * Records `identity` as the room's host in LiveKit's room metadata (creating the room if nobody has
+ * joined yet), so a consumer can later ask who hosts it via listActiveRooms. Which identity hosts is
+ * the consumer's decision; this only stores it where it lives and dies with the room.
+ */
+export async function recordRoomHost(room: string, identity: string): Promise<void> {
+  const svc = roomService();
+  const metadata = JSON.stringify({ host: identity });
+  const [existing] = await svc.listRooms([room]);
+  if (!existing) {
+    await svc.createRoom({ name: room, metadata });
+  } else if (roomHost(existing.metadata) !== identity) {
+    await svc.updateRoomMetadata(room, metadata);
+  }
+}
+
+function roomHost(metadata: string | undefined): string | null {
+  try {
+    const host = JSON.parse(metadata || '{}').host;
+    return typeof host === 'string' && host ? host : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Ends `room` for everyone if `token` is a join token this service minted for a host of that room.
+ * Expired tokens are still accepted for a day: a long call outlives the 2h join TTL, and the signature
+ * alone proves who it was issued to.
+ */
+export async function endRoomAsHost(room: string, token: string): Promise<'ended' | 'forbidden'> {
+  const { apiKey, apiSecret } = requireLiveKitEnv();
+  let grants;
+  try {
+    grants = await new TokenVerifier(apiKey, apiSecret).verify(token, '24h');
+  } catch {
+    return 'forbidden';
+  }
+  if (grants.video?.room !== room || grants.video.roomAdmin !== true) return 'forbidden';
+  await closeRoom(room);
+  return 'ended';
+}
+
 export interface ActiveRoom {
   name: string;
   numParticipants: number;
+  /** Identity recorded by recordRoomHost, or null. */
+  host: string | null;
 }
 
 /**
@@ -74,7 +128,7 @@ export async function listActiveRooms(): Promise<ActiveRoom[]> {
 
   const svc = new RoomServiceClient(serverUrl, apiKey, apiSecret);
   const rooms = await svc.listRooms();
-  return rooms.map((room) => ({ name: room.name, numParticipants: room.numParticipants }));
+  return rooms.map((room) => ({ name: room.name, numParticipants: room.numParticipants, host: roomHost(room.metadata) }));
 }
 
 export interface AdminTrack {

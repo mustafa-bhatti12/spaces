@@ -3,10 +3,12 @@ import Fastify from 'fastify';
 import { EgressStatus, WebhookReceiver } from 'livekit-server-sdk';
 import {
   containerPathToHostPath,
+  endRoomAsHost,
   getActiveRecordings,
   getParticipantSid,
   listActiveRooms,
   mintToken,
+  recordRoomHost,
   startRoomAudioRecording,
   stopAllActiveRecordings,
   stopRecording,
@@ -46,11 +48,11 @@ fastify.get<{ Querystring: { room?: string; identity?: string } }>(
   },
 );
 
-fastify.post<{ Body: { room?: string; identity?: string; name?: string } }>(
+fastify.post<{ Body: { room?: string; identity?: string; name?: string; host?: boolean } }>(
   '/token',
   { preHandler: requireSharedSecret },
   async (req, reply) => {
-    const { room, identity, name } = req.body ?? {};
+    const { room, identity, name, host } = req.body ?? {};
     if (
       typeof room !== 'string' ||
       !room ||
@@ -64,13 +66,35 @@ fastify.post<{ Body: { room?: string; identity?: string; name?: string } }>(
     }
 
     try {
-      reply.send(await mintToken({ room, identity, name }));
+      // The caller decides who hosts; recording it lets GET /rooms report it on the next join.
+      if (host === true) await recordRoomHost(room, identity);
+      reply.send(await mintToken({ room, identity, name, host: host === true }));
     } catch (err) {
       console.error('Failed to mint LiveKit token:', err);
       reply.code(500).send({ error: 'Could not mint a token.' });
     }
   },
 );
+
+// Ends a room for everyone on behalf of its host. The participant's own join token is the proof:
+// only tokens minted with host: true carry roomAdmin for that room.
+fastify.post<{ Body: { room?: string; token?: string } }>('/room/end', { preHandler: requireSharedSecret }, async (req, reply) => {
+  const { room, token } = req.body ?? {};
+  if (typeof room !== 'string' || !room || typeof token !== 'string' || !token) {
+    reply.code(400).send({ error: 'room and token are required.' });
+    return;
+  }
+  try {
+    if ((await endRoomAsHost(room, token)) === 'forbidden') {
+      reply.code(403).send({ error: 'Only the host can end this call for everyone.' });
+      return;
+    }
+    reply.send({ ok: true });
+  } catch (err) {
+    console.error('Failed to end room:', err);
+    reply.code(500).send({ error: 'Could not end the call.' });
+  }
+});
 
 fastify.post<{ Body: { room?: string; startedBy?: string } }>(
   '/recording/start',

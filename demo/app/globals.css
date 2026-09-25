@@ -647,6 +647,19 @@ code { font: 0.875em var(--mono); background: var(--key); padding: 1px 6px; bord
 .person-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .person-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
 .person-you { color: var(--ink-3); font-weight: 500; }
+.person-host {
+  margin-left: 8px;
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: var(--screen);
+  color: var(--screen-ink);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  vertical-align: 1px;
+}
 .person-status { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-3); font-size: 0.75rem; }
 .person-status-hand { color: var(--warn); font-weight: 600; }
 .person-icons { display: flex; align-items: center; gap: 8px; color: var(--ink-2); }
@@ -853,6 +866,51 @@ code { font: 0.875em var(--mono); background: var(--key); padding: 1px 6px; bord
   .side-panel,
   .conference .lk-chat { position: absolute; inset: 0; z-index: 25; width: auto; margin: 0; border-radius: 0; }
 }
+/* Host's leave dialog */
+.leave-dialog {
+  width: min(440px, calc(100vw - 32px));
+  padding: 24px;
+  border: 0;
+  color: var(--ink);
+  box-shadow: var(--pop);
+}
+.leave-dialog[open] { animation: dialog-in 180ms var(--ease-out); }
+.leave-dialog::backdrop { background: oklch(0.1 0.005 70 / 0.6); }
+@keyframes dialog-in { from { opacity: 0; transform: translateY(8px) scale(0.98); } }
+.leave-title { margin: 0; font-size: 1.25rem; font-weight: 600; letter-spacing: -0.015em; }
+.leave-body { margin: 6px 0 20px; color: var(--ink-2); font-size: 0.9375rem; line-height: 1.5; }
+.leave-options { display: grid; gap: 8px; }
+.leave-option {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 14px 16px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--key);
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+  box-shadow: inset 0 1px 0 oklch(1 0 0 / 0.05);
+  transition: background-color 120ms, box-shadow 120ms;
+}
+.leave-option svg { width: 20px; height: 20px; flex-shrink: 0; color: var(--ink-2); stroke-width: 1.75; }
+.leave-option span { display: grid; gap: 2px; }
+.leave-option strong { font-size: 0.9375rem; font-weight: 600; }
+.leave-option small { color: var(--ink-3); font-size: 0.8125rem; }
+.leave-option:not(:disabled):hover { background: var(--key-hover); }
+.leave-option:disabled { opacity: 0.6; cursor: progress; }
+.leave-option-end { background: transparent; box-shadow: inset 0 0 0 1px oklch(0.64 0.2 27 / 0.55); }
+.leave-option-end svg,
+.leave-option-end strong { color: var(--alert-ink); }
+.leave-option-end:not(:disabled):hover,
+.leave-option-end:focus-visible { background: var(--alert); box-shadow: none; }
+.leave-option-end:not(:disabled):hover :is(svg, strong, small),
+.leave-option-end:focus-visible :is(svg, strong, small) { color: #fff; }
+.leave-error { margin: 12px 0 0; color: var(--alert-ink); font-size: 0.875rem; }
+.leave-cancel { width: 100%; margin-top: 12px; }
+
 @media (max-width: 560px) {
   .page-top { padding: 16px 20px; }
   .lobby-start, .lobby-live { padding: 0 20px; }

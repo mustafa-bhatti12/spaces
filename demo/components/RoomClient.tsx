@@ -3,7 +3,7 @@
 import type { LocalUserChoices } from '@livekit/components-react';
 import { PreJoin } from '@livekit/components-react';
 import type { LucideIcon } from 'lucide-react';
-import { ArrowLeft, DoorClosed, LogOut, RefreshCw, UserX, WifiOff } from 'lucide-react';
+import { ArrowLeft, CircleSlash, DoorClosed, LogOut, RefreshCw, UserX, WifiOff } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
@@ -23,6 +23,12 @@ type Stage =
 
 const END_SCREENS: Record<LeaveReason['kind'], { title: string; body: string; icon: LucideIcon; signal: Signal }> = {
   left: { title: 'You left the call', body: 'Rejoin any time with the same link.', icon: LogOut, signal: 'idle' },
+  ended: {
+    title: 'You ended the call',
+    body: 'Everyone was disconnected. Starting the room again makes a new call.',
+    icon: CircleSlash,
+    signal: 'idle',
+  },
   duplicate: {
     title: 'Continued in another tab',
     body: 'You joined this room from another tab or window in this browser, so this one was disconnected.',
@@ -36,8 +42,8 @@ const END_SCREENS: Record<LeaveReason['kind'], { title: string; body: string; ic
     signal: 'alert',
   },
   'room-closed': {
-    title: 'The room was closed',
-    body: 'The host closed this room and disconnected everyone.',
+    title: 'The call has ended',
+    body: 'The call was ended for everyone in the room.',
     icon: DoorClosed,
     signal: 'idle',
   },
