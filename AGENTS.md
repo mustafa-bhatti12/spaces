@@ -159,10 +159,18 @@ What `start-all.sh` does and doesn't do on a bare Linux host:
   `node_ip: <public IPv4>` so ICE candidates are reachable) and `.runtime/egress.yaml`.
   `SPACE_PUBLIC_IP` overrides IP detection. It does **not** start the demo on a VPS (Railway hosts it).
 - **Doesn't:** install Node (need Node 20+ first — `ensure_npm_env` only runs `npm install`),
-  install Docker (`curl -fsSL https://get.docker.com | sh`), install/configure Caddy, or daemonize —
-  it runs in the foreground and Ctrl+C / SSH hangup stops everything, so run it inside `tmux`
-  (session `space`). Ghostty's `TERM=xterm-ghostty` isn't known on the droplet:
-  `TERM=xterm-256color tmux attach -t space`.
+  install Docker (`curl -fsSL https://get.docker.com | sh`), or install/configure Caddy. It runs in
+  the foreground and supervises: if LiveKit, token-service, the compressor or its Redis exits, it
+  stops the rest and exits 1.
+- **On the droplet it runs under systemd as `spaces.service`** (`deploy/spaces.service`, symlinked
+  into `/etc/systemd/system/`; install steps are in the unit's header). It starts on boot and
+  restarts the whole stack 5 s after a service dies (`Restart=on-failure`; it gives up after 5
+  failures in 5 minutes). Use `systemctl status|restart|stop spaces` and `journalctl -u spaces -f`;
+  don't also run `start-all.sh` by hand there (two copies fight over the ports). The recording
+  container has `--restart on-failure`, and Ubuntu's `redis-server.service` is disabled because
+  `start-all.sh` runs its own Redis on 0.0.0.0 for the container. `systemctl restart spaces` drops
+  live calls; check `/admin` for rooms first. `/root/tools/stack-check.sh` checks health, every service,
+  a join over `wss://spaces.hofmigration.com` and a recording through to its compressed file.
 - **Host `ufw`:** if enabled with default-deny incoming, it also drops the Egress container's traffic
   to host Redis/LiveKit over `docker0`. It's inactive on the droplet; keep it that way, or
   `ufw allow from 172.17.0.0/16`.
@@ -178,10 +186,9 @@ What `start-all.sh` does and doesn't do on a bare Linux host:
   the stock 06:00 UTC (11:00 PKT). An install run takes 10+ minutes, pushes CPU to ~50–60%, and can
   restart `containerd`; a sudden CPU jump in `/admin` around then is that, not Spaces (`top`, look
   for `unattended-upgrade`, `apt-check`, `fwupd`, `packagekit`).
-- **A reboot does not bring calls back.** Only Caddy, Docker and Ubuntu's own `redis-server.service`
-  start on boot; LiveKit, token-service and the compressor come from `start-all.sh` in tmux, and
-  `space-egress` has restart policy `no`. After an update leaves `/var/run/reboot-required` (kernel,
-  libc), reboot in a quiet window and re-run `start-all.sh` in the `space` tmux session afterwards.
+- **Reboots are safe:** `spaces.service` brings the whole stack back (verified: up about 10 s after
+  boot, join and recording working). When an update leaves `/var/run/reboot-required` (kernel, libc),
+  reboot in a quiet window; it still drops any live call for the ~30 s it takes.
 
 Locally (macOS) the demo runs `next dev` on 8888 and the browser connects straight to
 `ws://localhost:7880` (token-service's `LIVEKIT_URL`, since `LIVEKIT_PUBLIC_URL` is unset). That only

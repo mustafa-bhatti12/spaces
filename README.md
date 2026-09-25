@@ -17,19 +17,27 @@ curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - && sudo apt-ge
 curl -fsSL https://get.docker.com | sh
 ```
 
-Start everything inside `tmux` so it survives SSH disconnects:
+Run it once in the foreground to install what's missing and generate credentials (Ctrl+C when it prints "All services running"):
 
 ```bash
-tmux new -s space
 ./start-all.sh
 ```
 
 On Linux, the first run replaces the public dev credentials with generated ones in `token-service/.env` and `demo/.env`: the LiveKit key pair, `TOKEN_SERVICE_SHARED_SECRET` and `ADMIN_SHARED_SECRET`. LiveKit and Egress run from `.runtime/*.yaml` copies that contain those keys. The committed YAML files only ever hold `devkey`/`secret`.
 
-Tell token-service which public URL to give browsers, then restart the script:
+Tell token-service which public URL to give browsers:
 
 ```bash
 echo "LIVEKIT_PUBLIC_URL=wss://space.example.com" >> token-service/.env
+```
+
+Then install it as a service so it starts on boot and restarts itself if LiveKit, token-service, the compressor or Redis dies. `deploy/spaces.service` assumes the repo is at `/root/space`; edit its paths if yours isn't.
+
+```bash
+ln -sf /root/space/deploy/spaces.service /etc/systemd/system/spaces.service
+systemctl disable --now redis-server   # start-all.sh runs its own Redis, reachable from the recording container
+systemctl daemon-reload && systemctl enable --now spaces
+systemctl status spaces                # logs: journalctl -u spaces -f, plus /tmp/*.log per service
 ```
 
 ### 2. Caddy (TLS)
