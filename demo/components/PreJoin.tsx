@@ -53,18 +53,29 @@ export function PreJoin({ defaults, joinLabel, userLabel, onValidate, onSubmit, 
   const typed = useRef(false);
 
   useEffect(() => {
-    if (defaults.username && !typed.current) setUsername(defaults.username);
+    if (defaults.username && !typed.current) {
+      setUsername(defaults.username);
+      if (inputRef.current) inputRef.current.value = defaults.username;
+    }
   }, [defaults.username]);
 
-  // Mobile autofill can fill the field without firing input events, so read the DOM value
-  // shortly after mount.
+  // Edge and mobile autofill can happen well after mount without firing React input events. Keep the
+  // validation state synchronized while this screen exists; leaving the field uncontrolled also
+  // prevents a re-render from erasing a browser-filled value before it can be observed.
   useEffect(() => {
     const sync = () => {
-      const value = inputRef.current?.value;
-      if (value) setUsername((current) => current || value);
+      const value = inputRef.current?.value ?? '';
+      setUsername((current) => (current === value ? current : value));
     };
-    const timers = [0, 150, 600].map((ms) => setTimeout(sync, ms));
-    return () => timers.forEach(clearTimeout);
+    sync();
+    const timer = window.setInterval(sync, 250);
+    window.addEventListener('focus', sync);
+    window.addEventListener('pageshow', sync);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('focus', sync);
+      window.removeEventListener('pageshow', sync);
+    };
   }, []);
 
   useEffect(() => {
@@ -193,11 +204,11 @@ export function PreJoin({ defaults, joinLabel, userLabel, onValidate, onSubmit, 
           id="username"
           name="username"
           type="text"
-          value={username}
+          defaultValue={username}
           placeholder={userLabel}
-          onChange={(e) => {
+          onInput={(e) => {
             typed.current = true;
-            setUsername(e.target.value);
+            setUsername(e.currentTarget.value);
           }}
           autoComplete="name"
         />
