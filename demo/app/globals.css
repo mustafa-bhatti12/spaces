@@ -869,9 +869,18 @@ code { font: 0.875em var(--mono); background: var(--key); padding: 1px 6px; bord
   background: var(--shell);
   box-shadow: var(--lift);
   overflow: hidden;
-  animation: panel-in 220ms var(--ease-out);
+  animation: panel-in 240ms var(--ease-drawer, cubic-bezier(0.32, 0.72, 0, 1)) both;
 }
-@keyframes panel-in { from { opacity: 0; transform: translateX(12px); } }
+@keyframes panel-in {
+  from {
+    opacity: 0;
+    transform: translateX(min(32px, 8vw)) scale(0.99);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
 .conference .lk-chat { display: grid; grid-template-rows: 60px minmax(0, 1fr) auto; align-items: stretch; }
 .side-panel-head,
 .lk-chat .lk-chat-header {
@@ -1261,6 +1270,17 @@ code { font: 0.875em var(--mono); background: var(--key); padding: 1px 6px; bord
     max-height: 100dvh;
     margin: 0;
     border-radius: 0;
+    animation-name: panel-in-mobile;
+  }
+  @keyframes panel-in-mobile {
+    from {
+      opacity: 0.7;
+      transform: translateX(100%);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
   }
   .lk-chat .lk-chat-form {
     padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
