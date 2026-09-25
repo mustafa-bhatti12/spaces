@@ -172,6 +172,16 @@ What `start-all.sh` does and doesn't do on a bare Linux host:
 - **Harmless startup lines:** `could not validate external IP ... from 172.17.0.1:7882 ... context
   canceled` is LiveKit cancelling its parallel per-interface checks once one succeeded; only worry if
   no `using external IPs` line follows.
+- **Ubuntu auto-updates run in the quiet hours.** `unattended-upgrades` is on (security updates).
+  Drop-ins in `/etc/systemd/system/apt-daily{,-upgrade}.timer.d/override.conf` move the list refresh
+  to 21:00 UTC and the install to 22:00 UTC (03:00 PKT, 02:00 UAE), each +30 min random, instead of
+  the stock 06:00 UTC (11:00 PKT). An install run takes 10+ minutes, pushes CPU to ~50–60%, and can
+  restart `containerd`; a sudden CPU jump in `/admin` around then is that, not Spaces (`top`, look
+  for `unattended-upgrade`, `apt-check`, `fwupd`, `packagekit`).
+- **A reboot does not bring calls back.** Only Caddy, Docker and Ubuntu's own `redis-server.service`
+  start on boot; LiveKit, token-service and the compressor come from `start-all.sh` in tmux, and
+  `space-egress` has restart policy `no`. After an update leaves `/var/run/reboot-required` (kernel,
+  libc), reboot in a quiet window and re-run `start-all.sh` in the `space` tmux session afterwards.
 
 Locally (macOS) the demo runs `next dev` on 8888 and the browser connects straight to
 `ws://localhost:7880` (token-service's `LIVEKIT_URL`, since `LIVEKIT_PUBLIC_URL` is unset). That only
@@ -300,7 +310,7 @@ works from the same machine; test multi-device calls on the Railway deployment.
 - `token-service/src/livekit.ts` — all LiveKit SDK calls (tokens, rooms, participants, egress, path mapping).
 - `token-service/src/index.ts` — consumer routes, including the `/recording/webhook` receiver.
 - `token-service/src/admin.ts` — the operator `/admin/*` routes (overview, health, system metrics, moderation, recording files with Range support).
-- `token-service/src/system.ts` — `GET /admin/system`: host CPU/memory/network, per-service process rows (LiveKit, token-service, compressor, Redis, Caddy, egress container), versions, TLS expiry, deployed commit. Reads `os`, `/proc`, `ps`, `docker`; Linux-only parts return null on macOS. CPU and network rates are deltas between calls, so the first call after a restart has nulls. The compressor is found by `node server.js` with a `/proc/<pid>/cwd` ending in `/compressor` (not its `sh -c` wrapper).
+- `token-service/src/system.ts` — `GET /admin/system`: host CPU/memory/network, per-service process rows (LiveKit, token-service, compressor, Redis, Caddy, egress container), versions, TLS expiry, deployed commit. Reads `os`, `/proc`, `ps` and cgroup v2 files; Linux-only parts return null on macOS. Collected only on request (no timers) and kept cheap, since the console polls it: the egress container's CPU/memory come from its cgroup (`cpu.stat`, `memory.current`), not `docker stats` (~2 s and dockerd/containerd wakeups per call), and `docker inspect` is cached 60 s (`egressContainer()`, shared with `/health`) with a `/proc/<pid>` liveness check. CPU and network rates are deltas between calls, so the first call after a restart has nulls. The compressor is found by `node server.js` with a `/proc/<pid>/cwd` ending in `/compressor` (not its `sh -c` wrapper). The console stops polling while its tab is hidden.
 - `token-service/src/recordings.ts` — recording directories, safe filename resolution, file listing.
 - `token-service/src/auth.ts` — the two bearer-secret `preHandler`s.
 - `demo/app/api/*` — call-page server routes (`connect`, `rooms`, `whoami`, `recording/{start,stop,status}`) → token-service consumer routes.
