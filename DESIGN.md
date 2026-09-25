@@ -26,15 +26,18 @@ Color never decorates. Each hue means exactly one family of states.
 
 ## Type
 
-- **Hanken Grotesk** (`--font-sans`): all UI text. Display is `clamp(2.5rem, 4.4vw, 4rem)`/600 with -0.035em tracking. Title is 1.625rem/600, body 0.9375rem, and dock legends 0.6875rem/600.
+Lean and readable: nothing in the UI is set below 12px (0.75rem) except mono badge caps, and nothing above 2.75rem.
+
+- **Hanken Grotesk** (`--font-sans`): all UI text. Display is `clamp(2rem, 3.1vw, 2.75rem)`/600 with -0.035em tracking. Title is 1.375rem/600, body and lede 0.9375rem, keys 0.875rem/600, dock legends 0.75rem/600. Form fields stay at 1rem so iOS Safari doesn't zoom on focus.
 - **JetBrains Mono** (`--font-mono`): data only, meaning room names, timers, counts, identities, file names and sizes. Always tabular numbers.
 
 ## Components
 
-- **Key** (`.key`): 44px high (58px in the dock, with the icon above a legend) and a 12px radius. It is flat with a 1px top edge highlight. Variants:
+- **Key** (`.key`): 38px high (50px in the dock, with a 19px icon above a legend; 44px icon-only below 1080px) and a 10px radius. Icons are 18px at a 1.6 stroke. It is flat with a 1px top edge highlight, and transitions use `--ease-out`. Variants:
   - `-go`: green, primary
   - `-quiet`
-  - `-danger`: outlined red that fills red on hover or focus
+  - `-danger`: outlined red that fills red on hover or focus (a destructive action offered among safe ones)
+  - `-destroy`: solid red, the confirming key of a destructive dialog
   - `-leave`
   - `-square`
   - `-wide`
@@ -43,8 +46,9 @@ Color never decorates. Each hue means exactly one family of states.
 - **LED** (`Led`): an 8px dot in live, alert, warn or idle, with `pulse` for things in progress.
 - **Dock**: the readout, then three key clusters separated by seams (media · talk · more), then Leave isolated on the right.
 - **Menu**: a panel above its key, 14px radius, with `--pop` shadow. On phones it becomes a bottom sheet.
-- **Face** (`.face`): a 16px-radius shell with the `--lift` shadow. Elevation comes from the shadow alone, never a border as well.
-- **Side panel**: a floating 16px card, and only one is open at a time (people, settings, or LiveKit's Chat restyled to match).
+- **Face** (`.face`): a 14px-radius shell with the `--lift` shadow. Elevation comes from the shadow alone, never a border as well.
+- **Side panel**: a floating 14px card, and only one is open at a time (people, settings, or LiveKit's Chat restyled to match).
+- **Leave dialog**: a compact destructive confirmation (native `<dialog>`, portaled to `body`): red-tinted icon, title, one line, and right-aligned keys with Cancel focused. Guests confirm with a `-destroy` Leave; the host also gets `-destroy` End for everyone, with Leave demoted to a plain key.
 - **Destructive actions**: always separated from safe ones by a `.danger-gap` (16px), outlined until hover or focus, and confirmed.
 
 ## Motion

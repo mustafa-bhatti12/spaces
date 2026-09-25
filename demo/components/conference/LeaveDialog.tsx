@@ -42,7 +42,7 @@ export function LeaveDialog({ onClose, onEndForAll }: { onClose: () => void; onE
   return createPortal(
     <dialog
       ref={ref}
-      className="face leave-dialog"
+      className={`face leave-dialog${onEndForAll ? ' leave-dialog-host' : ''}`}
       aria-labelledby="leave-title"
       aria-describedby="leave-body"
       onCancel={(e) => {
@@ -54,40 +54,45 @@ export function LeaveDialog({ onClose, onEndForAll }: { onClose: () => void; onE
         if (e.target === e.currentTarget && !busy) onClose();
       }}
     >
-      <h2 id="leave-title" className="leave-title">
-        Leave the call?
-      </h2>
-      <p id="leave-body" className="leave-body">
-        {onEndForAll
-          ? 'You started this call. If you only leave, everyone else can keep talking.'
-          : 'You can rejoin any time with the same link.'}
-      </p>
-      <div className="leave-options">
-        <button type="button" className="leave-option" onClick={leave} disabled={busy !== null} autoFocus>
-          <LogOut aria-hidden="true" />
-          <span>
-            <strong>{busy === 'leave' ? 'Leaving…' : 'Leave call'}</strong>
-            <small>The call continues without you</small>
-          </span>
-        </button>
-        {onEndForAll && (
-          <button type="button" className="leave-option leave-option-end" onClick={end} disabled={busy !== null}>
-            <CircleSlash aria-hidden="true" />
-            <span>
-              <strong>{busy === 'end' ? 'Ending…' : 'End call for everyone'}</strong>
-              <small>Disconnects all participants and stops any recording</small>
-            </span>
-          </button>
-        )}
+      <div className="leave-head">
+        <span className="leave-icon" aria-hidden="true">
+          <LogOut />
+        </span>
+        <div>
+          <h2 id="leave-title" className="leave-title">
+            {onEndForAll ? 'Leave or end the call?' : 'Leave the call?'}
+          </h2>
+          <p id="leave-body" className="leave-body">
+            {onEndForAll
+              ? 'You started this call. Leave and it continues without you, or end it for everyone.'
+              : 'You can rejoin any time with the same link.'}
+          </p>
+        </div>
       </div>
       {error && (
         <p className="leave-error" role="alert">
           {error}
         </p>
       )}
-      <button type="button" className="key key-quiet leave-cancel" onClick={onClose} disabled={busy !== null}>
-        Cancel
-      </button>
+      <div className="leave-actions">
+        <button type="button" className="key key-quiet" onClick={onClose} disabled={busy !== null} autoFocus>
+          Cancel
+        </button>
+        <button
+          type="button"
+          className={onEndForAll ? 'key' : 'key key-destroy'}
+          onClick={leave}
+          disabled={busy !== null}
+        >
+          {busy === 'leave' ? 'Leaving…' : 'Leave call'}
+        </button>
+        {onEndForAll && (
+          <button type="button" className="key key-destroy" onClick={end} disabled={busy !== null}>
+            <CircleSlash aria-hidden="true" />
+            {busy === 'end' ? 'Ending…' : 'End for everyone'}
+          </button>
+        )}
+      </div>
     </dialog>,
     document.body,
   );
