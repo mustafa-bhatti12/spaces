@@ -15,6 +15,7 @@ import {
 import { Track } from 'livekit-client';
 import { Hand, Lock, MicOff, MonitorUp } from 'lucide-react';
 import { initials } from '../ui/Device';
+import { MIRROR_ATTRIBUTE } from '@/lib/client/mirror';
 
 export const HAND_ATTRIBUTE = 'hand';
 
@@ -27,6 +28,7 @@ export function Tile() {
   const trackRef = useEnsureTrackRef();
   const isEncrypted = useIsEncrypted(trackRef.participant);
   const hand = useParticipantAttribute(HAND_ATTRIBUTE, { participant: trackRef.participant });
+  const mirror = useParticipantAttribute(MIRROR_ATTRIBUTE, { participant: trackRef.participant });
   const { name, identity } = useParticipantInfo({ participant: trackRef.participant });
   const { isMuted: micMuted } = useTrackMutedIndicator({
     participant: trackRef.participant,
@@ -36,7 +38,7 @@ export function Tile() {
   const label = name || identity || 'Guest';
 
   return (
-    <ParticipantTile trackRef={trackRef}>
+    <ParticipantTile trackRef={trackRef} data-camera-mirror={mirror === 'on' ? 'on' : 'off'}>
       {isTrackReference(trackRef) &&
       (trackRef.publication?.kind === 'video' || trackRef.source === Track.Source.Camera || trackRef.source === Track.Source.ScreenShare) ? (
         <VideoTrack trackRef={trackRef} />

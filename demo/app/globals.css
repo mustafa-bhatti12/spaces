@@ -618,7 +618,7 @@ code { font: 0.875em var(--mono); background: var(--key); padding: 1px 6px; bord
   height: 42px;
   border-radius: 9999px;
   background: #303030;
-  overflow: hidden;
+  overflow: visible;
   position: relative;
   transition: background-color 140ms var(--ease-out), transform 100ms var(--ease-out);
 }
@@ -656,15 +656,6 @@ code { font: 0.875em var(--mono); background: var(--key); padding: 1px 6px; bord
   position: relative;
   transition: background-color 120ms var(--ease-out), color 120ms var(--ease-out);
 }
-.dock .key-chevron::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 9px;
-  bottom: 9px;
-  width: 1px;
-  background: rgba(255, 255, 255, 0.15);
-}
 .dock .key-chevron:hover {
   background: rgba(255, 255, 255, 0.12);
   color: #fff;
@@ -676,9 +667,6 @@ code { font: 0.875em var(--mono); background: var(--key); padding: 1px 6px; bord
 .key-pair:has(.key-mic[data-state='on']) {
   background: rgba(7, 213, 135, 0.15);
   color: var(--live);
-}
-.key-pair:has(.key-mic[data-state='on']) .key-chevron::before {
-  background: rgba(7, 213, 135, 0.3);
 }
 .key-pair:has(.key-mic[data-state='on']) .dock .key-chevron,
 .key-pair:has(.key-mic[data-state='on']) [data-lk-theme] .dock .lk-button.key-chevron {
@@ -697,10 +685,6 @@ code { font: 0.875em var(--mono); background: var(--key); padding: 1px 6px; bord
   .key-pair:has(.key[data-state='off']):hover {
     background: var(--alert-hover);
   }
-}
-.key-pair:has(.key-mic[data-state='off']) .key-chevron::before,
-.key-pair:has(.key[data-state='off']) .key-chevron::before {
-  background: rgba(255, 255, 255, 0.25);
 }
 .key-pair:has(.key-mic[data-state='off']) .dock .key-chevron,
 .key-pair:has(.key-mic[data-state='off']) [data-lk-theme] .dock .lk-button.key-chevron,
@@ -1004,8 +988,13 @@ code { font: 0.875em var(--mono); background: var(--key); padding: 1px 6px; bord
 .settings-preview-off { display: inline-flex; align-items: center; gap: 8px; color: var(--ink-3); font-size: 0.875rem; }
 .settings-preview-off svg { width: 18px; height: 18px; }
 .conference[data-mirror='off'] .settings-preview video,
-.conference[data-mirror='off'] .lk-participant-media-video[data-lk-local-participant='true'][data-lk-source='camera'],
 .lk-prejoin[data-mirror='off'] .lk-video-container video { transform: none; }
+.conference .lk-participant-tile[data-camera-mirror='off'] .lk-participant-media-video[data-lk-source='camera'] {
+  transform: none !important;
+}
+.conference .lk-participant-tile[data-camera-mirror='on'] .lk-participant-media-video[data-lk-source='camera'] {
+  transform: rotateY(180deg) !important;
+}
 .switch-row {
   display: flex;
   align-items: center;

@@ -10,7 +10,7 @@ import {
 } from '@livekit/components-react';
 import { facingModeFromLocalTrack, LocalVideoTrack, Track, type LocalAudioTrack } from 'livekit-client';
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
-import { useMirrorSelfView } from '@/lib/client/mirror';
+import { useMirrorVideo } from '@/lib/client/mirror';
 
 // LiveKit's own placeholder for "no camera chosen yet". Cameras have no device with this id
 // (Chrome only has one for audio), so it must never reach getUserMedia or a device switch.
@@ -48,7 +48,7 @@ export function PreJoin({ defaults, joinLabel, userLabel, onValidate, onSubmit, 
   const [audioDeviceId, setAudioDeviceId] = useState(initial.audioDeviceId);
   const [videoDeviceId, setVideoDeviceId] = useState(initial.videoDeviceId);
   const inputRef = useRef<HTMLInputElement>(null);
-  const [mirror] = useMirrorSelfView();
+  const [mirror] = useMirrorVideo();
   const [username, setUsername] = useState(defaults.username || initial.username || '');
   const typed = useRef(false);
 

@@ -21,7 +21,7 @@ import {
 import { ConnectionState, RoomEvent, Track } from 'livekit-client';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { WifiOff } from 'lucide-react';
-import { useMirrorSelfView } from '@/lib/client/mirror';
+import { MIRROR_ATTRIBUTE, useMirrorVideo } from '@/lib/client/mirror';
 import type { Panel } from './Dock';
 import { Dock } from './Dock';
 import { ParticipantsPanel } from './ParticipantsPanel';
@@ -46,9 +46,15 @@ export function ConferenceLayout({ roomName, onEndForAll }: { roomName: string; 
   const participants = useParticipants();
   const { localParticipant } = useLocalParticipant();
   const background = useBackgroundEffect();
-  const [mirror] = useMirrorSelfView();
+  const [mirror] = useMirrorVideo();
   const { reactions, react } = useReactions();
   const rec = useRecording(roomName, localParticipant.name || localParticipant.identity);
+
+  // Participant attributes are synchronized through LiveKit, so every client renders this
+  // participant's camera with the same orientation.
+  useEffect(() => {
+    void localParticipant.setAttributes({ [MIRROR_ATTRIBUTE]: mirror ? 'on' : 'off' });
+  }, [localParticipant, mirror]);
 
   const tracks = useTracks(
     [
