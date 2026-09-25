@@ -46,7 +46,24 @@ export function PreJoin({ defaults, joinLabel, userLabel, onValidate, onSubmit, 
   const [videoEnabled, setVideoEnabled] = useState(initial.videoEnabled);
   const [audioDeviceId, setAudioDeviceId] = useState(initial.audioDeviceId);
   const [videoDeviceId, setVideoDeviceId] = useState(initial.videoDeviceId);
-  const [username, setUsername] = useState(initial.username);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [username, setUsername] = useState(defaults.username || initial.username || '');
+  const typed = useRef(false);
+
+  useEffect(() => {
+    if (defaults.username && !typed.current) setUsername(defaults.username);
+  }, [defaults.username]);
+
+  // Mobile autofill can fill the field without firing input events, so read the DOM value
+  // shortly after mount.
+  useEffect(() => {
+    const sync = () => {
+      const value = inputRef.current?.value;
+      if (value) setUsername((current) => current || value);
+    };
+    const timers = [0, 150, 600].map((ms) => setTimeout(sync, ms));
+    return () => timers.forEach(clearTimeout);
+  }, []);
 
   useEffect(() => {
     saveAudioInputEnabled(audioEnabled);
@@ -120,7 +137,9 @@ export function PreJoin({ defaults, joinLabel, userLabel, onValidate, onSubmit, 
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    if (onValidate(choices)) onSubmit(choices);
+    const name = (inputRef.current?.value || username).trim();
+    const final = { ...choices, username: name };
+    if (onValidate(final)) onSubmit(final);
   };
 
   return (
@@ -167,14 +186,18 @@ export function PreJoin({ defaults, joinLabel, userLabel, onValidate, onSubmit, 
 
       <form className="lk-username-container" onSubmit={submit}>
         <input
+          ref={inputRef}
           className="lk-form-control"
           id="username"
           name="username"
           type="text"
-          defaultValue={username}
+          value={username}
           placeholder={userLabel}
-          onChange={(e) => setUsername(e.target.value)}
-          autoComplete="off"
+          onChange={(e) => {
+            typed.current = true;
+            setUsername(e.target.value);
+          }}
+          autoComplete="name"
         />
         <button className="lk-button lk-join-button" type="submit" disabled={!isValid}>
           {joinLabel}

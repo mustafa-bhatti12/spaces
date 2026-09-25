@@ -1156,7 +1156,19 @@ code { font: 0.875em var(--mono); background: var(--key); padding: 1px 6px; bord
   .prejoin-grid .lk-prejoin .lk-username-container { margin-top: 4px; }
   .health-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .dock { grid-template-columns: auto auto; justify-content: center; }
-  .dock-readout { position: absolute; top: 22px; left: 22px; z-index: 6; height: 32px; padding: 0 10px; }
+  .dock-readout {
+    position: fixed;
+    top: calc(22px + env(safe-area-inset-top));
+    left: 22px;
+    z-index: 6;
+    max-width: calc(100vw - 44px);
+    height: 32px;
+    padding: 0 10px;
+    border-radius: 9px;
+    background: rgb(20 19 17 / 0.72);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+  }
 }
 @media (max-width: 760px) {
   .side-panel,
@@ -1273,9 +1285,16 @@ code { font: 0.875em var(--mono); background: var(--key); padding: 1px 6px; bord
   .dock .key-chevron, .dock .key-share { display: none; }
   .key-pair > .key:first-child, .key-pair > .mic-ring > .key { border-radius: 9px; }
   .dock .key-leave, [data-lk-theme] .dock .lk-disconnect-button.key-leave { min-width: 44px; height: 44px; border-radius: 9px; padding: 0 10px; }
-  .dock-readout { top: 16px; left: 16px; }
+  .dock-readout { top: calc(16px + env(safe-area-inset-top)); left: 16px; max-width: calc(100vw - 32px); }
   .menu-panel { position: fixed; left: 8px; right: 8px; bottom: 72px; transform: none; animation-name: sheet-in; }
   .toast-slot { bottom: 84px; }
+}
+@media (max-width: 420px) {
+  .dock .key,
+  .key-pair > .key:first-child,
+  .key-pair > .mic-ring > .key,
+  .dock .key-settings { width: 38px; min-width: 38px; padding: 0; }
+  .dock .key-leave, [data-lk-theme] .dock .lk-disconnect-button.key-leave { width: 48px; min-width: 48px; }
 }
 @keyframes sheet-in { from { opacity: 0; transform: translateY(8px); } }
 
