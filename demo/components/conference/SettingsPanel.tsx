@@ -2,11 +2,49 @@
 
 import { MediaDeviceSelect, useLocalParticipant, VideoTrack } from '@livekit/components-react';
 import { Track } from 'livekit-client';
-import { VideoOff } from 'lucide-react';
+import { ChevronDown, VideoOff } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 import { useMirrorVideo } from '@/lib/client/mirror';
 import { SidePanel } from './SidePanel';
 import type { BackgroundEffectControls } from './useBackgroundEffect';
 import { BACKGROUND_EFFECTS } from './useBackgroundEffect';
+
+const COLLAPSE_CAMERA_AFTER = 4;
+
+function CameraDeviceSelect() {
+  const listRef = useRef<HTMLDivElement>(null);
+  const [count, setCount] = useState(0);
+  const [expanded, setExpanded] = useState(false);
+  const collapsible = count > COLLAPSE_CAMERA_AFTER;
+
+  useEffect(() => {
+    const updateCount = () => setCount(listRef.current?.querySelectorAll('.lk-media-device-select li').length ?? 0);
+    updateCount();
+    const observer = new MutationObserver(updateCount);
+    if (listRef.current) observer.observe(listRef.current, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <div className={`settings-camera-devices${collapsible && !expanded ? ' is-collapsed' : ''}`} ref={listRef}>
+      {collapsible && (
+        <button
+          type="button"
+          className="device-list-toggle"
+          aria-expanded={expanded}
+          aria-controls="camera-device-list"
+          onClick={() => setExpanded((open) => !open)}
+        >
+          <span>Choose camera · {count} available</span>
+          <ChevronDown aria-hidden="true" />
+        </button>
+      )}
+      <div id="camera-device-list" className="device-list-content">
+        <MediaDeviceSelect kind="videoinput" />
+      </div>
+    </div>
+  );
+}
 
 /**
  * Devices and background effects, as a side panel so the call stays visible while you adjust.
@@ -34,7 +72,7 @@ export function SettingsPanel({ background, onClose }: { background: BackgroundE
               </span>
             )}
           </div>
-          <MediaDeviceSelect kind="videoinput" />
+          <CameraDeviceSelect />
           <button
             type="button"
             role="switch"

@@ -1040,6 +1040,7 @@ code { font: 0.875em var(--mono); background: var(--key); padding: 1px 6px; bord
 }
 .switch-row[aria-checked='true'] .switch { background: var(--live); }
 .switch-row[aria-checked='true'] .switch::after { transform: translateX(16px); }
+.device-list-toggle { display: none; }
 .effects-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .effect {
   position: relative;
@@ -1278,6 +1279,30 @@ code { font: 0.875em var(--mono); background: var(--key); padding: 1px 6px; bord
     font-size: 16px; /* Explicit 16px fallback for iOS Safari */
     height: 44px;
   }
+  .device-list-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    min-height: 44px;
+    padding: 0 12px;
+    border: 0;
+    border-radius: var(--r-key);
+    background: var(--key);
+    box-shadow: var(--key-edge);
+    color: var(--ink);
+    font: 600 0.875rem var(--sans);
+    cursor: pointer;
+  }
+  .device-list-toggle:active { transform: scale(0.97); }
+  .device-list-toggle svg {
+    width: 18px;
+    height: 18px;
+    color: var(--ink-2);
+    transition: transform 160ms var(--ease-out);
+  }
+  .settings-camera-devices:not(.is-collapsed) .device-list-toggle svg { transform: rotate(180deg); }
+  .settings-camera-devices.is-collapsed .device-list-content { display: none; }
 }
 /* Leave dialog: balanced Option 2 inline alignment */
 .leave-dialog {
