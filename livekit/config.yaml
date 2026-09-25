@@ -7,6 +7,13 @@ rtc:
   tcp_port: 7881
   udp_port: 7882
   use_external_ip: false
+  # Audio first on weak links. Congestion control (on by default) already steps a struggling
+  # subscriber down through video layers and never throttles audio; allow_pause (off by default)
+  # lets it pause that subscriber's video outright when even the lowest layer won't fit, instead
+  # of overshooting and dropping audio packets along with the video.
+  congestion_control:
+    enabled: true
+    allow_pause: true
 redis:
   address: localhost:6379
 keys:

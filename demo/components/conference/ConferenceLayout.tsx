@@ -26,6 +26,7 @@ import { Dock } from './Dock';
 import { ParticipantsPanel } from './ParticipantsPanel';
 import { SettingsPanel } from './SettingsPanel';
 import { Tile } from './Tile';
+import { useAudioFirst } from './useAudioFirst';
 import { useBackgroundEffect } from './useBackgroundEffect';
 import { useReactions } from './useReactions';
 import { useRecording } from './useRecording';
@@ -101,6 +102,7 @@ export function ConferenceLayout({ roomName, onEndForAll }: { roomName: string; 
     setToast(message);
     setTimeout(() => setToast((current) => (current === message ? '' : current)), 3000);
   }, []);
+  useAudioFirst(flash);
 
   const { error: recError, clearError: clearRecError } = rec;
   useEffect(() => {

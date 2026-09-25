@@ -2,12 +2,20 @@
 
 import type { LocalUserChoices } from '@livekit/components-react';
 import { RoomContext, useSequentialRoomConnectDisconnect } from '@livekit/components-react';
-import { DisconnectReason, Room, RoomEvent, VideoPresets } from 'livekit-client';
+import { DisconnectReason, Room, RoomEvent, VideoPreset, VideoPresets } from 'livekit-client';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ConferenceLayout } from './ConferenceLayout';
 import type { ConnectionDetails, LeaveReason } from './types';
 
 const DUPLICATE_CHECK_EVERY_MS = 5000;
+
+// Audio first: the SDK already sends the mic at RTCRtpEncodingParameters priority 'high'; marking the
+// camera 'very-low' makes the browser's bitrate allocator starve video before audio (Chrome reads a
+// sender's priority from its first encoding, which the SDK sets; Firefox honours it per layer). The top
+// layer is 540p (not 720p) so a weak uplink has less to shed. Screen share keeps its own encoding.
+const audioFirst = (p: VideoPreset) => new VideoPreset(p.width, p.height, p.encoding.maxBitrate, p.encoding.maxFramerate, 'very-low');
+const CAMERA_TOP = audioFirst(VideoPresets.h540);
+const CAMERA_LAYERS = [VideoPresets.h180, VideoPresets.h360].map(audioFirst);
 
 function leaveReasonFor(reason: DisconnectReason | undefined): LeaveReason {
   switch (reason) {
@@ -45,10 +53,15 @@ export function Conference({ roomName, details, choices, identity, onLeave }: Co
         dynacast: true,
         videoCaptureDefaults: {
           deviceId: choices.videoDeviceId || undefined,
-          resolution: VideoPresets.h720.resolution,
+          resolution: CAMERA_TOP.resolution,
         },
         audioCaptureDefaults: { deviceId: choices.audioDeviceId || undefined },
-        publishDefaults: { simulcast: true, red: true },
+        publishDefaults: {
+          simulcast: true,
+          red: true,
+          videoEncoding: CAMERA_TOP.encoding,
+          videoSimulcastLayers: CAMERA_LAYERS,
+        },
       }),
   );
   const { connect, disconnect } = useSequentialRoomConnectDisconnect(room);
