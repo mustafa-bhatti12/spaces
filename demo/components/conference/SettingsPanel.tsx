@@ -3,6 +3,7 @@
 import { MediaDeviceSelect, useLocalParticipant, VideoTrack } from '@livekit/components-react';
 import { Track } from 'livekit-client';
 import { VideoOff } from 'lucide-react';
+import { useMirrorSelfView } from '@/lib/client/mirror';
 import { SidePanel } from './SidePanel';
 import type { BackgroundEffectControls } from './useBackgroundEffect';
 import { BACKGROUND_EFFECTS } from './useBackgroundEffect';
@@ -13,6 +14,7 @@ import { BACKGROUND_EFFECTS } from './useBackgroundEffect';
  */
 export function SettingsPanel({ background, onClose }: { background: BackgroundEffectControls; onClose: () => void }) {
   const { localParticipant, cameraTrack } = useLocalParticipant();
+  const [mirror, setMirror] = useMirrorSelfView();
   const cameraRef = cameraTrack
     ? { participant: localParticipant, source: Track.Source.Camera, publication: cameraTrack }
     : undefined;
@@ -33,6 +35,19 @@ export function SettingsPanel({ background, onClose }: { background: BackgroundE
             )}
           </div>
           <MediaDeviceSelect kind="videoinput" />
+          <button
+            type="button"
+            role="switch"
+            aria-checked={mirror}
+            className="switch-row"
+            onClick={() => setMirror(!mirror)}
+          >
+            <span className="switch-text">
+              <span className="switch-label">Mirror my video</span>
+              <span className="switch-hint">Only you see it flipped. Others see you normally.</span>
+            </span>
+            <span className="switch" aria-hidden="true" />
+          </button>
         </section>
 
         <section className="settings-section" aria-labelledby="set-bg">

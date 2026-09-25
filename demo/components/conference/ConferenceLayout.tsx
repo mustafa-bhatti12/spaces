@@ -21,6 +21,7 @@ import {
 import { ConnectionState, RoomEvent, Track } from 'livekit-client';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { WifiOff } from 'lucide-react';
+import { useMirrorSelfView } from '@/lib/client/mirror';
 import type { Panel } from './Dock';
 import { Dock } from './Dock';
 import { ParticipantsPanel } from './ParticipantsPanel';
@@ -45,6 +46,7 @@ export function ConferenceLayout({ roomName, onEndForAll }: { roomName: string; 
   const participants = useParticipants();
   const { localParticipant } = useLocalParticipant();
   const background = useBackgroundEffect();
+  const [mirror] = useMirrorSelfView();
   const { reactions, react } = useReactions();
   const rec = useRecording(roomName, localParticipant.name || localParticipant.identity);
 
@@ -122,7 +124,7 @@ export function ConferenceLayout({ roomName, onEndForAll }: { roomName: string; 
   };
 
   return (
-    <div className="conference">
+    <div className="conference" data-mirror={mirror ? 'on' : 'off'}>
       <div className="lk-video-conference">
         <LayoutContextProvider value={layoutContext} onWidgetChange={setWidget}>
           <div className="lk-video-conference-inner">
