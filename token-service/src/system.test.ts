@@ -29,7 +29,7 @@ test('parseMeminfo converts kB to bytes', () => {
 });
 
 test('parseDockerBytes handles binary and decimal units', () => {
-  assert.equal(parseDockerBytes('25.5MiB'), 25.5 * 1024 ** 2);
+  assert.equal(parseDockerBytes('25.5MiB'), Math.round(25.5 * 1024 ** 2));
   assert.equal(parseDockerBytes(' 1.2GB '), 1.2e9);
   assert.equal(parseDockerBytes('n/a'), null);
 });

@@ -240,7 +240,7 @@ export function parseDockerBytes(text: string): number | null {
   const m = /^([\d.]+)\s*([KMGT]?i?B)$/.exec(text.trim());
   if (!m) return null;
   const unit: Record<string, number> = { B: 1, KiB: 1024, MiB: 1024 ** 2, GiB: 1024 ** 3, TiB: 1024 ** 4, KB: 1e3, MB: 1e6, GB: 1e9, TB: 1e12 };
-  return unit[m[2]] ? Number(m[1]) * unit[m[2]] : null;
+  return unit[m[2]] ? Math.round(Number(m[1]) * unit[m[2]]) : null;
 }
 
 async function egressWorker(): Promise<ServiceProcess> {
@@ -266,7 +266,8 @@ async function egressWorker(): Promise<ServiceProcess> {
 async function processes(): Promise<ServiceProcess[]> {
   const [rows, v] = await Promise.all([psRows(), versions()]);
   const compressorRow = await (async () => {
-    for (const r of rows.filter((r) => /\bnode\b.*\bserver\.js\b/.test(r.args))) {
+    // `npm start` runs it as `sh -c node server.js` -> `node server.js`; the node child is the service.
+    for (const r of rows.filter((r) => /^(\S*\/)?node\s+server\.js\b/.test(r.args))) {
       if ((await cwdOf(r.pid))?.endsWith('/compressor')) return r;
     }
     return rows.find((r) => r.args.includes('compressor/server.js'));
