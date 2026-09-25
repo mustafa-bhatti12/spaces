@@ -237,14 +237,26 @@ function Dashboard({ onLoggedOut }: { onLoggedOut: () => void }) {
     }
   }, [handleError]);
 
+  // Poll only while the tab is visible: a forgotten background tab costs the droplet nothing, and
+  // coming back refreshes everything at once.
   useEffect(() => {
-    refreshOverview();
-    refreshHealth();
-    const a = setInterval(refreshOverview, OVERVIEW_EVERY_MS);
-    const b = setInterval(refreshHealth, HEALTH_EVERY_MS);
+    let timers: ReturnType<typeof setInterval>[] = [];
+    const stop = () => {
+      timers.forEach(clearInterval);
+      timers = [];
+    };
+    const start = () => {
+      stop();
+      refreshOverview();
+      refreshHealth();
+      timers = [setInterval(refreshOverview, OVERVIEW_EVERY_MS), setInterval(refreshHealth, HEALTH_EVERY_MS)];
+    };
+    const onVisibility = () => (document.hidden ? stop() : start());
+    if (!document.hidden) start();
+    document.addEventListener('visibilitychange', onVisibility);
     return () => {
-      clearInterval(a);
-      clearInterval(b);
+      stop();
+      document.removeEventListener('visibilitychange', onVisibility);
     };
   }, [refreshOverview, refreshHealth]);
 

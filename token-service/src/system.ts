@@ -235,31 +235,102 @@ async function fromPs(name: string, row: PsRow | undefined, version: string | nu
   return { name, running: true, pid: row.pid, uptimeSec: row.uptimeSec, rssBytes: row.rssBytes, cpuPct: await procCpuPct(row.pid), version };
 }
 
-/** docker stats' MemUsage looks like "25.3MiB / 3.83GiB". */
-export function parseDockerBytes(text: string): number | null {
-  const m = /^([\d.]+)\s*([KMGT]?i?B)$/.exec(text.trim());
-  if (!m) return null;
-  const unit: Record<string, number> = { B: 1, KiB: 1024, MiB: 1024 ** 2, GiB: 1024 ** 3, TiB: 1024 ** 4, KB: 1e3, MB: 1e6, GB: 1e9, TB: 1e12 };
-  return unit[m[2]] ? Math.round(Number(m[1]) * unit[m[2]]) : null;
+// --- recording worker (Docker) ------------------------------------------------------------
+//
+// Calling the docker CLI on every poll was most of this endpoint's cost: `docker stats --no-stream`
+// blocks ~2 s and wakes dockerd/containerd each time. Instead: one `docker inspect` per minute
+// (cached), a `/proc/<pid>` liveness check per poll so a crash still shows at once, and CPU/memory
+// read from the container's cgroup v2 files, the same numbers `docker stats` reports.
+
+export interface EgressContainer {
+  status: string; // Docker's State.Status: running, exited, restarting...
+  pid: number | null;
+  startedAt: string;
+  image: string;
+  cgroupDir: string | null;
 }
+
+const EGRESS_CONTAINER = 'space-egress';
+const EGRESS_RECHECK_MS = 60_000;
+let egressCache: { at: number; value: EgressContainer | null } | null = null;
+
+/** The cgroup v2 path out of `/proc/<pid>/cgroup` ("0::/system.slice/docker-<id>.scope"). */
+export function parseCgroupV2Path(text: string): string | null {
+  const line = text.split('\n').find((l) => l.startsWith('0::'));
+  const rel = line?.slice(3).trim();
+  return rel ? `/sys/fs/cgroup${rel}` : null;
+}
+
+/** "key value" lines (cpu.stat, memory.stat) as numbers. */
+export function parseKeyValues(text: string): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const line of text.split('\n')) {
+    const [key, value] = line.trim().split(/\s+/);
+    if (key && value !== undefined && /^\d+$/.test(value)) out[key] = Number(value);
+  }
+  return out;
+}
+
+async function inspectEgress(): Promise<EgressContainer | null> {
+  const out = await run('docker', ['inspect', '-f', '{{.State.Status}}|{{.State.Pid}}|{{.State.StartedAt}}|{{.Config.Image}}', EGRESS_CONTAINER]);
+  if (!out) return null;
+  const [status, pid, startedAt, image] = out.trim().split('|');
+  const running = status === 'running' && Number(pid) > 0;
+  const cgroup = running ? await readText(`/proc/${pid}/cgroup`) : null;
+  return { status, pid: running ? Number(pid) : null, startedAt, image, cgroupDir: cgroup ? parseCgroupV2Path(cgroup) : null };
+}
+
+/**
+ * The recording worker container, or null when Docker or the container isn't there. Shared by
+ * /admin/health and /admin/system; re-inspects at most once a minute, or at once if the cached
+ * container's process has gone.
+ */
+export async function egressContainer(): Promise<EgressContainer | null> {
+  const cached = egressCache;
+  if (cached && Date.now() - cached.at < EGRESS_RECHECK_MS) {
+    const pid = cached.value?.pid;
+    const stillThere = pid ? await fs.promises.access(`/proc/${pid}`).then(() => true, () => false) : true;
+    if (stillThere) return cached.value;
+  }
+  const value = await inspectEgress();
+  egressCache = { at: Date.now(), value };
+  return value;
+}
+
+let lastEgressCpu: { at: number; pid: number; usec: number } | null = null;
 
 async function egressWorker(): Promise<ServiceProcess> {
   const name = 'Recording worker';
-  const inspect = await run('docker', ['inspect', '-f', '{{.State.Status}}|{{.State.Pid}}|{{.State.StartedAt}}|{{.Config.Image}}', 'space-egress']);
-  if (!inspect) return { name, running: false, pid: null, uptimeSec: null, rssBytes: null, cpuPct: null, version: null, detail: 'container not found or Docker unavailable' };
-  const [status, pid, startedAt, image] = inspect.trim().split('|');
-  const running = status === 'running';
-  const stats = running ? await run('docker', ['stats', '--no-stream', '--format', '{{.CPUPerc}}|{{.MemUsage}}', 'space-egress'], 6000) : null;
-  const [cpu, mem] = stats?.trim().split('|') ?? [];
+  const c = await egressContainer();
+  if (!c) return { name, running: false, pid: null, uptimeSec: null, rssBytes: null, cpuPct: null, version: null, detail: 'container not found or Docker unavailable' };
+  const running = c.pid !== null;
+  let rssBytes: number | null = null;
+  let cpuPct: number | null = null;
+  if (running && c.cgroupDir) {
+    const [cpuStat, memCurrent, memStat] = await Promise.all([
+      readText(`${c.cgroupDir}/cpu.stat`),
+      readText(`${c.cgroupDir}/memory.current`),
+      readText(`${c.cgroupDir}/memory.stat`),
+    ]);
+    // docker stats' memory figure: usage minus reclaimable page cache.
+    if (memCurrent) rssBytes = Number(memCurrent.trim()) - (memStat ? (parseKeyValues(memStat).inactive_file ?? 0) : 0);
+    const usec = cpuStat ? parseKeyValues(cpuStat).usage_usec : undefined;
+    if (usec !== undefined) {
+      const now = Date.now();
+      const prev = lastEgressCpu;
+      lastEgressCpu = { at: now, pid: c.pid as number, usec };
+      if (prev && prev.pid === c.pid && now > prev.at) cpuPct = round1((100 * (usec - prev.usec)) / 1000 / (now - prev.at));
+    }
+  }
   return {
     name,
     running,
-    pid: running ? Number(pid) : null,
-    uptimeSec: running ? Math.round((Date.now() - Date.parse(startedAt)) / 1000) : null,
-    rssBytes: mem ? parseDockerBytes(mem.split('/')[0]) : null,
-    cpuPct: cpu ? round1(Number.parseFloat(cpu)) : null,
-    version: image ?? null,
-    detail: running ? undefined : status,
+    pid: c.pid,
+    uptimeSec: running ? Math.round((Date.now() - Date.parse(c.startedAt)) / 1000) : null,
+    rssBytes,
+    cpuPct,
+    version: c.image,
+    detail: running ? undefined : c.status,
   };
 }
 

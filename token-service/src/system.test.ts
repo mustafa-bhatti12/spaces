@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseDockerBytes, parseEtime, parseMeminfo, parseNetDev } from './system';
+import { parseCgroupV2Path, parseEtime, parseKeyValues, parseMeminfo, parseNetDev } from './system';
 
 test('parseEtime reads every ps etime shape', () => {
   assert.equal(parseEtime('03:58'), 238);
@@ -28,8 +28,18 @@ test('parseMeminfo converts kB to bytes', () => {
   assert.equal(m.HugePages_Total, undefined);
 });
 
-test('parseDockerBytes handles binary and decimal units', () => {
-  assert.equal(parseDockerBytes('25.5MiB'), Math.round(25.5 * 1024 ** 2));
-  assert.equal(parseDockerBytes(' 1.2GB '), 1.2e9);
-  assert.equal(parseDockerBytes('n/a'), null);
+test('parseCgroupV2Path reads the unified (0::) hierarchy line', () => {
+  assert.equal(
+    parseCgroupV2Path('0::/system.slice/docker-8bdd29c3.scope\n'),
+    '/sys/fs/cgroup/system.slice/docker-8bdd29c3.scope',
+  );
+  // cgroup v1 hosts list controllers instead; there's no unified path to read.
+  assert.equal(parseCgroupV2Path('12:memory:/docker/8bdd\n11:cpu,cpuacct:/docker/8bdd\n'), null);
+});
+
+test('parseKeyValues reads cpu.stat / memory.stat and skips non-numeric lines', () => {
+  const v = parseKeyValues('usage_usec 1090589513\nuser_usec 439485052\ninactive_file 4096\nweird line here\n');
+  assert.equal(v.usage_usec, 1090589513);
+  assert.equal(v.inactive_file, 4096);
+  assert.equal(v.weird, undefined);
 });

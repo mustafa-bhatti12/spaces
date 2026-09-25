@@ -1,4 +1,3 @@
-import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import type { FastifyInstance, FastifyReply } from 'fastify';
@@ -14,7 +13,7 @@ import {
   stopRecording,
 } from './livekit';
 import { listRecordingFiles, RECORDING_DIRS, resolveRecordingFile } from './recordings';
-import { collectSystemSnapshot } from './system';
+import { collectSystemSnapshot, egressContainer } from './system';
 
 type Check = { ok: boolean; detail: string };
 
@@ -57,14 +56,11 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
         (res): Check => ({ ok: res.ok, detail: res.ok ? 'reachable' : `responded ${res.status}` }),
         (err: Error): Check => ({ ok: false, detail: err.message }),
       ),
-      new Promise<Check>((resolve) => {
-        // The egress worker is a Docker container started by start-all.sh; LiveKit's API only
-        // shows egress *jobs*, not whether a worker exists to pick them up.
-        execFile('docker', ['inspect', '-f', '{{.State.Status}}', 'space-egress'], { timeout: 3000 }, (err, stdout) => {
-          const status = stdout.trim();
-          resolve(err ? { ok: false, detail: 'container not found or Docker unavailable' } : { ok: status === 'running', detail: status });
-        });
-      }),
+      // The egress worker is a Docker container started by start-all.sh; LiveKit's API only shows
+      // egress *jobs*, not whether a worker exists to pick them up. Cached, see egressContainer().
+      egressContainer().then(
+        (c): Check => (c ? { ok: c.status === 'running', detail: c.status } : { ok: false, detail: 'container not found or Docker unavailable' }),
+      ),
     ]);
     const disk = await fs.promises.statfs(path.dirname(RECORDING_DIRS.compressed)).then(
       (s) => ({ freeBytes: s.bavail * s.bsize, totalBytes: s.blocks * s.bsize }),
