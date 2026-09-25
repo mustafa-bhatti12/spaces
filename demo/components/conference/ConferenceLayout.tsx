@@ -11,6 +11,7 @@ import {
   isTrackReference,
   LayoutContextProvider,
   RoomAudioRenderer,
+  useChat,
   useConnectionState,
   useCreateLayoutContext,
   useLocalParticipant,
@@ -40,7 +41,8 @@ import { useRecording } from './useRecording';
 export function ConferenceLayout({ roomName, onEndForAll }: { roomName: string; onEndForAll?: () => Promise<void> }) {
   const [widget, setWidget] = useState<WidgetState>({ showChat: false, unreadMessages: 0, showSettings: false });
   const [sidePanel, setSidePanel] = useState<Exclude<Panel, 'chat'>>(null);
-  const [toast, setToast] = useState('');
+  const [toast, setToast] = useState<{ id: number; text: string } | null>(null);
+  const toastId = useRef(0);
   const layoutContext = useCreateLayoutContext();
   const connectionState = useConnectionState();
   const participants = useParticipants();
@@ -49,6 +51,8 @@ export function ConferenceLayout({ roomName, onEndForAll }: { roomName: string; 
   const [mirror] = useMirrorVideo();
   const { reactions, react } = useReactions();
   const rec = useRecording(roomName, localParticipant.name || localParticipant.identity);
+  const { chatMessages } = useChat();
+  const lastNotifiedChatId = useRef<string | undefined>(undefined);
 
   // Participant attributes are synchronized through LiveKit, so every client renders this
   // participant's camera with the same orientation.
@@ -107,10 +111,24 @@ export function ConferenceLayout({ roomName, onEndForAll }: { roomName: string; 
   const panel: Panel = widget.showChat ? 'chat' : sidePanel;
 
   const flash = useCallback((message: string) => {
-    setToast(message);
-    setTimeout(() => setToast((current) => (current === message ? '' : current)), 3000);
+    const id = ++toastId.current;
+    setToast({ id, text: message });
+    setTimeout(() => setToast((current) => (current?.id === id ? null : current)), 3000);
   }, []);
   useAudioFirst(flash);
+
+  useEffect(() => {
+    const message = chatMessages.at(-1);
+    if (!message) return;
+    const messageId = message.id ?? String(message.timestamp);
+    if (messageId === lastNotifiedChatId.current) return;
+    lastNotifiedChatId.current = messageId;
+    if (widget.showChat || message.from?.identity === localParticipant.identity) return;
+
+    const sender = message.from?.name || message.from?.identity || 'Someone';
+    const preview = message.message.trim().replace(/\s+/g, ' ') || 'Sent an attachment';
+    flash(`${sender}: ${preview.length > 120 ? `${preview.slice(0, 117)}…` : preview}`);
+  }, [chatMessages, flash, localParticipant.identity, widget.showChat]);
 
   const { error: recError, clearError: clearRecError } = rec;
   useEffect(() => {
@@ -189,8 +207,8 @@ export function ConferenceLayout({ roomName, onEndForAll }: { roomName: string; 
       <RoomAudioRenderer />
       <div className="toast-slot" role="status" aria-live="polite">
         {toast && (
-          <div className="toast" key={toast}>
-            {toast}
+          <div className="toast" key={toast.id}>
+            {toast.text}
           </div>
         )}
       </div>

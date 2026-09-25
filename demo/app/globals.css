@@ -734,8 +734,8 @@ code { font: 0.875em var(--mono); background: var(--key); padding: 1px 6px; bord
   margin: 0;
   padding: 0 4px;
   border-radius: 9px;
-  background: var(--live);
-  color: var(--live-ink);
+  background: #3d3d3d;
+  color: #fff;
   border: 2px solid #1e1f20;
   font: 700 0.65rem/14px var(--mono);
   text-align: center;
