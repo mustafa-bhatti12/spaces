@@ -542,74 +542,126 @@ code { font: 0.875em var(--mono); background: var(--key); padding: 1px 6px; bord
   gap: 16px;
   padding: 10px 14px 12px;
 }
-.dock-readout { justify-self: start; max-width: 100%; }
+.dock-readout { justify-self: start; max-width: 100%; background: #181715; border: 1px solid #33302a; border-radius: 10px; }
 .dock-room { display: block; max-width: 22ch; overflow: hidden; text-overflow: ellipsis; }
-.dock-keys { display: flex; align-items: center; gap: 4px; padding: 5px; border-radius: 15px; background: var(--shell); box-shadow: var(--lift); }
-.cluster { display: flex; align-items: center; gap: 4px; }
-.cluster + .cluster { margin-left: 4px; padding-left: 8px; border-left: 1px solid var(--seam-soft); }
+.dock-keys {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 5px;
+  border-radius: 14px;
+  background: #1c1b18;
+  border: 1px solid #33302a;
+  box-shadow: 0 16px 40px -8px rgba(0, 0, 0, 0.8), 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+.cluster { display: flex; align-items: center; gap: 3px; }
+.cluster + .cluster { margin-left: 5px; padding-left: 7px; border-left: 1px solid #33302a; }
 .dock-end { justify-self: end; display: flex; align-items: center; gap: 8px; }
 
-.dock .key { flex-direction: column; gap: 4px; height: 50px; min-width: 56px; padding: 0 8px; }
+.dock .key {
+  flex-direction: column;
+  gap: 4px;
+  height: 48px;
+  min-width: 58px;
+  padding: 0 10px;
+  background: transparent;
+  border: 0;
+  border-radius: 9px;
+  color: var(--ink-2);
+  transition: all 0.12s ease;
+}
+.dock .key:hover { background: #2a2924; color: var(--ink); }
 .dock .key svg { width: 19px; height: 19px; }
-.legend { color: var(--ink-2); font-size: 0.75rem; font-weight: 600; letter-spacing: 0.01em; line-height: 1; }
+.legend { color: inherit; font-size: 0.72rem; font-weight: 550; letter-spacing: 0.01em; line-height: 1; }
 .dock .key[aria-pressed='true'] .legend,
 .dock .key[aria-expanded='true'] .legend { color: var(--ink); }
 .key-pair { display: inline-flex; align-items: stretch; }
 .key-pair > .key:first-child,
 .key-pair > .mic-ring > .key { border-top-right-radius: 4px; border-bottom-right-radius: 4px; }
 .dock .key-chevron,
-[data-lk-theme] .dock .lk-button.key-chevron { min-width: 0; width: 22px; padding: 0; margin-left: 2px; border-top-left-radius: 4px; border-bottom-left-radius: 4px; }
+[data-lk-theme] .dock .lk-button.key-chevron { min-width: 0; width: 20px; padding: 0; margin-left: 1px; border-radius: 9px; }
 .dock .key-chevron::after { margin: 0; }
-.mic-ring { display: inline-flex; border-radius: var(--r-key); }
+.mic-ring { display: inline-flex; border-radius: 9px; }
 
 /* The mic key is the lit ring: green while live, red while muted, brighter while you speak. */
-.dock .key[data-state] { background: var(--key); }
-.dock .key[data-state]:not(:disabled):hover { background: var(--key-hover); }
-.dock .key-mic[data-state='on'] { box-shadow: inset 0 0 0 2px var(--live); }
+.dock .key[data-state] { background: transparent; }
+.dock .key[data-state]:not(:disabled):hover { background: #2a2924; }
+.dock .key-mic[data-state='on'] { background: rgba(7, 213, 135, 0.12); color: var(--live); box-shadow: none; }
 .dock .key-mic[data-state='on'] svg { color: var(--live); }
-.dock .key-mic[data-state='off'] { background: var(--alert-soft); box-shadow: inset 0 0 0 2px var(--alert); }
+.dock .key-mic[data-state='on'] .legend { color: var(--live); font-weight: 650; }
+.dock .key-mic[data-state='off'] { background: rgba(224, 72, 56, 0.12); color: #ff8577; box-shadow: none; }
 .dock .key-mic[data-state='off'] svg,
-.dock .key-mic[data-state='off'] .legend { color: var(--alert-ink); }
-.dock .key-mic[data-state='off']:not(:disabled):hover { background: oklch(0.64 0.2 27 / 0.28); }
-.mic-ring-speaking .key-mic[data-state='on'] { box-shadow: inset 0 0 0 2px var(--live), 0 0 0 4px oklch(0.79 0.17 152 / 0.3); }
+.dock .key-mic[data-state='off'] .legend { color: #ff8577; }
+.dock .key-mic[data-state='off']:not(:disabled):hover { background: rgba(224, 72, 56, 0.2); }
+.mic-ring-speaking .key-mic[data-state='on'] { background: rgba(7, 213, 135, 0.2); box-shadow: 0 0 12px rgba(7, 213, 135, 0.3); }
 .dock .key[data-state='off']:not(.key-mic) svg { color: var(--ink-3); }
-.dock .key-share[data-state='on'] { background: var(--live-soft); }
+.dock .key-share[data-state='on'] { background: rgba(7, 213, 135, 0.12); color: var(--live); }
 .dock .key-share[data-state='on'] svg { color: var(--live); }
+.dock .key-share[data-state='on'] .legend { color: var(--live); font-weight: 650; }
 
 .key-count {
   position: absolute;
-  top: 5px;
-  right: 7px;
+  top: -4px;
+  right: -2px;
   min-width: 18px;
   height: 18px;
-  padding: 0 5px;
+  padding: 0 4px;
   border-radius: 9px;
-  background: var(--key-press);
+  background: #2a2924;
   color: var(--ink);
-  font: 600 0.6875rem/18px var(--mono);
+  border: 2px solid #1c1b18;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.4);
+  font: 700 0.65rem/14px var(--mono);
   text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 .lk-chat-toggle.key[data-lk-unread-msgs]:not([data-lk-unread-msgs='0'])::after {
-  top: 5px;
-  right: 7px;
+  position: absolute;
+  top: -4px;
+  right: -2px;
   left: auto;
   min-width: 18px;
   height: 18px;
   margin: 0;
-  padding: 0 5px;
+  padding: 0 4px;
   border-radius: 9px;
   background: var(--live);
   color: var(--live-ink);
-  font: 700 0.6875rem/18px var(--mono);
+  border: 2px solid #1c1b18;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.4);
+  font: 700 0.65rem/14px var(--mono);
   text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 .dock .key-flag { background: var(--warn-soft); }
 .dock .key-flag svg, .dock .key-flag .legend { color: var(--warn); }
 .key-flag-rec::after { content: ''; position: absolute; top: 8px; right: 12px; width: 7px; height: 7px; border-radius: 50%; background: var(--alert); }
 .dock .key-leave,
-[data-lk-theme] .dock .lk-disconnect-button.key-leave { min-width: 64px; background: var(--alert); color: #fff; box-shadow: none; }
-.dock .key-leave .legend { color: #fff; }
-.dock .key-leave:not(:disabled):hover { background: var(--alert-hover); }
+[data-lk-theme] .dock .lk-disconnect-button.key-leave {
+  height: 48px;
+  min-width: 72px;
+  padding: 0 16px;
+  border-radius: 10px;
+  background: #2a2220;
+  border: 1px solid #452b27;
+  color: #ff8577;
+  font-weight: 650;
+  font-size: 0.85rem;
+  box-shadow: none;
+  transition: all 0.12s ease;
+}
+.dock .key-leave svg { color: inherit; }
+.dock .key-leave .legend { color: inherit; font-size: inherit; font-weight: inherit; }
+.dock .key-leave:not(:disabled):hover {
+  background: #3d2723;
+  border-color: #633630;
+  color: #ffa194;
+}
+
 .dock .lk-start-audio-button { height: 50px; }
 
 /* Menus above the dock */
@@ -922,7 +974,7 @@ code { font: 0.875em var(--mono); background: var(--key); padding: 1px 6px; bord
   .dock .key { height: 44px; min-width: 44px; padding: 0 10px; }
   .dock .key-chevron { min-width: 0; width: 22px; }
   .dock .legend { display: none; }
-  .key-count, .lk-chat-toggle.key[data-lk-unread-msgs]:not([data-lk-unread-msgs='0'])::after { top: 3px; right: 3px; }
+  .key-count, .lk-chat-toggle.key[data-lk-unread-msgs]:not([data-lk-unread-msgs='0'])::after { top: -4px; right: -2px; }
   .dock-readout .readout-seg:nth-child(2) { display: none; }
   .key-flag-rec::after { top: 6px; right: 6px; }
 }
@@ -993,14 +1045,14 @@ code { font: 0.875em var(--mono); background: var(--key); padding: 1px 6px; bord
   .room-person .person-info { flex-basis: calc(100% - 60px); }
   .stage { padding: 8px 8px 0; }
   .dock { gap: 6px; padding: 8px 6px calc(10px + env(safe-area-inset-bottom)); }
-  .dock-keys { gap: 3px; padding: 4px; border-radius: 16px; }
+  .dock-keys { gap: 3px; padding: 4px; border-radius: 14px; background: #1c1b18; border: 1px solid #33302a; }
   .cluster { gap: 3px; }
-  .cluster + .cluster { margin-left: 2px; padding-left: 5px; }
-  .dock .key { height: 44px; min-width: 42px; padding: 0 9px; border-radius: 10px; }
+  .cluster + .cluster { margin-left: 2px; padding-left: 5px; border-left: 1px solid #33302a; }
+  .dock .key { height: 44px; min-width: 42px; padding: 0 8px; border-radius: 9px; }
   .dock .key svg { width: 19px; height: 19px; }
   .dock .key-chevron, .dock .key-share { display: none; }
-  .key-pair > .key:first-child, .key-pair > .mic-ring > .key { border-radius: 10px; }
-  .dock .key-leave, [data-lk-theme] .dock .lk-disconnect-button.key-leave { min-width: 44px; }
+  .key-pair > .key:first-child, .key-pair > .mic-ring > .key { border-radius: 9px; }
+  .dock .key-leave, [data-lk-theme] .dock .lk-disconnect-button.key-leave { min-width: 44px; height: 44px; border-radius: 9px; padding: 0 10px; }
   .dock-readout { top: 16px; left: 16px; }
   .menu-panel { position: fixed; left: 8px; right: 8px; bottom: 72px; transform: none; animation-name: sheet-in; }
   .toast-slot { bottom: 84px; }

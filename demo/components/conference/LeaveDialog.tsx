@@ -75,14 +75,12 @@ export function LeaveDialog({ onClose, onEndForAll }: { onClose: () => void; onE
         </p>
       )}
       <div className="leave-actions">
-        <button type="button" className="key key-quiet" onClick={onClose} disabled={busy !== null} autoFocus>
-          Cancel
-        </button>
         <button
           type="button"
           className={onEndForAll ? 'key' : 'key key-destroy'}
           onClick={leave}
           disabled={busy !== null}
+          autoFocus
         >
           {busy === 'leave' ? 'Leaving…' : 'Leave call'}
         </button>
