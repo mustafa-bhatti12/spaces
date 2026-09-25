@@ -18,10 +18,19 @@ export const BACKGROUND_EFFECTS: { effect: BackgroundEffect; label: string; prev
   { effect: { id: 'none' }, label: 'None' },
   { effect: { id: 'blur-light', blurRadius: 8 }, label: 'Blur' },
   { effect: { id: 'blur-strong', blurRadius: 20 }, label: 'Strong blur' },
-  ...['ocean', 'sunset', 'forest', 'studio'].map((name) => ({
-    effect: { id: name, imagePath: `/backgrounds/${name}.jpg` },
-    label: name[0].toUpperCase() + name.slice(1),
-    preview: `/backgrounds/${name}.jpg`,
+  ...[
+    { id: 'studio', label: 'Studio' },
+    { id: 'workspace', label: 'Desk' },
+    { id: 'loft', label: 'Loft' },
+    { id: 'forest', label: 'Forest' },
+    { id: 'ocean', label: 'Ocean' },
+    { id: 'coast', label: 'Mountain' },
+    { id: 'sunset', label: 'Sunset' },
+    { id: 'golden-hour', label: 'Canopy' },
+  ].map(({ id, label }) => ({
+    effect: { id, imagePath: `/backgrounds/${id}.jpg` },
+    label,
+    preview: `/backgrounds/${id}.jpg`,
   })),
 ];
 

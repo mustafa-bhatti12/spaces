@@ -7,7 +7,7 @@ import { ArrowLeft, CircleSlash, DoorClosed, LogOut, RefreshCw, UserX, WifiOff }
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
-import { getDeviceId } from '@/lib/client/identity';
+import { getDeviceId, getSavedDisplayName, saveDisplayName } from '@/lib/client/identity';
 import type { ConnectionDetails, LeaveReason } from './conference/types';
 import type { Signal } from './ui/Device';
 import { Led, Readout, ReadoutSegment, Wordmark } from './ui/Device';
@@ -84,10 +84,16 @@ function occupancyText(count: number | null): string {
 
 export function RoomClient({ roomName }: { roomName: string }) {
   const [stage, setStage] = useState<Stage>({ kind: 'prejoin' });
+  const [defaultName, setDefaultName] = useState('');
   const occupancy = useRoomOccupancy(roomName, stage.kind !== 'in-call');
+
+  useEffect(() => {
+    setDefaultName(getSavedDisplayName());
+  }, []);
 
   const handleSubmit = useCallback(
     async (choices: LocalUserChoices) => {
+      saveDisplayName(choices.username);
       setStage({ kind: 'joining' });
       const identity = getDeviceId();
       try {
@@ -177,12 +183,14 @@ export function RoomClient({ roomName }: { roomName: string }) {
         </div>
         <PreJoin
           persistUserChoices
+          defaults={{ username: defaultName }}
           joinLabel={stage.kind === 'joining' ? 'Joining…' : 'Join call'}
-          userLabel="Your name"
+          userLabel="Enter your name (e.g. Alex)"
           onValidate={(values) => values.username.trim().length > 0 && stage.kind !== 'joining'}
           onSubmit={handleSubmit}
           onError={(err) => setStage({ kind: 'prejoin', error: err.message })}
         />
+        <p className="prejoin-hint">Others in the room will see this name on your video tile.</p>
         <p className="prejoin-error note note-alert" role="alert" hidden={!error}>
           {error}
         </p>
