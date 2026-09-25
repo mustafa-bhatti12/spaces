@@ -43,10 +43,14 @@ Space is a neutral, unbranded video tool that any future app can embed through t
   - invite link
   - fullscreen
   - reconnect banner
-  - end screens: left, removed, room closed, duplicate tab, error
+  - host (whoever started the room) can end the call for everyone; everyone confirms Leave
+  - audio first on weak connections: video pauses before audio breaks up
+  - relay over HTTPS (TURN on 443) for networks that block direct media
+  - end screens: left, you ended the call, call ended (by the host or an admin), removed, duplicate tab, error
 - Admin features:
   - password login
   - service health (LiveKit, recording worker, compressor, disk)
+  - server metrics: CPU, memory, network, TLS expiry, deployed commit, per-service processes
   - live rooms and participants, with mute, remove, and close-room actions
   - start and stop recordings
   - a recordings list with play, download, and delete
@@ -54,13 +58,13 @@ Space is a neutral, unbranded video tool that any future app can embed through t
 
 ## Brand Commitments
 
-- Product name in UI: "Space" (call UI previously titled "Space Meet"; admin "Space Control Center").
+- Product name in UI: "Spaces", shown by the `Logo` SVG (dotted-box mark plus lowercase "spaces" wordmark, `demo/components/ui/Logo.tsx`); the admin is "Spaces Control Center".
 - Neutral and generic by design; no HOF Migration or Petition Studio identity.
 
 ## Evidence on Hand
 
-- Four virtual-background photos in `demo/public/backgrounds/` (ocean, sunset, forest, studio).
-- No logo, no customers, no testimonials, and no metrics. None of these may be invented.
+- Eight virtual-background photos in `demo/public/backgrounds/` (coast, forest, golden-hour, loft, ocean, studio, sunset, workspace).
+- The Spaces logo. No customers, no testimonials, and no metrics. None of these may be invented.
 
 ## Product Principles
 

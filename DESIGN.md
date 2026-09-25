@@ -1,4 +1,4 @@
-# Design: Space
+# Design: Spaces
 
 The built system lives in `demo/app/globals.css`, with primitives in `demo/components/ui/*`. Product context is in `PRODUCT.md`.
 
@@ -22,7 +22,7 @@ The design is modelled on the meeting-room speakerphone everyone knows: matte gr
 | `--alert` | `oklch(0.64 0.2 27)` | muted, recording, Leave, destructive |
 | `--warn` | `oklch(0.83 0.15 80)` | raised hand, reconnecting, stale data |
 
-Color never decorates. Each hue means exactly one family of states.
+Color never decorates. Each hue means exactly one family of states. The one exception is the logo's brand green (`#07D587`), used only in the logo's accent dot and the pre-join avatar placeholder.
 
 ## Type
 
@@ -33,6 +33,7 @@ Lean and readable: nothing in the UI is set below 12px (0.75rem) except mono bad
 
 ## Components
 
+- **Logo** (`Logo` / `LogoMark` in `demo/components/ui/Logo.tsx`): the dotted-box mark plus the lowercase "spaces" wordmark, in `currentColor` apart from the green dot. `Wordmark` renders it at 22px high, with an optional suffix ("Control Center") after a seam.
 - **Key** (`.key`): 38px high (50px in the dock, with a 19px icon above a legend; 44px icon-only below 1080px) and a 10px radius. Icons are 18px at a 1.6 stroke. It is flat with a 1px top edge highlight, and transitions use `--ease-out`. Variants:
   - `-go`: green, primary
   - `-quiet`

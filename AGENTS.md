@@ -1,6 +1,8 @@
-# Space: working rules for AI agents
+# Spaces: working rules for AI agents
 
-Read this before changing anything in this repo.
+Read this before changing anything in this repo. It holds facts and rules; the step-by-step
+droplet procedures (deploy, safe restart, verify) are in the `spaces-droplet-ops` skill. The product
+is called **Spaces** in the UI (`demo/components/ui/Logo.tsx`); the repo and paths still say `space`.
 
 **The stack in one line:** a self-hosted LiveKit video-calling stack — `livekit-server` (media),
 `token-service` (TS/Fastify, the only holder of LiveKit credentials), `compressor` (JS/Fastify,
@@ -14,6 +16,24 @@ parent `space-repos/` workspace) — it decides who may join which room and call
 API; it never gets its own LiveKit credentials. Don't add anything Petition-Studio-specific here;
 keep this repo generic so any future consumer can reuse it the same way. Don't edit anything inside
 `hof-petition-studio/` from this repo's context — that repo owns its own `AGENTS.md`.
+
+## Working here
+
+- **The user edits and commits in parallel.** Run `git status --short` first, stage only the paths
+  you changed (`git add <path>…`, or `git commit -m … -- <path>…` for tracked files), never
+  `git add -A` / `commit -a`. Their uncommitted files are theirs; leave them alone.
+- **Where a change goes live:** push to `main` → Railway rebuilds `demo` by itself (a few minutes).
+  Droplet changes need `ssh space-do 'cd ~/space && git pull -q --ff-only'`. token-service runs
+  under `tsx watch`, so a pull reloads it with no call impact. Anything else (`start-all.sh`,
+  `livekit/config.yaml`, `egress/config.yaml`, compressor, `.env`) needs `systemctl restart
+  spaces`, which drops live calls: check for live rooms first and ask the user if anyone is in one.
+- **Verify on the real surface:** `/root/tools/stack-check.sh` on the droplet (health, every
+  service, a join over the public URL, a recording through to its compressed file); `puppeteer-core`
+  scripts in `/tmp` for UI and calls (see "Testing"). `npm test` in `token-service`, `npm run build`
+  in `demo`.
+- **Record what shipped** in `CHANGELOG.md` (newest first, one line per user-visible change), and
+  update this file when you learn a fact the next agent would otherwise rediscover. Delete facts
+  that stop being true instead of adding a correction next to them.
 
 ---
 
@@ -190,15 +210,15 @@ What `start-all.sh` does and doesn't do on a bare Linux host:
   failures in 5 minutes). Use `systemctl status|restart|stop spaces` and `journalctl -u spaces -f`;
   don't also run `start-all.sh` by hand there (two copies fight over the ports). The recording
   container has `--restart on-failure`, and Ubuntu's `redis-server.service` is disabled because
-  `start-all.sh` runs its own Redis on 0.0.0.0 for the container. `systemctl restart spaces` drops
-  live calls; check `/admin` for rooms first. `/root/tools/stack-check.sh` checks health, every service,
-  a join over `wss://spaces.hofmigration.com` and a recording through to its compressed file.
+  `start-all.sh` runs its own Redis on 0.0.0.0 for the container. The tools on the droplet are
+  `/root/tools/stack-check.sh` (full end-to-end check), `/root/tools/lk` (LiveKit CLI) and
+  `/root/tools/turn-enable.sh` (the one-off TURN switch-on, already run).
 - **Host `ufw`:** if enabled with default-deny incoming, it also drops the Egress container's traffic
   to host Redis/LiveKit over `docker0`. It's inactive on the droplet; keep it that way, or
   `ufw allow from 172.17.0.0/16`.
 - **Logs:** `/tmp/livekit.log`, `/tmp/token-service.log`, `/tmp/compressor.log`, `/tmp/redis.log`,
-  `/tmp/demo.log` (local only), `/tmp/start-all.log` (when run via `tee`), `docker logs space-egress`,
-  `journalctl -u caddy`.
+  `/tmp/demo.log` (local only), `journalctl -u spaces` (start-all's own output: which service died,
+  restarts), `docker logs space-egress`, `journalctl -u caddy`.
 - **Harmless startup lines:** `could not validate external IP ... from 172.17.0.1:7882 ... context
   canceled` is LiveKit cancelling its parallel per-interface checks once one succeeded; only worry if
   no `using external IPs` line follows.
@@ -274,8 +294,8 @@ works from the same machine; test multi-device calls on the Railway deployment.
   `next/dynamic(..., { ssr: false })`** from a client component (`RoomClient.tsx`).
 - **`livekit-server` drains on the first SIGTERM**: it keeps running (and holding 7880/7881/7882)
   until every participant leaves, so a replacement started right away just dies on the busy ports.
-  A second SIGTERM forces it down. Restarting it on the droplet drops live calls; check
-  `/admin/api/overview` for rooms first.
+  A second SIGTERM forces it down. `systemctl restart spaces` doesn't wait for the drain: start-all's
+  `cleanup` sends one SIGTERM, then systemd kills what's left (`KillMode=mixed`).
 - **Audio first is split between server and client.** Downlink: the SFU's congestion control never
   throttles audio and steps video down per subscriber; `allow_pause: true` (`livekit/config.yaml`,
   default `false`) lets it pause video when even the lowest layer won't fit. Uplink: the SDK sends
@@ -291,7 +311,9 @@ works from the same machine; test multi-device calls on the Railway deployment.
   `puppeteer-core` driving Chrome for Testing (`~/.cache/puppeteer/chrome/...`) launched with
   `--use-fake-device-for-media-stream --use-fake-ui-for-media-stream`, one `browser.createBrowserContext()`
   per participant (separate localStorage → separate identities). Keep such scripts throwaway (e.g.
-  `/tmp`), not in the repo. The omp built-in browser tool's screenshots hung in this environment.
+  `/tmp`), not in the repo. The omp browser tool's screenshots hung here once (Sept 2026); use
+  puppeteer for scripted runs and `bsk` when you need the user's logged-in Chrome (Railway,
+  Bluehost, GitHub settings).
 - LiveKit's Chat panel stays mounted while hidden (`display: none`): wait for
   `.lk-chat-form-input` to be **visible** before typing, or keystrokes are silently lost.
 - Verify the server/egress layers with the `lk` CLI (`lk room join --url ws://localhost:7880
@@ -321,7 +343,7 @@ works from the same machine; test multi-device calls on the Railway deployment.
   attention). A recessed mono "status screen" (`Readout`) shows facts. Fonts are Hanken Grotesk +
   JetBrains Mono (`next/font`), and icons come from `lucide-react`. `@livekit/components-styles`
   stays underneath for layout mechanics, with its `--lk-*` theme variables remapped to Space tokens.
-  Rationale lives in `PRODUCT.md`.
+  Tokens, components and breakpoints are in `DESIGN.md`; users and principles in `PRODUCT.md`.
 - `devkey` / `secret` appearing everywhere (`.env.example`, `livekit/config.yaml`,
   `egress/config.yaml`) is LiveKit's own published fixed dev credential, not a real secret — fine to
   commit, fine to see in logs. Real values exist only in gitignored `.env` files / `.runtime/` on the
@@ -339,7 +361,7 @@ works from the same machine; test multi-device calls on the Railway deployment.
 - `token-service/src/livekit.ts` — all LiveKit SDK calls (tokens, rooms, participants, egress, path mapping).
 - `token-service/src/index.ts` — consumer routes, including the `/recording/webhook` receiver.
 - `token-service/src/admin.ts` — the operator `/admin/*` routes (overview, health, system metrics, moderation, recording files with Range support).
-- `token-service/src/system.ts` — `GET /admin/system`: host CPU/memory/network, per-service process rows (LiveKit, token-service, compressor, Redis, Caddy, egress container), versions, TLS expiry, deployed commit. Reads `os`, `/proc`, `ps` and cgroup v2 files; Linux-only parts return null on macOS. Collected only on request (no timers) and kept cheap, since the console polls it: the egress container's CPU/memory come from its cgroup (`cpu.stat`, `memory.current`), not `docker stats` (~2 s and dockerd/containerd wakeups per call), and `docker inspect` is cached 60 s (`egressContainer()`, shared with `/health`) with a `/proc/<pid>` liveness check. CPU and network rates are deltas between calls, so the first call after a restart has nulls. The compressor is found by `node server.js` with a `/proc/<pid>/cwd` ending in `/compressor` (not its `sh -c` wrapper). The console stops polling while its tab is hidden.
+- `token-service/src/system.ts` — `GET /admin/system`: host CPU/memory/network, per-service process rows, versions, TLS expiry, deployed commit. Linux-only parts return null on macOS; rates are deltas between calls (first call after a restart has nulls). It runs on every console poll, so keep it cheap; the comments explain why it reads cgroup files instead of `docker stats`.
 - `token-service/src/recordings.ts` — recording directories, safe filename resolution, file listing.
 - `token-service/src/auth.ts` — the two bearer-secret `preHandler`s.
 - `demo/app/api/*` — call-page server routes (`connect`, `rooms`, `whoami`, `recording/{start,stop,status}`) → token-service consumer routes.
@@ -359,3 +381,4 @@ works from the same machine; test multi-device calls on the Railway deployment.
 - `.runtime/` (gitignored, mode 700) — generated `livekit.yaml` / `egress.yaml` with the real key
   pair; never edit, edit the committed templates. Runtime logs: `/tmp/*.log` (see "Deployment").
 - `README.md` — user-facing quick start (local setup, droplet + Caddy + Railway deploy, UI feature list). This file is agent-facing; keep the two in sync but don't duplicate wholesale.
+- `CHANGELOG.md` — what shipped, newest first. `DESIGN.md` / `PRODUCT.md` — the UI system and product context (the `impeccable` skill reads them).
