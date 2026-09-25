@@ -151,3 +151,6 @@ dump.rdb
 
 # start-all.sh runtime configs (contain the real LiveKit key pair on a VPS)
 .runtime/
+
+# macOS Finder metadata
+.DS_Store

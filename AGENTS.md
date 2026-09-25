@@ -299,7 +299,8 @@ works from the same machine; test multi-device calls on the Railway deployment.
 
 - `token-service/src/livekit.ts` — all LiveKit SDK calls (tokens, rooms, participants, egress, path mapping).
 - `token-service/src/index.ts` — consumer routes, including the `/recording/webhook` receiver.
-- `token-service/src/admin.ts` — the operator `/admin/*` routes (overview, health, moderation, recording files with Range support).
+- `token-service/src/admin.ts` — the operator `/admin/*` routes (overview, health, system metrics, moderation, recording files with Range support).
+- `token-service/src/system.ts` — `GET /admin/system`: host CPU/memory/network, per-service process rows (LiveKit, token-service, compressor, Redis, Caddy, egress container), versions, TLS expiry, deployed commit. Reads `os`, `/proc`, `ps`, `docker`; Linux-only parts return null on macOS. CPU and network rates are deltas between calls, so the first call after a restart has nulls. The compressor is found by `node server.js` with a `/proc/<pid>/cwd` ending in `/compressor` (not its `sh -c` wrapper).
 - `token-service/src/recordings.ts` — recording directories, safe filename resolution, file listing.
 - `token-service/src/auth.ts` — the two bearer-secret `preHandler`s.
 - `demo/app/api/*` — call-page server routes (`connect`, `rooms`, `whoami`, `recording/{start,stop,status}`) → token-service consumer routes.
@@ -308,7 +309,7 @@ works from the same machine; test multi-device calls on the Railway deployment.
 - `demo/components/RoomClient.tsx` — pre-join (LiveKit `PreJoin`) → join → end screen.
 - `demo/components/conference/*` — `Conference` (Room lifecycle, audio-first publish defaults, duplicate-identity heartbeat, host's end-for-everyone), `ConferenceLayout` (VideoConference prefab expanded; one side panel at a time), `Dock` (status readout · media · talk · more · Leave), `LeaveDialog` (leave confirmation for everyone; host also gets end-for-everyone), `Tile`, `SidePanel`, `ParticipantsPanel`, `SettingsPanel` + `useBackgroundEffect`, `useAudioFirst` (pauses the camera on a weak uplink), `useReactions`, `useRecording`.
 - `demo/components/ui/*` — `Menu` (dock popover), `Device` (wordmark, LED, readout, initials).
-- `demo/components/admin/AdminDashboard.tsx` — the control center UI.
+- `demo/components/admin/AdminDashboard.tsx` — the control center UI; `ServerPanel.tsx` (Server section: metric strips + processes table); `format.ts` (bytes, rates, durations).
 - `demo/public/backgrounds/*.jpg` — virtual-background images.
 - `compressor/server.js` — the one `/compress` endpoint.
 - `livekit/config.yaml`, `egress/config.yaml` — real (non-`--dev`) server config templates with the dev key pair; read the comments in each before editing.
