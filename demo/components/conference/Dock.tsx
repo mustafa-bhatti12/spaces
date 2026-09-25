@@ -28,6 +28,7 @@ import {
   Minimize,
   MonitorOff,
   MonitorUp,
+  PhoneOff,
   Settings2,
   SmilePlus,
   Users,
@@ -343,7 +344,6 @@ export function Dock({ roomName, participantCount, panel, onTogglePanel, onReact
                 <MenuItem
                   icon={Settings2}
                   checked={panel === 'settings'}
-                  hint="Devices, background"
                   onSelect={() => {
                     onTogglePanel('settings');
                     close();
@@ -364,10 +364,6 @@ export function Dock({ roomName, participantCount, panel, onTogglePanel, onReact
             )}
           </Menu>
         </div>
-      </div>
-
-      <div className="dock-end">
-        <StartMediaButton className="key" />
         <button
           type="button"
           className="key key-leave"
@@ -376,8 +372,21 @@ export function Dock({ roomName, participantCount, panel, onTogglePanel, onReact
           title={onEndForAll ? 'Leave or end call' : 'Leave call'}
           onClick={() => setLeaveOpen(true)}
         >
-          <LogOut aria-hidden="true" />
-          <span className="legend">Leave</span>
+          <PhoneOff aria-hidden="true" />
+        </button>
+      </div>
+
+      <div className="dock-end">
+        <StartMediaButton className="key" />
+        <button
+          type="button"
+          className="key key-settings"
+          aria-pressed={panel === 'settings'}
+          aria-label="Settings"
+          title="Settings"
+          onClick={() => onTogglePanel('settings')}
+        >
+          <Settings2 aria-hidden="true" />
         </button>
         {leaveOpen && <LeaveDialog onClose={() => setLeaveOpen(false)} onEndForAll={onEndForAll} />}
       </div>

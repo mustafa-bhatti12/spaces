@@ -24,6 +24,11 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  interactiveWidget: 'resizes-visual',
   themeColor: '#1b1a18',
   colorScheme: 'dark',
 };

@@ -534,83 +534,174 @@ code { font: 0.875em var(--mono); background: var(--key); padding: 1px 6px; bord
 @keyframes hand-up { from { transform: translateY(8px) scale(0.85); opacity: 0; } }
 
 /* Dock */
+/* Dock: Google Meet Style Floating Pill Architecture */
 .dock {
   flex-shrink: 0;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
   gap: 16px;
-  padding: 10px 14px 12px;
+  padding: 12px 24px 16px;
+  position: relative;
+  z-index: 20;
 }
-.dock-readout { justify-self: start; max-width: 100%; background: #181715; border: 1px solid #33302a; border-radius: 10px; }
-.dock-room { display: block; max-width: 22ch; overflow: hidden; text-overflow: ellipsis; }
+
+.dock-readout {
+  justify-self: start;
+  max-width: 100%;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  gap: 10px;
+  font-size: 0.875rem;
+}
+.dock-room { display: block; max-width: 22ch; overflow: hidden; text-overflow: ellipsis; font-weight: 600; color: #fff; }
+
+/* The Google Meet Center Pill */
 .dock-keys {
   display: flex;
   align-items: center;
-  gap: 3px;
-  padding: 5px;
-  border-radius: 14px;
-  background: #1c1b18;
-  border: 1px solid #33302a;
-  box-shadow: 0 16px 40px -8px rgba(0, 0, 0, 0.8), 0 2px 6px rgba(0, 0, 0, 0.4);
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 9999px;
+  background: #1e1f20;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6), 0 2px 6px rgba(0, 0, 0, 0.4);
 }
-.cluster { display: flex; align-items: center; gap: 3px; }
-.cluster + .cluster { margin-left: 5px; padding-left: 7px; border-left: 1px solid #33302a; }
+.cluster { display: flex; align-items: center; gap: 8px; }
+.cluster + .cluster { margin-left: 0; padding-left: 0; border-left: 0; }
 .dock-end { justify-self: end; display: flex; align-items: center; gap: 8px; }
 
+/* Keys: Google Meet Circular Buttons with Apple-design physical motion */
 .dock .key {
-  flex-direction: column;
-  gap: 4px;
-  height: 48px;
-  min-width: 58px;
-  padding: 0 10px;
-  background: transparent;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  width: 42px;
+  height: 42px;
+  min-width: 42px;
+  padding: 0;
+  border-radius: 50%;
+  background: #303030;
   border: 0;
-  border-radius: 9px;
-  color: var(--ink-2);
-  transition: all 0.12s ease;
+  color: #e3e3e3;
+  cursor: pointer;
+  position: relative;
+  transition: background-color 140ms var(--ease-out), transform 100ms var(--ease-out), color 140ms var(--ease-out);
 }
-.dock .key:hover { background: #2a2924; color: var(--ink); }
-.dock .key svg { width: 19px; height: 19px; }
-.legend { color: inherit; font-size: 0.72rem; font-weight: 550; letter-spacing: 0.01em; line-height: 1; }
-.dock .key[aria-pressed='true'] .legend,
-.dock .key[aria-expanded='true'] .legend { color: var(--ink); }
-.key-pair { display: inline-flex; align-items: stretch; }
+
+/* Hide text legends in dock to maintain Google Meet's clean icon layout */
+.dock .legend { display: none !important; }
+
+/* Apple-Design tactile active press feedback */
+.dock .key:active {
+  transform: scale(0.93) !important;
+  transition: transform 80ms var(--ease-out);
+}
+
+/* Hover gating */
+@media (hover: hover) and (pointer: fine) {
+  .dock .key:hover {
+    background: #3d3d3d;
+    color: #fff;
+    transform: scale(1.04);
+  }
+}
+
+.dock .key svg { width: 20px; height: 20px; stroke: currentColor; stroke-width: 2; fill: none; }
+
+/* Device Split Capsule for Mic & Camera */
+.key-pair {
+  display: inline-flex;
+  align-items: center;
+  height: 42px;
+  border-radius: 9999px;
+  background: #303030;
+  transition: background-color 140ms var(--ease-out), transform 100ms var(--ease-out);
+}
+@media (hover: hover) and (pointer: fine) {
+  .key-pair:hover {
+    background: #383838;
+    transform: scale(1.03);
+  }
+}
+
 .key-pair > .key:first-child,
-.key-pair > .mic-ring > .key { border-top-right-radius: 4px; border-bottom-right-radius: 4px; }
+.key-pair > .mic-ring > .key {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: transparent;
+  padding: 0;
+}
+.key-pair > .key:first-child:hover,
+.key-pair > .mic-ring > .key:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
 .dock .key-chevron,
-[data-lk-theme] .dock .lk-button.key-chevron { min-width: 0; width: 20px; padding: 0; margin-left: 1px; border-radius: 9px; }
+[data-lk-theme] .dock .lk-button.key-chevron {
+  width: 20px;
+  height: 42px;
+  min-width: 0;
+  padding: 0;
+  margin: 0;
+  border-radius: 0 9999px 9999px 0;
+  border-left: 1px solid rgba(255, 255, 255, 0.1);
+  background: transparent;
+  color: #aaa;
+  transition: background-color 120ms var(--ease-out), color 120ms var(--ease-out);
+}
+.dock .key-chevron:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
 .dock .key-chevron::after { margin: 0; }
-.mic-ring { display: inline-flex; border-radius: 9px; }
+.mic-ring { display: inline-flex; border-radius: 9999px; }
 
-/* The mic key is the lit ring: green while live, red while muted, brighter while you speak. */
-.dock .key[data-state] { background: transparent; }
-.dock .key[data-state]:not(:disabled):hover { background: #2a2924; }
-.dock .key-mic[data-state='on'] { background: rgba(7, 213, 135, 0.12); color: var(--live); box-shadow: none; }
+/* Active Mic State (Live green) */
+.key-pair:has(.key-mic[data-state='on']) {
+  background: rgba(7, 213, 135, 0.15);
+  color: var(--live);
+}
+.key-pair:has(.key-mic[data-state='on']) .dock .key-chevron,
+.key-pair:has(.key-mic[data-state='on']) [data-lk-theme] .dock .lk-button.key-chevron {
+  border-left-color: rgba(7, 213, 135, 0.25);
+  color: var(--live);
+}
 .dock .key-mic[data-state='on'] svg { color: var(--live); }
-.dock .key-mic[data-state='on'] .legend { color: var(--live); font-weight: 650; }
-.dock .key-mic[data-state='off'] { background: rgba(224, 72, 56, 0.12); color: #ff8577; box-shadow: none; }
-.dock .key-mic[data-state='off'] svg,
-.dock .key-mic[data-state='off'] .legend { color: #ff8577; }
-.dock .key-mic[data-state='off']:not(:disabled):hover { background: rgba(224, 72, 56, 0.2); }
-.mic-ring-speaking .key-mic[data-state='on'] { background: rgba(7, 213, 135, 0.2); box-shadow: 0 0 12px rgba(7, 213, 135, 0.3); }
-.dock .key[data-state='off']:not(.key-mic) svg { color: var(--ink-3); }
-.dock .key-share[data-state='on'] { background: rgba(7, 213, 135, 0.12); color: var(--live); }
-.dock .key-share[data-state='on'] svg { color: var(--live); }
-.dock .key-share[data-state='on'] .legend { color: var(--live); font-weight: 650; }
 
+/* Muted State (Red circle on toggle) */
+.key-pair:has(.key-mic[data-state='off']) > .mic-ring > .key-mic,
+.key-pair:has(.key-mic[data-state='off']) > .key-mic {
+  background: var(--alert);
+  color: #fff;
+}
+.key-pair:has(.key-mic[data-state='off']) svg { color: #fff; }
+
+.mic-ring-speaking .key-mic[data-state='on'] {
+  box-shadow: 0 0 14px rgba(7, 213, 135, 0.45);
+}
+
+.dock .key-share[data-state='on'] {
+  background: rgba(7, 213, 135, 0.2);
+  color: var(--live);
+}
+.dock .key-share[data-state='on'] svg { color: var(--live); }
+
+/* Floating Rim Badge on People */
 .key-count {
   position: absolute;
-  top: -4px;
-  right: -2px;
+  top: -3px;
+  right: -3px;
   min-width: 18px;
   height: 18px;
   padding: 0 4px;
   border-radius: 9px;
-  background: #2a2924;
-  color: var(--ink);
-  border: 2px solid #1c1b18;
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.4);
+  background: #3d3d3d;
+  color: #fff;
+  border: 2px solid #1e1f20;
   font: 700 0.65rem/14px var(--mono);
   text-align: center;
   display: flex;
@@ -619,8 +710,8 @@ code { font: 0.875em var(--mono); background: var(--key); padding: 1px 6px; bord
 }
 .lk-chat-toggle.key[data-lk-unread-msgs]:not([data-lk-unread-msgs='0'])::after {
   position: absolute;
-  top: -4px;
-  right: -2px;
+  top: -3px;
+  right: -3px;
   left: auto;
   min-width: 18px;
   height: 18px;
@@ -629,40 +720,60 @@ code { font: 0.875em var(--mono); background: var(--key); padding: 1px 6px; bord
   border-radius: 9px;
   background: var(--live);
   color: var(--live-ink);
-  border: 2px solid #1c1b18;
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.4);
+  border: 2px solid #1e1f20;
   font: 700 0.65rem/14px var(--mono);
   text-align: center;
   display: flex;
   align-items: center;
   justify-content: center;
 }
-.dock .key-flag { background: var(--warn-soft); }
-.dock .key-flag svg, .dock .key-flag .legend { color: var(--warn); }
-.key-flag-rec::after { content: ''; position: absolute; top: 8px; right: 12px; width: 7px; height: 7px; border-radius: 50%; background: var(--alert); }
+
+/* Leave Call Red Pill Button inside the dock */
 .dock .key-leave,
 [data-lk-theme] .dock .lk-disconnect-button.key-leave {
-  height: 48px;
-  min-width: 72px;
-  padding: 0 16px;
-  border-radius: 10px;
-  background: #2a2220;
-  border: 1px solid #452b27;
-  color: #ff8577;
-  font-weight: 650;
-  font-size: 0.85rem;
-  box-shadow: none;
-  transition: all 0.12s ease;
+  width: 56px;
+  height: 42px;
+  min-width: 56px;
+  padding: 0;
+  border-radius: 9999px;
+  background: var(--alert);
+  border: 0;
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(234, 67, 53, 0.35);
+  transition: background-color 140ms var(--ease-out), transform 100ms var(--ease-out);
 }
-.dock .key-leave svg { color: inherit; }
-.dock .key-leave .legend { color: inherit; font-size: inherit; font-weight: inherit; }
-.dock .key-leave:not(:disabled):hover {
-  background: #3d2723;
-  border-color: #633630;
-  color: #ffa194;
+@media (hover: hover) and (pointer: fine) {
+  .dock .key-leave:hover,
+  [data-lk-theme] .dock .lk-disconnect-button.key-leave:hover {
+    background: var(--alert-hover);
+    transform: scale(1.05);
+  }
 }
+.dock .key-leave:active {
+  transform: scale(0.93) !important;
+}
+.dock .key-leave svg { width: 20px; height: 20px; stroke-width: 2.2; color: #fff; }
 
-.dock .lk-start-audio-button { height: 50px; }
+/* Settings button in dock-end */
+.dock .key-settings {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--ink-2);
+}
+@media (hover: hover) and (pointer: fine) {
+  .dock .key-settings:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: #fff;
+    transform: scale(1.04);
+  }
+}
+.dock .key-settings[aria-pressed='true'] {
+  background: #303030;
+  color: var(--live);
+}
+.dock .lk-start-audio-button { height: 42px; border-radius: 9999px; }
 
 /* Menus above the dock */
 .menu { position: relative; }
@@ -749,16 +860,70 @@ code { font: 0.875em var(--mono); background: var(--key); padding: 1px 6px; bord
 .lk-chat .lk-chat-header .lk-close-button { position: static; transform: none; width: 36px; height: 36px; padding: 0; border-radius: var(--r-key); background: transparent; color: var(--ink-2); }
 .lk-chat .lk-chat-header .lk-close-button:hover { background: var(--key); color: var(--ink); }
 .lk-chat .lk-chat-messages { padding: 12px 14px; gap: 2px; align-self: stretch; }
-.lk-chat .lk-chat-entry .lk-meta-data { padding: 0 2px; color: var(--ink-3); font-size: 0.75rem; }
-.lk-chat .lk-chat-entry .lk-meta-data .lk-participant-name { color: var(--ink-2); font-weight: 600; }
-.lk-chat .lk-chat-entry .lk-message-body { padding: 7px 11px; border-radius: 12px; font-size: 0.875rem; line-height: 1.4; }
+.lk-chat .lk-chat-entry .lk-meta-data {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 0 4px;
+  color: var(--ink-3);
+  font-size: 0.75rem;
+  margin-bottom: 3px;
+}
+.lk-chat .lk-chat-entry .lk-meta-data .lk-participant-name {
+  color: var(--ink-2);
+  font-weight: 650;
+  font-size: 0.75rem;
+}
+.lk-chat .lk-chat-entry .lk-meta-data .lk-timestamp {
+  font-family: var(--mono);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  color: var(--ink-3);
+  letter-spacing: -0.01em;
+}
+.lk-chat .lk-chat-entry .lk-meta-data .lk-participant-name + .lk-timestamp::before {
+  content: '·';
+  margin-right: 6px;
+  opacity: 0.55;
+  font-weight: 400;
+}
+.lk-chat .lk-chat-entry[data-lk-message-origin='local'] .lk-meta-data {
+  justify-content: flex-end;
+  margin-left: auto;
+}
+.lk-chat .lk-chat-entry .lk-message-body { padding: 8px 12px; border-radius: 12px; font-size: 0.9375rem; line-height: 1.4; }
 .lk-chat .lk-chat-entry[data-lk-message-origin='remote'] .lk-message-body { background: var(--key); border-top-left-radius: 4px; }
 .lk-chat .lk-chat-entry[data-lk-message-origin='local'] { align-items: flex-end; }
 .lk-chat .lk-chat-entry[data-lk-message-origin='local'] .lk-message-body { background: var(--live-soft); color: var(--ink); border-top-right-radius: 4px; }
-.lk-chat .lk-chat-form { max-height: none; gap: 8px; padding: 12px; border-top: 1px solid var(--seam-soft); }
-.lk-chat .lk-chat-form .lk-chat-form-input { height: 40px; font-size: 0.875rem; }
-.lk-chat .lk-chat-form .lk-button { height: 40px; padding: 0 14px; border-radius: var(--r-key); background: var(--live); color: var(--live-ink); font-weight: 650; }
+.lk-chat .lk-chat-form { max-height: none; gap: 8px; padding: 12px; border-top: 1px solid var(--seam-soft); background: var(--shell); }
+.lk-chat .lk-chat-form .lk-chat-form-input {
+  height: 44px;
+  font-size: 1rem; /* >= 16px strictly prevents iOS Safari viewport auto-zoom */
+  padding: 0 14px;
+  border-radius: var(--r-key);
+  background: var(--screen);
+  border: 1px solid var(--seam);
+  color: var(--ink);
+  transition: border-color 140ms var(--ease-out), box-shadow 140ms var(--ease-out);
+}
+.lk-chat .lk-chat-form .lk-chat-form-input:focus {
+  outline: none;
+  border-color: var(--live);
+  box-shadow: 0 0 0 3px var(--live-soft);
+}
+.lk-chat .lk-chat-form .lk-button {
+  height: 44px;
+  padding: 0 16px;
+  border-radius: var(--r-key);
+  background: var(--live);
+  color: var(--live-ink);
+  font-size: 0.9375rem;
+  font-weight: 650;
+  flex-shrink: 0;
+  transition: transform 80ms var(--ease-out), background-color 140ms var(--ease-out);
+}
 .lk-chat .lk-chat-form .lk-button:hover { background: var(--live-hover); }
+.lk-chat .lk-chat-form .lk-button:active { transform: scale(0.95); }
 
 /* People */
 .people-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
@@ -995,36 +1160,91 @@ code { font: 0.875em var(--mono); background: var(--key); padding: 1px 6px; bord
 }
 @media (max-width: 760px) {
   .side-panel,
-  .conference .lk-chat { position: absolute; inset: 0; z-index: 25; width: auto; margin: 0; border-radius: 0; }
+  .conference .lk-chat {
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    width: 100%;
+    height: 100dvh;
+    max-height: 100dvh;
+    margin: 0;
+    border-radius: 0;
+  }
+  .lk-chat .lk-chat-form {
+    padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+  }
+  .lk-chat .lk-chat-form .lk-chat-form-input {
+    font-size: 16px; /* Explicit 16px fallback for iOS Safari */
+    height: 44px;
+  }
 }
-/* Leave dialog: a compact destructive confirmation (host variant adds "End for everyone") */
+/* Leave dialog: balanced Option 2 inline alignment */
 .leave-dialog {
-  width: min(420px, calc(100vw - 32px));
-  padding: 20px;
-  border: 0;
+  width: min(450px, calc(100vw - 32px));
+  padding: 24px 26px;
+  border: 1px solid var(--seam);
+  border-radius: var(--r-face);
   color: var(--ink);
-  box-shadow: var(--pop);
+  box-shadow: 0 24px 60px -12px rgba(0, 0, 0, 0.8), 0 4px 16px rgba(0, 0, 0, 0.4);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 .leave-dialog-host { width: min(480px, calc(100vw - 32px)); }
 .leave-dialog[open] { animation: dialog-in 180ms var(--ease-out); }
-.leave-dialog::backdrop { background: oklch(0.1 0.005 70 / 0.6); }
+.leave-dialog::backdrop { background: oklch(0.1 0.005 70 / 0.65); backdrop-filter: blur(4px); }
 @keyframes dialog-in { from { opacity: 0; transform: translateY(8px) scale(0.98); } }
-.leave-head { display: grid; grid-template-columns: 36px 1fr; gap: 14px; align-items: start; }
-.leave-icon {
-  display: grid;
-  place-items: center;
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
-  background: oklch(0.64 0.2 27 / 0.16);
-  color: var(--alert-ink);
+
+.leave-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
 }
-.leave-icon svg { width: 18px; height: 18px; stroke-width: 1.9; }
-.leave-title { margin: 0; font-size: 1.0625rem; font-weight: 600; letter-spacing: -0.01em; line-height: 36px; }
-.leave-body { margin: 0; color: var(--ink-2); font-size: 0.875rem; line-height: 1.45; }
-.leave-error { margin: 12px 0 0 50px; color: var(--alert-ink); font-size: 0.8125rem; }
-.leave-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
-.leave-actions .key { padding: 0 14px; font-size: 0.875rem; }
+.leave-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: var(--alert-soft);
+  color: var(--alert-ink);
+  border: 1px solid rgba(224, 72, 56, 0.25);
+  flex-shrink: 0;
+}
+.leave-icon svg { width: 19px; height: 19px; stroke-width: 2; }
+.leave-title {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  line-height: 1.25;
+  color: var(--ink);
+}
+.leave-body {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+.leave-error {
+  margin: 0;
+  color: var(--alert-ink);
+  font-size: 0.8125rem;
+}
+.leave-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 6px;
+}
+.leave-actions .key {
+  height: 40px;
+  padding: 0 16px;
+  font-size: 0.875rem;
+  font-weight: 650;
+  border-radius: var(--r-key);
+}
 .leave-actions .key svg { width: 16px; height: 16px; }
 @media (max-width: 480px) {
   .leave-actions { flex-direction: column-reverse; }

@@ -27,6 +27,7 @@ export const BACKGROUND_EFFECTS: { effect: BackgroundEffect; label: string; prev
     { id: 'coast', label: 'Mountain' },
     { id: 'sunset', label: 'Sunset' },
     { id: 'golden-hour', label: 'Canopy' },
+    { id: 'bookshelf', label: 'Bookshelf' },
   ].map(({ id, label }) => ({
     effect: { id, imagePath: `/backgrounds/${id}.jpg` },
     label,

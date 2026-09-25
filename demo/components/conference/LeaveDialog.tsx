@@ -58,17 +58,15 @@ export function LeaveDialog({ onClose, onEndForAll }: { onClose: () => void; onE
         <span className="leave-icon" aria-hidden="true">
           <LogOut />
         </span>
-        <div>
-          <h2 id="leave-title" className="leave-title">
-            {onEndForAll ? 'Leave or end the call?' : 'Leave the call?'}
-          </h2>
-          <p id="leave-body" className="leave-body">
-            {onEndForAll
-              ? 'You started this call. Leave and it continues without you, or end it for everyone.'
-              : 'You can rejoin any time with the same link.'}
-          </p>
-        </div>
+        <h2 id="leave-title" className="leave-title">
+          {onEndForAll ? 'Leave or end the call?' : 'Leave the call?'}
+        </h2>
       </div>
+      <p id="leave-body" className="leave-body">
+        {onEndForAll
+          ? 'You started this call. Leave and it continues without you, or end it for everyone.'
+          : 'You can rejoin any time with the same link.'}
+      </p>
       {error && (
         <p className="leave-error" role="alert">
           {error}
