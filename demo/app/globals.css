@@ -1372,7 +1372,25 @@ code { font: 0.875em var(--mono); background: var(--key); padding: 1px 6px; bord
   .dock .key { height: 44px; min-width: 42px; padding: 0 8px; border-radius: 9px; }
   .dock .key svg { width: 19px; height: 19px; }
   .dock .key-chevron, .dock .key-share { display: none; }
-  .key-pair > .key:first-child, .key-pair > .mic-ring > .key { border-radius: 9px; }
+  /* Chevron menus are hidden on phones, so remove the desktop split-capsule shell. Without
+     this, its 42px dark backdrop frames the 44px touch keys on Edge/iOS. */
+  .key-pair,
+  .key-pair:has(.key-mic[data-state='on']),
+  .key-pair:has(.key-mic[data-state='off']),
+  .key-pair:has(.key[data-state='off']) {
+    height: 44px;
+    background: transparent;
+    border-radius: 9px;
+  }
+  .key-pair > .key:first-child,
+  .key-pair > .mic-ring > .key {
+    height: 44px;
+    border-radius: 9px;
+    background: #303030;
+  }
+  .key-pair:has(.key-mic[data-state='on']) > .mic-ring > .key { background: rgb(7 213 135 / 0.15); }
+  .key-pair:has(.key-mic[data-state='off']) > .mic-ring > .key,
+  .key-pair:has(.key[data-state='off']) > .key:first-child { background: var(--alert); }
   .dock .key-leave, [data-lk-theme] .dock .lk-disconnect-button.key-leave { min-width: 44px; height: 44px; border-radius: 9px; padding: 0 10px; }
   .dock-readout { top: calc(16px + env(safe-area-inset-top)); left: 16px; max-width: calc(100vw - 32px); }
   .menu-panel { position: fixed; left: 8px; right: 8px; bottom: 72px; transform: none; animation-name: sheet-in; }
