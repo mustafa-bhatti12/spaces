@@ -173,6 +173,34 @@ Set `ADMIN_PASSWORD` and `ADMIN_SHARED_SECRET` in `demo/.env`; the secret must m
 
 ---
 
+## 🪟 Embedding a call
+
+A consumer app mints a join token with `POST /token` (consumer secret) and iframes `/embed`. The token goes in the fragment, so it never reaches a server log:
+
+```html
+<iframe
+  src="https://spaces-demo.up.railway.app/embed?origin=https://your-app.example#t=JOIN_TOKEN"
+  allow="camera; microphone; display-capture; fullscreen; autoplay; clipboard-write"
+></iframe>
+```
+
+Add the parent origin to the demo's `EMBED_ALLOWED_ORIGINS` (comma-separated); it controls both `frame-ancestors` and which `?origin=` the bridge talks to. Embedded calls have no invite link or waiting room; only hosts (set by the token) see Record. Tokens last 2 hours.
+
+The page and parent talk over `postMessage`, protocol `spaces-embed/1`:
+
+| Direction | Message | Meaning |
+|---|---|---|
+| Spaces → parent | `ready` | Bridge is listening |
+| Spaces → parent | `joined {room, identity}` | Joined the call |
+| Spaces → parent | `left {reason}` | Left or the call ended |
+| Spaces → parent | `recording {active}` | Recording started/stopped |
+| Spaces → parent | `screenshare {active, surface}` | Local screen share started/stopped |
+| Spaces → parent | `data {topic, payload, from, fromHost}` | App message from another participant |
+| Spaces → parent | `expired` | Token rejected (401): mint a new one and remount |
+| Parent → Spaces | `send {topic, payload, to: 'all' \| 'hosts'}` | Send an app message; `topic` starts with `app.`, payload ≤ 4096 bytes of JSON |
+
+---
+
 ## 🎨 UI Features (Space demo)
 
 Built on LiveKit's React components and hooks (`@livekit/components-react`), with Space's own look: warm graphite, signal-light colours, and one grouped control dock.

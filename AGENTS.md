@@ -8,8 +8,8 @@ is called **Spaces** in the UI (`demo/components/ui/Logo.tsx`); the repo and pat
 `token-service` (TS/Fastify, the only holder of LiveKit credentials), Redis and a Dockerized
 LiveKit Egress worker for audio recording, all on one
 DigitalOcean droplet behind Caddy — plus one Next.js 16 app on Railway, `demo`, serving the
-LiveKit-React-components call UI at `/` (a stand-in consumer) and the operator control center at
-`/admin`.
+LiveKit-React-components call UI (anonymous at `/`, token-only at `/embed` for consumer apps to
+iframe) and the operator control center at `/admin`.
 
 This repo is also infrastructure for a consumer app, `hof-petition-studio` (sibling repo, in the
 parent `space-repos/` workspace) — it decides who may join which room and calls this repo's token
@@ -42,7 +42,7 @@ keep this repo generic so any future consumer can reuse it the same way. Don't e
 ```mermaid
 graph LR
   subgraph Railway
-    DM["demo / (Next.js)\ncall UI, consumer stand-in"]
+    DM["demo / (Next.js)\ncall UI + /embed for consumers"]
     AD["demo /admin\noperator control center"]
   end
   subgraph Droplet
@@ -79,7 +79,7 @@ graph LR
 | Redis | — | droplet | 6379 | — | Job queue LiveKit server ↔ Egress worker use to coordinate. Recording-only; calling works without it. |
 | Egress worker | Docker (`livekit/egress:v1.14.1`, pinned) | droplet | — | LiveKit key pair (runtime config) | Joins a room as a hidden participant, mixes everyone's audio and writes 24 kbps Opus to `egress/raw/`; token-service moves it to `egress/compressed/` when egress reports it finished. |
 | Caddy | — | droplet | 80/443 | Let's Encrypt certs | TLS for `spaces.hofmigration.com`: `/rtc` → LiveKit, `/twirp` + `/recording/webhook` blocked, everything else → token-service. Also, via the `layer4` plugin (custom build, see README), TURN/TLS for `turn.hofmigration.com` → LiveKit's TURN on `127.0.0.1:5349`. Config: `deploy/Caddyfile`. |
-| `demo` | TypeScript, Next.js 16, React 19, Node ≥ 22.22 (`livekit-client`'s `machina` requires it), `@livekit/components-react` | Railway `https://spaces-demo.up.railway.app` (also local via `start-all.sh`) | `$PORT` (8888 locally) | `TOKEN_SERVICE_SHARED_SECRET`; plus `ADMIN_SHARED_SECRET` + `ADMIN_PASSWORD` for `/admin` | `/` + `/rooms/[room]`: full call UI (pre-join, grid/focus, chat, people, devices, background blur/virtual backgrounds, reactions, raise hand, record, invite, reconnect banner) — throwaway, simulates Petition Studio's path. `/admin`: the permanent operator control center. Server routes under `app/api/*` and `app/admin/*` hold the secrets; the browser never sees them. |
+| `demo` | TypeScript, Next.js 16, React 19, Node ≥ 22.22 (`livekit-client`'s `machina` requires it), `@livekit/components-react` | Railway `https://spaces-demo.up.railway.app` (also local via `start-all.sh`) | `$PORT` (8888 locally) | `TOKEN_SERVICE_SHARED_SECRET`; plus `ADMIN_SHARED_SECRET` + `ADMIN_PASSWORD` for `/admin` | `/` + `/rooms/[room]`: full call UI (pre-join, grid/focus, chat, people, devices, background blur/virtual backgrounds, reactions, raise hand, record, invite, reconnect banner). `/embed`: the same call UI, token-only, for consumer apps to iframe (see "Embed mode"). `/admin`: the permanent operator control center. Server routes under `app/api/*` and `app/admin/*` hold the secrets; the browser never sees them. |
 
 ## Security model
 
@@ -119,11 +119,10 @@ graph LR
   an HMAC-signed `HttpOnly; SameSite=Strict; Path=/admin` session cookie (12 h, `Secure` over HTTPS),
   and 5-failures-per-15-min rate limiting. The limit keys on `X-Forwarded-For` only when
   `TRUST_PROXY=1` (Railway); otherwise all clients share one bucket so nobody can spoof past it.
-- **The admin lives inside the throwaway app by choice** (one Railway URL for both). When the call UI
-  is retired, keep `app/admin/*`, `components/admin/*` and `lib/server/*` as the admin app — don't
-  delete them with it.
-- **The demo call UI has no login** — anyone with its URL can join rooms and press Record. That's
-  accepted for a stand-in; Petition Studio will gate who joins which room.
+- **The admin lives inside the call-UI app by choice** (one Railway URL for both).
+- **The anonymous call path (`/`, `/rooms/*`) has no login** — anyone with its URL can join rooms
+  and press Record. Consumer apps use `/embed` instead, where a join token minted by the consumer
+  decides the room, identity, name and host role (see "Embed mode").
 - **Tokens grant `canUpdateOwnMetadata`** so a participant can set its own `hand` attribute (raise
   hand). It only covers the participant's own metadata/attributes.
 - LiveKit webhooks are verified via `WebhookReceiver` (JWT in the `Authorization` header, signed with
@@ -156,6 +155,32 @@ graph LR
   the Docker bridge, not loopback), so don't "fix" this by rebinding it to `127.0.0.1`.
 - **Never expose `/twirp`** (LiveKit's admin API) publicly. Caddy blocks it; `token-service` reaches
   it on localhost. Browsers only ever need `/rtc`.
+
+## Embed mode
+
+A consumer app iframes `/embed` instead of building its own call UI. It mints a join token with
+token-service `POST /token` (consumer secret, `host: true|false`; tokens live 2 h) and loads
+`https://<demo>/embed?origin=<parent origin>#t=<token>` with
+`allow="camera; microphone; display-capture; fullscreen; autoplay; clipboard-write"`.
+
+- **Token in the fragment:** `#t=` is never sent to a server and is stripped from the URL on load.
+  The page verifies it through `/api/embed/session` → token-service `POST /embed/session {token}`
+  (consumer secret; `token-service/src/embedRoutes.ts`, `inspectJoinToken` in `livekit.ts`) →
+  `{room, identity, name, serverUrl}`, 400 for a malformed body, 401 for a bad/expired token. The
+  LiveKit URL comes from that verified session, never from the parent. Pre-join shows the name
+  from the token, locked.
+- **Framing:** `demo/proxy.ts` sets `Content-Security-Policy: frame-ancestors 'self'
+  $EMBED_ALLOWED_ORIGINS` (comma-separated) on `/embed` only, read at request time. The bridge only
+  talks when `?origin=` is in the same list.
+- **What's different when embedded:** no invite/copy-link keys, no waiting room, only hosts see
+  Record/Stop, and nobody can make or remove hosts — the consumer decides hosts through the token.
+- **Bridge `spaces-embed/1`** (postMessage, `demo/lib/embed.ts`, `EmbedBridge.tsx`). Spaces → parent:
+  `ready`, `joined {room, identity}`, `left {reason}`, `recording {active}`,
+  `screenshare {active, surface}`, `data {topic, payload, from, fromHost}`, and `expired` (the token
+  got a 401 on load or Rejoin: mint a fresh token and remount the iframe). Parent → Spaces:
+  `send {topic, payload, to: 'all'|'hosts'}`, relayed as LiveKit data. Topics must start with
+  `app.` (the `space.*` topics are ours); the payload is JSON of at most 4096 bytes; `hosts` means
+  the room's hosts minus the sender, and nothing is sent when that's empty.
 
 ## Why Egress is the only thing in Docker
 
@@ -412,12 +437,17 @@ works from the same machine; test multi-device calls on the Railway deployment.
 - `token-service/src/admin.ts` — the operator `/admin/*` routes (overview, health, system metrics, moderation, recording files with Range support).
 - `token-service/src/system.ts` — `GET /admin/system`: host CPU/memory/network, per-service process rows, versions, TLS expiry, deployed commit. Linux-only parts return null on macOS; rates are deltas between calls (first call after a restart has nulls). It runs on every console poll, so keep it cheap; the comments explain why it reads cgroup files instead of `docker stats`.
 - `token-service/src/recordings.ts` — recording directories, safe filename resolution, file listing, `finishRecording` (webhook: raw/ → compressed/).
+- `token-service/src/embedRoutes.ts` — `POST /embed/session`: verifies a join token for `/embed`.
 - `token-service/src/auth.ts` — the two bearer-secret `preHandler`s.
 - `demo/app/api/*` — call-page server routes (`connect`, `rooms`, `rooms/status` (pre-join: occupancy, would-you-host, waiting room), `rooms/end`, `rooms/host`, `lobby/status` (guest poll), `lobby/[action]` (host), `whoami`, `recording/{start,stop,status}`) → token-service consumer routes.
 - `demo/app/admin/*` — `/admin` page + `login`/`logout`/`session` routes + `api/[...path]` streaming proxy → token-service `/admin/*`.
 - `demo/lib/server/tokenService.ts` — the only token-service client (both secrets); `demo/lib/server/adminSession.ts` — admin cookie + rate limit.
 - `demo/components/RoomClient.tsx` — pre-join (`PreJoin.tsx`, LiveKit's `PreJoin` markup with one camera open; the name field is controlled, prefilled with the last-used name, and Join is never disabled for an empty-looking field: submit reads the field itself, because autofill or restored form state can show a value React never heard about; the would-be host gets the waiting-room switch) → `WaitingScreen` if the room has a waiting room → join → end screen (with a duration/people summary).
 - `demo/components/conference/*` — `Conference` (Room lifecycle, audio-first publish defaults, duplicate-identity heartbeat, end-for-everyone, the end-screen summary), `ConferenceLayout` (VideoConference prefab expanded; one side panel at a time; tells you when you become or stop being a host), `useHosts` (room settings from metadata: who hosts, make/remove host), `Dock` (status readout · media · talk · more · Leave), `LeaveDialog` (leave confirmation for everyone; hosts also get end-for-everyone), `Tile`, `SidePanel`, `ParticipantsPanel` (hosts: waiting-room switch + requests, make/remove host per row), `SettingsPanel` + `useBackgroundEffect`, `useWeakConnection` (reports a weak link to the dock), `ChatToasts` (the notification stack: chat, joins, plus the host's `WaitingNotice` and the alone card), `useWaitingRoom` (host side), `useReactions`, `useRecording`.
+- `demo/proxy.ts` — `frame-ancestors` CSP on `/embed` from `EMBED_ALLOWED_ORIGINS`.
+- `demo/lib/embed.ts` — `spaces-embed/1` protocol types, allowed-origin parsing, message validators.
+- `demo/app/embed/page.tsx` + `demo/app/api/embed/session/route.ts` — the `/embed` page and its token-check relay to token-service `/embed/session`.
+- `demo/components/embed/*` — `EmbedContext` (`EmbedProvider`/`useEmbed()`, non-null when embedded), `EmbedClient` (fragment token → session → pre-join → call → end), `EmbedBridge` (room events → parent; parent `send` → LiveKit data).
 - `demo/components/ui/*` — `Menu` (dock popover), `Device` (wordmark, LED, readout, initials), `SwitchRow`.
 - `demo/components/admin/AdminDashboard.tsx` — the control center UI; `ServerPanel.tsx` (Server section: metric strips + processes table); `format.ts` (bytes, rates, durations).
 - `demo/public/backgrounds/*.webp` — virtual-background images (1920×1080, WebP q80); `thumbs/*.webp` are the 320 px settings-tile previews. Add a background as both.

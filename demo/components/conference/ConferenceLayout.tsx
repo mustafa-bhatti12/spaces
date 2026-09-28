@@ -233,7 +233,11 @@ export function ConferenceLayout({
                           <X aria-hidden="true" />
                         </button>
                         <p className="alone-title">You&apos;re the only one here</p>
-                        <p className="alone-text">Share this call&apos;s link with the people you want to talk to.</p>
+                        <p className="alone-text">
+                          {embed
+                            ? 'The others will appear here when they join.'
+                            : <>Share this call&apos;s link with the people you want to talk to.</>}
+                        </p>
                         {!embed && (
                           <button type="button" className="key key-go" onClick={invite}>
                             <Link2 aria-hidden="true" />
