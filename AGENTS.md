@@ -349,7 +349,9 @@ works from the same machine; test multi-device calls on the Railway deployment.
   is `PreJoin`'s markup without those; keep its callbacks stable and its menus selection-free.
   Measure with a `getUserMedia` counter in the page (one call per visit is the target).
 - **Noise cancellation is DeepFilterNet3 in the browser, not Krisp.** LiveKit's Krisp filter only works on
-  LiveKit Cloud, and Chrome's `voiceIsolation` constraint only acts on some ChromeOS devices.
+  LiveKit Cloud. LiveKit's `audioDefaults` set Chrome's `voiceIsolation` constraint to true; we
+  override it to false in `Conference` / `PreJoin`. `useNoiseFilter.ts` applies it only when Settings
+  → Microphone → Noise cancellation is on (same switch as DeepFilterNet3).
   `useNoiseFilter.ts` sets `deepfilternet3-noise-filter` (pinned 1.3.0) as the mic track's processor. Its
   wasm (16 MB, ~4.3 MB gzipped as served) and model (8 MB, byte-identical to upstream
   `Rikorose/DeepFilterNet` `models/DeepFilterNet3_onnx.tar.gz`) are committed under

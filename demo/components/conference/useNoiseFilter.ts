@@ -59,7 +59,10 @@ export function useNoiseFilter(): NoiseFilterControls {
   }, []);
 
   useEffect(() => {
-    if (!supported || !track) return;
+    if (!track) return;
+    // Capture defaults leave this off; turn Chrome's Voice isolation on only with the switch.
+    void track.applyConstraints({ voiceIsolation: enabled }).catch(() => {});
+    if (!supported) return;
     const active = track.getProcessor() instanceof DeepFilterNoiseFilterProcessor;
     if (enabled === active) return;
     let cancelled = false;

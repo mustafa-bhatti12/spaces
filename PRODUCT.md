@@ -38,7 +38,7 @@ Space is a neutral, unbranded video tool that any future app can embed through t
   - participants panel
   - device settings
   - background blur and virtual backgrounds
-  - noise cancellation on the mic (in the browser, no server cost)
+  - noise cancellation on the mic (in the browser, no server cost; off until you turn it on in Settings)
   - emoji reactions
   - raise hand
   - audio recording, on by default in every call (anyone can stop it), with a REC badge showing who started it when someone did

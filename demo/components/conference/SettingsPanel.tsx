@@ -123,7 +123,7 @@ export function SettingsPanel({
           {noiseFilter.supported ? (
             <SwitchRow
               label="Noise cancellation"
-              hint={noiseFilter.applying ? 'Starting…' : 'Removes background noise from your mic, on this device'}
+              hint={noiseFilter.applying ? 'Starting…' : 'Off until you turn it on. Removes background noise from your mic, on this device'}
               checked={noiseFilter.enabled}
               disabled={noiseFilter.applying}
               onChange={noiseFilter.setEnabled}

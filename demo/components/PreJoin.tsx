@@ -90,7 +90,7 @@ export function PreJoin({ defaults, joinLabel, userLabel, busy, onSubmit, onErro
   }));
   const tracks = usePreviewTracks(
     {
-      audio: audioEnabled ? { deviceId: loaded.mic } : false,
+      audio: audioEnabled ? { deviceId: loaded.mic, voiceIsolation: false } : false,
       video: videoEnabled ? (loaded.camera ? { deviceId: loaded.camera } : true) : false,
     },
     onError,

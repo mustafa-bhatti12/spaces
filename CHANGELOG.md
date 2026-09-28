@@ -5,6 +5,7 @@ the detail. Agents: add a line here with every change that ships (see `AGENTS.md
 
 ## 2026-09-28
 
+- **Voice isolation is off by default:** Chrome's Voice isolation (LiveKit turns it on) stays off until someone switches on Noise cancellation in Settings. Echo cancellation and ordinary noise suppression stay on.
 - **Noise cancellation is off by default:** the Settings switch still turns it on, and the choice is remembered per browser.
 - **Noise cancellation:** a Settings switch (Microphone) runs DeepFilterNet3 on your mic in the browser, so others and the recording hear your voice without the background noise (about 30 dB less noise in testing). Remembered per browser. No server cost.
 - **Embed mode:** consumer apps can iframe a call at `/embed` with a join token in the URL fragment (verified by token-service `POST /embed/session`), framed only by `EMBED_ALLOWED_ORIGINS`, and talk to it over the `spaces-embed/1` postMessage bridge (join/leave/recording/screenshare events, `app.*` data messages). Embedded calls hide invite links and the waiting room; the token decides who hosts.

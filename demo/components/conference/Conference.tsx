@@ -58,7 +58,12 @@ export function Conference({ roomName, details, choices, identity, onLeave, chil
           deviceId: choices.videoDeviceId || undefined,
           resolution: CAMERA_TOP.resolution,
         },
-        audioCaptureDefaults: { deviceId: choices.audioDeviceId || undefined },
+        // LiveKit's audioDefaults set voiceIsolation: true (Chrome's "Voice isolation"). Off
+        // until Settings → Microphone → Noise cancellation; useNoiseFilter then applies it.
+        audioCaptureDefaults: {
+          deviceId: choices.audioDeviceId || undefined,
+          voiceIsolation: false,
+        },
         publishDefaults: {
           simulcast: true,
           red: true,
