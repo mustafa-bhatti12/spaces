@@ -260,6 +260,7 @@ export function ConferenceLayout({
                 onToggle: () => void (rec.recording ? rec.stop() : rec.start()),
               }}
               weakConnection={weakConnection}
+              canRecord={!embed || hosting.isHost}
             />
           </div>
           <Chat style={{ display: widget.showChat ? undefined : 'none' }} />

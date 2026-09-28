@@ -18,6 +18,7 @@ import { SwitchRow } from '../ui/SwitchRow';
 import { HAND_ATTRIBUTE } from './Tile';
 import type { Hosting } from './useHosts';
 import type { WaitingRoomControls } from './useWaitingRoom';
+import { useEmbed } from '../embed/EmbedContext';
 
 function ParticipantRow({
   participant,
@@ -157,6 +158,7 @@ export function ParticipantsPanel({
   onClose: () => void;
 }) {
   const participants = useParticipants();
+  const embed = useEmbed();
   const sorted = [...participants].sort((a, b) => {
     const handA = a.attributes[HAND_ATTRIBUTE] ? 1 : 0;
     const handB = b.attributes[HAND_ATTRIBUTE] ? 1 : 0;
@@ -173,7 +175,7 @@ export function ParticipantsPanel({
             key={p.identity}
             participant={p}
             host={hosting.hosts.includes(p.identity)}
-            onSetHost={hosting.isHost && !p.isLocal ? (host) => hosting.setHost(p.identity, host) : undefined}
+            onSetHost={!embed && hosting.isHost && !p.isLocal ? (host) => hosting.setHost(p.identity, host) : undefined}
           />
         ))}
       </ul>

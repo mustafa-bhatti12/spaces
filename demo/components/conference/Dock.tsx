@@ -167,6 +167,8 @@ interface DockProps {
   recording: { current: ActiveRecording | null; busy: boolean; onToggle: () => void };
   /** This participant's connection has been Poor/Lost for a few seconds (useAudioFirst). */
   weakConnection: boolean;
+  /** Show the Record / Stop recording item. The REC readout shows regardless. */
+  canRecord?: boolean;
 }
 
 /**
@@ -175,7 +177,7 @@ interface DockProps {
  * (always confirmed in LeaveDialog). Built from LiveKit's hooks and controls (useTrackToggle,
  * MediaDeviceMenu, ChatToggle) so behavior stays LiveKit's.
  */
-export function Dock({ roomName, participantCount, panel, onTogglePanel, onReact, onInvite, onEndForAll, recording, weakConnection }: DockProps) {
+export function Dock({ roomName, participantCount, panel, onTogglePanel, onReact, onInvite, onEndForAll, recording, weakConnection, canRecord = true }: DockProps) {
   const { localParticipant } = useLocalParticipant();
   const hand = useParticipantAttribute(HAND_ATTRIBUTE, { participant: localParticipant });
   const { saveAudioInputEnabled, saveVideoInputEnabled, saveAudioInputDeviceId, saveVideoInputDeviceId } =
@@ -333,17 +335,19 @@ export function Dock({ roomName, participantCount, panel, onTogglePanel, onReact
           >
             {(close) => (
               <>
-                <MenuItem
-                  icon={rec ? CircleStop : CircleDot}
-                  disabled={recording.busy}
-                  hint={rec ? <span className="mono">{elapsed(rec.startedAt)}</span> : 'Audio'}
-                  onSelect={() => {
-                    recording.onToggle();
-                    close();
-                  }}
-                >
-                  {recording.busy ? 'Working…' : rec ? 'Stop recording' : 'Record'}
-                </MenuItem>
+                {canRecord && (
+                  <MenuItem
+                    icon={rec ? CircleStop : CircleDot}
+                    disabled={recording.busy}
+                    hint={rec ? <span className="mono">{elapsed(rec.startedAt)}</span> : 'Audio'}
+                    onSelect={() => {
+                      recording.onToggle();
+                      close();
+                    }}
+                  >
+                    {recording.busy ? 'Working…' : rec ? 'Stop recording' : 'Record'}
+                  </MenuItem>
+                )}
                 {onInvite && (
                   <MenuItem
                     icon={Link}
