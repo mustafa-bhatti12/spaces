@@ -539,7 +539,7 @@ function Dashboard({ onLoggedOut }: { onLoggedOut: () => void }) {
                       <tr key={key}>
                         <td className="mono rec-file">{f.name}</td>
                         <td>
-                          <span className={`kind kind-${f.kind}`} title={f.kind === 'raw' ? 'Still recording, or waiting to be compressed' : 'Final compressed copy'}>
+                          <span className={`kind kind-${f.kind}`} title={f.kind === 'raw' ? 'Still recording, or not yet moved to finished' : 'Finished recording'}>
                             {f.kind === 'raw' ? 'Raw' : 'Compressed'}
                           </span>
                         </td>
