@@ -36,10 +36,22 @@ export function useRecording(roomName: string, localName: string) {
 
   const { send } = useDataChannel(TOPIC, () => void refresh());
 
+  // Poll only while the tab is visible (nobody sees the indicator otherwise); catch up on return.
+  // Start/stop broadcasts still arrive over the data channel while hidden.
   useEffect(() => {
-    refresh();
-    const timer = setInterval(refresh, POLL_EVERY_MS);
-    return () => clearInterval(timer);
+    let timer: number | undefined;
+    const onVisibility = () => {
+      window.clearInterval(timer);
+      if (document.hidden) return;
+      refresh();
+      timer = window.setInterval(refresh, POLL_EVERY_MS);
+    };
+    onVisibility();
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
   }, [refresh]);
 
   const run = useCallback(

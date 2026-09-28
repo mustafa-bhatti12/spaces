@@ -5,6 +5,7 @@ the detail. Agents: add a line here with every change that ships (see `AGENTS.md
 
 ## 2026-09-28
 
+- **Lighter background effects:** the settings tiles now load 320 px WebP thumbnails (about 60 KB for all nine, was 2.6 MB of full-size JPEGs), and the backgrounds themselves are WebP (1.4 MB total, was 2.6 MB). MediaPipe's wasm and a pinned segmenter model are served from the demo's own origin instead of jsdelivr and an unpinned googleapis `latest`, so effects also work on networks that block those CDNs. The call page stops polling recording status while the tab is hidden and refreshes when it's shown again.
 - **Recording uses less CPU:** egress now writes recordings straight at 24 kbps Opus, so the separate ffmpeg compressor is gone. It used to pin one of the droplet's two cores for about 86 s per recorded hour after every call. Files are the same size as before (about 11 MB an hour). The recording worker is pinned to egress v1.14.1, and the admin console no longer lists a Compressor.
 - **Escape closes side panels:** Escape closes the open chat, people or settings panel, even while typing a message. An open dock menu or the Leave dialog takes the key first, and focus returns to the panel's dock key.
 - **Chat message notifications:** new messages while chat is closed now show as message cards (avatar, sender, time, up to three lines of text) stacked bottom-right of the call, or as a banner across the top on phones. Click or tap one to open the chat, × to dismiss; hovering holds them.

@@ -1058,7 +1058,7 @@ code { font: 0.875em var(--mono); background: var(--key); padding: 1px 6px; bord
   transition: box-shadow 140ms;
 }
 .effect-blur-light::before,
-.effect-blur-strong::before { content: ''; position: absolute; inset: -12px; background: url('/backgrounds/studio.jpg') center / cover; filter: blur(4px); }
+.effect-blur-strong::before { content: ''; position: absolute; inset: -12px; background: url('/backgrounds/thumbs/studio.webp') center / cover; filter: blur(4px); }
 .effect-blur-strong::before { filter: blur(10px); }
 .effect-none { align-items: center; justify-content: center; }
 .effect-label { position: relative; padding: 3px 7px; border-radius: 6px; background: oklch(0.15 0.005 70 / 0.8); font-size: 0.75rem; font-weight: 600; }

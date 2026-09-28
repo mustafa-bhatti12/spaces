@@ -379,7 +379,8 @@ works from the same machine; test multi-device calls on the Railway deployment.
 - `demo/components/conference/*` — `Conference` (Room lifecycle, audio-first publish defaults, duplicate-identity heartbeat, host's end-for-everyone), `ConferenceLayout` (VideoConference prefab expanded; one side panel at a time), `Dock` (status readout · media · talk · more · Leave), `LeaveDialog` (leave confirmation for everyone; host also gets end-for-everyone), `Tile`, `SidePanel`, `ParticipantsPanel`, `SettingsPanel` + `useBackgroundEffect`, `useAudioFirst` (pauses the camera on a weak uplink), `useReactions`, `useRecording`.
 - `demo/components/ui/*` — `Menu` (dock popover), `Device` (wordmark, LED, readout, initials).
 - `demo/components/admin/AdminDashboard.tsx` — the control center UI; `ServerPanel.tsx` (Server section: metric strips + processes table); `format.ts` (bytes, rates, durations).
-- `demo/public/backgrounds/*.jpg` — virtual-background images.
+- `demo/public/backgrounds/*.webp` — virtual-background images (1920×1080, WebP q80); `thumbs/*.webp` are the 320 px settings-tile previews. Add a background as both.
+- `demo/public/mediapipe/` — `selfie_segmenter.tflite` (committed, pinned float16 v1) and `wasm/` (gitignored, copied from node_modules by `demo/next.config.ts`): background effects load these from our origin, not jsdelivr/googleapis.
 - `livekit/config.yaml`, `egress/config.yaml` — real (non-`--dev`) server config templates with the dev key pair; read the comments in each before editing.
 - `deploy/spaces.service` (systemd unit running `start-all.sh`), `deploy/Caddyfile` (site + TURN SNI route, example hosts).
 - `start-all.sh` — local (macOS) / VPS orchestration for the droplet side, plus `next dev` for

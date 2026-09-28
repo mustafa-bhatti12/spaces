@@ -29,11 +29,19 @@ export const BACKGROUND_EFFECTS: { effect: BackgroundEffect; label: string; prev
     { id: 'golden-hour', label: 'Canopy' },
     { id: 'bookshelf', label: 'Bookshelf' },
   ].map(({ id, label }) => ({
-    effect: { id, imagePath: `/backgrounds/${id}.jpg` },
+    effect: { id, imagePath: `/backgrounds/${id}.webp` },
     label,
-    preview: `/backgrounds/${id}.jpg`,
+    preview: `/backgrounds/thumbs/${id}.webp`,
   })),
 ];
+
+// Served from our own origin instead of the library's defaults (jsdelivr + an unpinned `latest`
+// model on googleapis): pinned, and reachable on networks that block third-party CDNs. The wasm
+// is copied out of node_modules by next.config.ts; the model is committed.
+const ASSET_PATHS = {
+  tasksVisionFileSet: '/mediapipe/wasm',
+  modelAssetPath: '/mediapipe/selfie_segmenter.tflite',
+};
 
 export interface BackgroundEffectControls {
   effect: BackgroundEffect;
@@ -75,7 +83,7 @@ export function useBackgroundEffect(): BackgroundEffectControls {
       return;
     }
     if (options.mode === 'disabled') return;
-    const processor = BackgroundProcessor(options);
+    const processor = BackgroundProcessor({ ...options, assetPaths: ASSET_PATHS });
     processorRef.current = processor;
     await videoTrack.setProcessor(processor);
   }, []);
