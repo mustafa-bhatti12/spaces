@@ -301,6 +301,15 @@ works from the same machine; test multi-device calls on the Railway deployment.
   and the login rate limit lives on `globalThis`.
 - **Browser code that needs `window` (livekit-client, track processors) loads via
   `next/dynamic(..., { ssr: false })`** from a client component (`RoomClient.tsx`).
+- **The production browser console is muted** (`demo/app/layout.tsx`, a `beforeInteractive`
+  script that no-ops every `console` method before any library loads; `next dev` keeps it). Log on
+  the server (route handlers), not in client code. To debug a deployed page:
+  `localStorage.setItem('spaces-debug', '1')` and reload. Browser-native lines (failed requests,
+  uncaught promise rejections, GPU warnings) still show, so client promises must be caught.
+- **Don't call `setAttributes` before the room is connected.** An update sent during the join is
+  never confirmed and livekit-client rejects it after 5 s (`SignalRequestError: Request to update
+  local metadata timed out`); the attribute is lost. `ConferenceLayout` gates the mirror attribute
+  on `ConnectionState.Connected`.
 - **`livekit-server` drains on the first SIGTERM**: it keeps running (and holding 7880/7881/7882)
   until every participant leaves, so a replacement started right away just dies on the busy ports.
   A second SIGTERM forces it down. `systemctl restart spaces` doesn't wait for the drain: start-all's

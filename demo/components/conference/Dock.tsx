@@ -183,7 +183,9 @@ export function Dock({ roomName, participantCount, panel, onTogglePanel, onReact
   const rec = recording.current;
   useSecondTick(Boolean(rec));
 
-  const toggleHand = () => localParticipant.setAttributes({ [HAND_ATTRIBUTE]: hand ? '' : 'raised' });
+  // The key reflects the attribute LiveKit confirms, so a failed update just leaves it unchanged.
+  const toggleHand = () =>
+    localParticipant.setAttributes({ [HAND_ATTRIBUTE]: hand ? '' : 'raised' }).catch(() => {});
 
   return (
     <div className="dock" role="toolbar" aria-label="Call controls">

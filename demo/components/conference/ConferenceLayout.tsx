@@ -53,10 +53,14 @@ export function ConferenceLayout({ roomName, onEndForAll }: { roomName: string; 
   const rec = useRecording(roomName, localParticipant.name || localParticipant.identity);
 
   // Participant attributes are synchronized through LiveKit, so every client renders this
-  // participant's camera with the same orientation.
+  // participant's camera with the same orientation. Only send once connected: an update sent while
+  // the join is still in flight never gets confirmed and the SDK rejects it after 5 s. A failed
+  // update is retried on the next connection-state change (e.g. after a reconnect).
   useEffect(() => {
-    void localParticipant.setAttributes({ [MIRROR_ATTRIBUTE]: mirror ? 'on' : 'off' });
-  }, [localParticipant, mirror]);
+    const value = mirror ? 'on' : 'off';
+    if (connectionState !== ConnectionState.Connected || localParticipant.attributes[MIRROR_ATTRIBUTE] === value) return;
+    localParticipant.setAttributes({ [MIRROR_ATTRIBUTE]: value }).catch(() => {});
+  }, [connectionState, localParticipant, mirror]);
 
   const tracks = useTracks(
     [
