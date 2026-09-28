@@ -356,7 +356,7 @@ works from the same machine; test multi-device calls on the Railway deployment.
   `demo/public/deepfilternet3/v3/`, since the package otherwise fetches them from its author's CDN and
   the npm tarball doesn't ship them. Bumping the package means re-fetching both from
   `cdn.mezon.ai/.../deepfilternet3/<vN>/` (check the path in its `AssetLoader`). Measured on the local
-  Intel Mac: about +26% of one core for the speaker's Chrome; that's why it defaults off on touch devices.
+  Intel Mac: about +26% of one core for the speaker's Chrome; it defaults off so that cost is opt-in.
 - **`supportsBackgroundProcessors()` creates a WebGL context per call.** Calling it on every render
   hit Chrome's context limit ("Too many active WebGL contexts") — check once (`useState`
   initializer in `useBackgroundEffect.ts`).

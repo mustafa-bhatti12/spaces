@@ -23,12 +23,9 @@ function subscribe(onChange: () => void) {
   };
 }
 
-// Default: on for laptops/desktops, off for touch devices, where the model's CPU cost drains the
-// battery. An explicit choice is remembered per browser.
+// Off until someone turns it on. An explicit choice is remembered per browser.
 function read(): boolean {
-  const saved = localStorage.getItem(PREF_KEY);
-  if (saved) return saved === 'on';
-  return !window.matchMedia('(pointer: coarse)').matches;
+  return localStorage.getItem(PREF_KEY) === 'on';
 }
 
 export interface NoiseFilterControls {
