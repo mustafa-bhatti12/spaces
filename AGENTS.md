@@ -28,7 +28,7 @@ keep this repo generic so any future consumer can reuse it the same way. Don't e
   `livekit/config.yaml`, `egress/config.yaml`, `.env`) needs `systemctl restart
   spaces`, which drops live calls: check for live rooms first and ask the user if anyone is in one.
 - **Verify on the real surface:** `/root/tools/stack-check.sh` on the droplet (health, every
-  service, a join over the public URL, a recording through to its finished file); `puppeteer-core`
+  service, a join over the public URL, the recording that starts by itself through to its finished file and Soniox transcript); `puppeteer-core`
   scripts in `/tmp` for UI and calls (see "Testing"). `npm test` in `token-service`, `npm run build`
   in `demo`.
 - **Record what shipped** in `CHANGELOG.md` (newest first, one line per user-visible change), and
@@ -66,14 +66,16 @@ graph LR
   LK -->|redis pub/sub| RD
   EG -->|redis pub/sub| RD
   EG -->|writes| RAW[egress/raw/*.ogg]
-  LK -->|"webhook (localhost): egress_ended, room_finished"| TS
+  LK -->|"webhook (localhost): participant_joined, egress_ended, room_finished"| TS
   TS -->|"moves finished file"| COMP[egress/compressed/*.ogg]
+  TS -->|"uploads, waits (HTTPS)"| SX[Soniox async STT]
+  TS -->|"saves"| TR[egress/transcripts/*.json]
 ```
 
 | Service | Lang | Runs on | Port | Holds | Purpose |
 |---|---|---|---|---|---|
 | `livekit-server` | Go binary | droplet | 7880 ws/http, 7881 tcp, 7882 udp | LiveKit key pair (runtime config) | Media server (SFU). Native, not Docker — see below. |
-| `token-service` | TypeScript, Fastify | droplet | 8880 | LiveKit key pair, both bearer secrets | **Only** thing that mints tokens or talks to LiveKit's admin/egress API. Consumer routes + operator `/admin/*` routes. |
+| `token-service` | TypeScript, Fastify | droplet | 8880 | LiveKit key pair, both bearer secrets, `SONIOX_API_KEY` | **Only** thing that mints tokens or talks to LiveKit's admin/egress API. Consumer routes + operator `/admin/*` routes. Starts every call's recording and has Soniox transcribe every finished one. |
 | Redis | — | droplet | 6379 | — | Job queue LiveKit server ↔ Egress worker use to coordinate. Recording-only; calling works without it. |
 | Egress worker | Docker (`livekit/egress:v1.14.1`, pinned) | droplet | — | LiveKit key pair (runtime config) | Joins a room as a hidden participant, mixes everyone's audio and writes 24 kbps Opus to `egress/raw/`; token-service moves it to `egress/compressed/` when egress reports it finished. |
 | Caddy | — | droplet | 80/443 | Let's Encrypt certs | TLS for `spaces.hofmigration.com`: `/rtc` → LiveKit, `/twirp` + `/recording/webhook` blocked, everything else → token-service. Also, via the `layer4` plugin (custom build, see README), TURN/TLS for `turn.hofmigration.com` → LiveKit's TURN on `127.0.0.1:5349`. Config: `deploy/Caddyfile`. |
@@ -127,6 +129,19 @@ graph LR
 - LiveKit webhooks are verified via `WebhookReceiver` (JWT in the `Authorization` header, signed with
   the LiveKit API secret) — see gotchas below for the header-name trap. LiveKit posts them to
   `localhost:8880`; Caddy answers `404` for `/recording/webhook` from outside.
+- **Every call is recorded and every recording transcribed.** The first participant to join starts
+  the room's recording (`autoRecord.ts`, on LiveKit's `participant_joined` webhook; the egress
+  participant itself is ignored). Anyone in the call can still stop it, and then it stays off for
+  that room until it closes (in memory; `RECORD_ALL_CALLS=0` turns auto-recording off). Each
+  finished recording goes to Soniox's async API (`transcripts.ts`, `stt-async-v5`, speakers
+  separated as "1", "2", …: the mix has no names) and the transcript is saved as
+  `egress/transcripts/<recording>.json`; the upload and Soniox's copy are deleted as soon as it's
+  done (`cleanup`). `SONIOX_API_KEY` lives only in the droplet's `token-service/.env`. Unset, nothing
+  is transcribed and `/admin` says "Off". At start token-service transcribes any saved recording
+  without a transcript or saved failure (backfill, and jobs a restart cut short). Deleting a
+  recording in `/admin` deletes its transcript. Consumers read them with
+  `GET /recording/transcripts?room=`. Processing is in Soniox's US region; `SONIOX_REGION=in|eu|jp`
+  needs a regional project and key from Soniox support.
 - **Real credentials live only on the droplet and in Railway variables.** The repo is public and its
   committed `devkey`/`secret` + `local-dev-secret-not-for-production` are LiveKit's/our published dev
   values. On Linux (not macOS) `start-all.sh`'s `ensure_real_credentials` replaces
@@ -180,7 +195,8 @@ get no audio or video). `start-all.sh` also needs outbound 443 for apt, npm, Doc
 
 Droplet-only settings in `token-service/.env` (gitignored): `LIVEKIT_PUBLIC_URL=wss://spaces.hofmigration.com`
 (what `/token` returns as `serverUrl`; the demo hands it straight to the browser),
-`TURN_DOMAIN=turn.hofmigration.com` (see TURN below), plus the generated key pair and secrets.
+`TURN_DOMAIN=turn.hofmigration.com` (see TURN below), `SONIOX_API_KEY` (transcripts), plus the
+generated key pair and secrets.
 Caddy config is `deploy/Caddyfile` with the real hosts, installed as `/etc/caddy/Caddyfile`.
 
 **TURN (relay for networks that only allow HTTPS):** LiveKit's built-in TURN, switched on by
@@ -246,12 +262,14 @@ works from the same machine; test multi-device calls on the Railway deployment.
 
 ## Non-obvious gotchas (already hit, already fixed — don't rediscover these)
 
-- **`livekit-server --dev` cannot sign egress webhooks.** Its placeholder-key mode has no
-  `webhook.api_key`, so `StartRoomCompositeEgress`'s `webhooks` field silently fails
-  (`"no signing key or secret was provided"` in the server log — the recording itself still starts,
-  it just never notifies anyone when it's done). Recording requires the real
-  `livekit/config.yaml`, not CLI flags. `start-all.sh` picks the config automatically when Redis is
-  up and falls back to `--dev` (calling-only) when it isn't — don't revert that to a bare `--dev`.
+- **Recording webhooks come from `livekit/config.yaml`'s `webhook.urls`, not the egress request.**
+  LiveKit sends every event there (token-service ignores what it doesn't use). Don't also pass
+  `webhooks` to `StartRoomCompositeEgress`: each `egress_ended` would arrive twice. Changing the
+  config needs `systemctl restart spaces`. `livekit-server --dev` has neither the URL nor a signing
+  key (`webhook.api_key`), so under `--dev` recordings are never moved or transcribed and calls aren't
+  auto-recorded. Recording requires the real `livekit/config.yaml`, not CLI flags. `start-all.sh`
+  picks the config automatically when Redis is up and falls back to `--dev` (calling-only) when it
+  isn't — don't revert that to a bare `--dev`.
 - **The `--dev` fallback (no Redis) gets the real key pair via `LIVEKIT_KEYS`,** not `--keys` (that
   would show the secret in `ps`). `--dev` otherwise defaults to `devkey`/`secret`, which wouldn't
   match the generated keys token-service holds on the droplet.
@@ -379,7 +397,7 @@ works from the same machine; test multi-device calls on the Railway deployment.
   `egress/config.yaml`) is LiveKit's own published fixed dev credential, not a real secret — fine to
   commit, fine to see in logs. Real values exist only in gitignored `.env` files / `.runtime/` on the
   droplet and in Railway service variables; never commit them or paste them into docs.
-- `egress/raw/` and `egress/compressed/` are gitignored — never commit recordings, and don't remove
+- `egress/raw/`, `egress/compressed/` and `egress/transcripts/` are gitignored — never commit recordings or transcripts, and don't remove
   the gitignore entries to "fix" an empty-looking directory.
 - Multiple terminals/processes may already be running these services manually outside any single
   agent's process tree (local dev laptop *and* the shared droplet) — `ps aux` / `lsof -i :<port>`
@@ -390,7 +408,9 @@ works from the same machine; test multi-device calls on the Railway deployment.
 ## Where things live
 
 - `token-service/src/livekit.ts` — all LiveKit SDK calls (tokens, rooms, participants, egress, path mapping).
-- `token-service/src/index.ts` — consumer routes, including the `/recording/webhook` receiver.
+- `token-service/src/index.ts` — consumer routes, including the `/recording/webhook` receiver (LiveKit's events: auto-record, finish + transcribe, room cleanup) and `/recording/transcripts`.
+- `token-service/src/autoRecord.ts` — records every call from its first join; remembers rooms someone stopped by hand.
+- `token-service/src/transcripts.ts` — Soniox transcription of finished recordings, transcript files/status, plain-text rendering, startup backfill.
 - `token-service/src/lobby.ts` + `lobbyRoutes.ts` — the waiting room: in-memory join requests (unit-tested) and the `/lobby/*` routes; a data message on topic `space.lobby` tells the host's client to refetch.
 - `token-service/src/admin.ts` — the operator `/admin/*` routes (overview, health, system metrics, moderation, recording files with Range support).
 - `token-service/src/system.ts` — `GET /admin/system`: host CPU/memory/network, per-service process rows, versions, TLS expiry, deployed commit. Linux-only parts return null on macOS; rates are deltas between calls (first call after a restart has nulls). It runs on every console poll, so keep it cheap; the comments explain why it reads cgroup files instead of `docker stats`.

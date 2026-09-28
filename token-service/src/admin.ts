@@ -15,6 +15,8 @@ import {
 import { listRecordingFiles, RECORDING_DIRS, resolveRecordingFile } from './recordings';
 import { collectSystemSnapshot, egressContainer } from './system';
 import { lobby } from './lobby';
+import * as autoRecord from './autoRecord';
+import { deleteTranscript, readTranscript, transcribeRecording, transcriptStates, transcriptToText } from './transcripts';
 
 type Check = { ok: boolean; detail: string };
 
@@ -38,10 +40,16 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     for (const [name, result] of Object.entries({ rooms, activeRecordings, files })) {
       if (result.status === 'rejected') errors[name] = (result.reason as Error).message;
     }
+    const fileList = files.status === 'fulfilled' ? files.value : [];
+    const transcripts = await transcriptStates(fileList.filter((f) => f.kind === 'compressed').map((f) => f.name)).catch((err: Error) => {
+      errors.transcripts = err.message;
+      return new Map();
+    });
     return {
       rooms: rooms.status === 'fulfilled' ? rooms.value : [],
       activeRecordings: activeRecordings.status === 'fulfilled' ? activeRecordings.value : [],
-      files: files.status === 'fulfilled' ? files.value : [],
+      // Finished recordings carry their transcript status; raw ones are still being written.
+      files: fileList.map((f) => (f.kind === 'compressed' ? { ...f, transcript: transcripts.get(f.name) } : f)),
       errors,
     };
   });
@@ -111,7 +119,7 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
   app.post<{ Body: { egressId?: string } }>('/recordings/stop', async (req, reply) => {
     const egressId = req.body?.egressId;
     if (typeof egressId !== 'string' || !egressId) return reply.code(400).send({ error: 'egressId is required.' });
-    await stopRecording(egressId);
+    autoRecord.onRecordingStoppedByHand(await stopRecording(egressId));
     return { ok: true };
   });
 
@@ -138,11 +146,32 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     if (!file) return reply.code(400).send({ error: 'Unknown recording.' });
     try {
       await fs.promises.unlink(file);
+      if (req.params.kind === 'compressed') await deleteTranscript(req.params.name);
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === 'ENOENT') return reply.code(404).send({ error: 'Recording not found.' });
       throw err;
     }
     return { ok: true };
+  });
+
+  // A finished recording's transcript: JSON, or ?format=txt for plain text (&download=1 to save it).
+  app.get<{ Params: { name: string }; Querystring: { format?: string; download?: string } }>('/transcripts/:name', async (req, reply) => {
+    const transcript = await readTranscript(req.params.name);
+    if (!transcript) return reply.code(404).send({ error: 'No transcript for this recording.' });
+    if (req.query.format !== 'txt') return transcript;
+    if (req.query.download === '1') {
+      reply.header('Content-Disposition', `attachment; filename="${req.params.name.replace(/\.ogg$/, '')}.txt"`);
+    }
+    return reply.type('text/plain; charset=utf-8').send(transcriptToText(transcript));
+  });
+
+  // Transcribe (again): for a failed attempt, or one a restart cut short. Runs in the background.
+  app.post<{ Params: { name: string } }>('/transcripts/:name', async (req, reply) => {
+    if (!process.env.SONIOX_API_KEY) return reply.code(409).send({ error: 'Transcription is off: SONIOX_API_KEY is not set.' });
+    const file = resolveRecordingFile('compressed', req.params.name);
+    if (!file || !fs.existsSync(file)) return reply.code(404).send({ error: 'Recording not found.' });
+    void transcribeRecording(req.params.name);
+    return { status: 'transcribing' };
   });
 }
 

@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import path from 'node:path';
 import Fastify from 'fastify';
 import { EgressStatus, WebhookReceiver } from 'livekit-server-sdk';
 import {
@@ -17,7 +18,9 @@ import {
   stopRecording,
 } from './livekit';
 import { requireSharedSecret } from './auth';
-import { finishRecording } from './recordings';
+import { finishRecording, listRecordingFiles } from './recordings';
+import { parseRecordingName, readTranscript, transcribeMissing, transcribeRecording, transcriptStates } from './transcripts';
+import * as autoRecord from './autoRecord';
 import { adminRoutes } from './admin';
 import { lobby } from './lobby';
 import { lobbyRoutes } from './lobbyRoutes';
@@ -170,7 +173,7 @@ fastify.post<{ Body: { egressId?: string } }>('/recording/stop', { preHandler: r
     return;
   }
   try {
-    await stopRecording(egressId);
+    autoRecord.onRecordingStoppedByHand(await stopRecording(egressId));
     reply.send({ ok: true });
   } catch (err) {
     console.error('Failed to stop recording:', err);
@@ -189,6 +192,39 @@ fastify.get<{ Querystring: { room?: string } }>('/recording/status', { preHandle
   } catch (err) {
     console.error('Failed to look up recording status:', err);
     reply.code(500).send({ error: 'Could not look up recording status.' });
+  }
+});
+
+// A room's finished recordings with their transcripts (Soniox, see transcripts.ts), oldest first.
+// `transcript` is present once status is `ready`.
+fastify.get<{ Querystring: { room?: string } }>('/recording/transcripts', { preHandler: requireSharedSecret }, async (req, reply) => {
+  const room = String(req.query.room ?? '');
+  if (!room) {
+    reply.code(400).send({ error: 'room query param is required.' });
+    return;
+  }
+  try {
+    const files = (await listRecordingFiles())
+      .filter((f) => f.kind === 'compressed' && parseRecordingName(f.name)?.room === room)
+      .reverse();
+    const states = await transcriptStates(files.map((f) => f.name));
+    reply.send(
+      await Promise.all(
+        files.map(async (f) => {
+          const state = states.get(f.name)!;
+          return {
+            file: f.name,
+            recordedAt: parseRecordingName(f.name)?.recordedAt ?? null,
+            bytes: f.bytes,
+            ...state,
+            ...(state.status === 'ready' ? { transcript: await readTranscript(f.name) } : {}),
+          };
+        }),
+      ),
+    );
+  } catch (err) {
+    console.error('Failed to list transcripts:', err);
+    reply.code(500).send({ error: 'Could not list transcripts.' });
   }
 });
 
@@ -222,6 +258,11 @@ fastify.register(async (scoped) => {
     reply.send({ received: true });
 
     const info = event.egressInfo;
+    if (event.event === 'participant_joined' && event.room?.name) {
+      // Every call is recorded by default (autoRecord.ts).
+      autoRecord.onParticipantJoined(event.room.name, event.participant?.kind);
+      return;
+    }
     if (event.event === 'room_finished' && event.room?.name) {
       // Belt-and-braces: LiveKit ties Room Composite Egress to the room's own lifecycle, but if
       // that coupling ever fails to tear an egress down cleanly, this guarantees a recording
@@ -230,17 +271,22 @@ fastify.register(async (scoped) => {
         console.error(`Failed to auto-stop recording(s) for finished room ${event.room?.name}:`, err);
       });
       lobby.forgetRoom(event.room.name);
+      autoRecord.forgetRoom(event.room.name);
       return;
     }
     if (event.event !== 'egress_ended' || info?.status !== EgressStatus.EGRESS_COMPLETE) {
       return;
     }
     for (const file of info.fileResults) {
+      let finished: string;
       try {
-        await finishRecording(containerPathToHostPath(file.filename));
+        finished = await finishRecording(containerPathToHostPath(file.filename));
       } catch (err) {
         console.error(`Failed to move finished recording ${file.filename}:`, err);
+        continue;
       }
+      // Every finished recording gets a transcript; this runs in the background (minutes for a long call).
+      void transcribeRecording(path.basename(finished));
     }
   });
 });
@@ -251,7 +297,11 @@ fastify.register(lobbyRoutes, { prefix: '/lobby' });
 const port = Number(process.env.PORT ?? 8880);
 fastify
   .listen({ port, host: '0.0.0.0' })
-  .then(() => console.log(`token-service listening on :${port}`))
+  .then(() => {
+    console.log(`token-service listening on :${port}`);
+    // Recordings saved while transcription was off, or cut short by a restart.
+    setTimeout(() => transcribeMissing().catch((err) => console.error('Could not transcribe missing recordings:', err)), 10_000).unref();
+  })
   .catch((err) => {
     console.error(err);
     process.exit(1);

@@ -2,11 +2,13 @@
 
 import type { LucideIcon } from 'lucide-react';
 import { CircleDot, CircleStop, Download, ExternalLink, Lock, LogOut, Mic, MicOff, MonitorUp, Play, Trash2, UserX, Video, Volume2, X } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { initials, Led, Readout, ReadoutSegment, Wordmark } from '../ui/Device';
 import { formatBytes, since } from './format';
 import type { SystemSnapshot } from './ServerPanel';
 import { ServerPanel } from './ServerPanel';
+import type { TranscriptState } from './Transcripts';
+import { TranscriptCell, TranscriptPanel } from './Transcripts';
 
 // Operator control center. Everything goes through /admin/api/* (session-checked, then forwarded to
 // token-service's /admin/* with ADMIN_SHARED_SECRET). Names/identities come from call participants,
@@ -49,6 +51,8 @@ interface RecordingFile {
   name: string;
   bytes: number;
   modifiedAt: string;
+  /** Finished recordings only. */
+  transcript?: TranscriptState;
 }
 interface Overview {
   rooms: AdminRoom[];
@@ -193,6 +197,7 @@ function Dashboard({ onLoggedOut }: { onLoggedOut: () => void }) {
   const [toast, setToast] = useState<{ message: string; error: boolean } | null>(null);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [playing, setPlaying] = useState<Set<string>>(() => new Set());
+  const [openTranscript, setOpenTranscript] = useState<string | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const flash = useCallback((message: string, error = false) => {
@@ -515,7 +520,7 @@ function Dashboard({ onLoggedOut }: { onLoggedOut: () => void }) {
             )}
           </h2>
           {!overview?.files.length ? (
-            <p className="empty">No recordings yet. Start one from a live room above, or with Record in a call.</p>
+            <p className="empty">No recordings yet. Every call is recorded, and its recording and transcript show up here once it&apos;s saved.</p>
           ) : (
             <div className="table-wrap">
               <table className="rec-table">
@@ -527,6 +532,7 @@ function Dashboard({ onLoggedOut }: { onLoggedOut: () => void }) {
                       Size
                     </th>
                     <th scope="col">Saved</th>
+                    <th scope="col">Transcript</th>
                     <th scope="col">
                       <span className="sr-only">Actions</span>
                     </th>
@@ -536,7 +542,8 @@ function Dashboard({ onLoggedOut }: { onLoggedOut: () => void }) {
                   {overview.files.map((f) => {
                     const key = `${f.kind}/${f.name}`;
                     return (
-                      <tr key={key}>
+                      <Fragment key={key}>
+                      <tr>
                         <td className="mono rec-file">{f.name}</td>
                         <td>
                           <span className={`kind kind-${f.kind}`} title={f.kind === 'raw' ? 'Still recording, or not yet moved to finished' : 'Finished recording'}>
@@ -545,6 +552,22 @@ function Dashboard({ onLoggedOut }: { onLoggedOut: () => void }) {
                         </td>
                         <td className="num mono">{formatBytes(f.bytes)}</td>
                         <td title={new Date(f.modifiedAt).toLocaleString()}>{since(f.modifiedAt)}</td>
+                        <td>
+                          {f.kind === 'compressed' ? (
+                            <TranscriptCell
+                              name={f.name}
+                              state={f.transcript}
+                              open={openTranscript === f.name}
+                              busy={busyKey === `transcribe-${key}`}
+                              onToggle={() => setOpenTranscript((open) => (open === f.name ? null : f.name))}
+                              onRetry={() =>
+                                act(`transcribe-${key}`, () => api('POST', `/transcripts/${encodeURIComponent(f.name)}`), 'Transcribing. It shows here once ready.')
+                              }
+                            />
+                          ) : (
+                            <span className="transcript-state">After it&apos;s saved</span>
+                          )}
+                        </td>
                         <td>
                           <div className="file-actions">
                             {playing.has(key) ? (
@@ -570,7 +593,9 @@ function Dashboard({ onLoggedOut }: { onLoggedOut: () => void }) {
                                   `delete-${key}`,
                                   () => api('DELETE', `/files/${encodeURIComponent(f.kind)}/${encodeURIComponent(f.name)}`),
                                   'Recording deleted',
-                                  `Permanently delete ${f.name}? This cannot be undone.`,
+                                  f.kind === 'compressed'
+                                    ? `Permanently delete ${f.name} and its transcript? This cannot be undone.`
+                                    : `Permanently delete ${f.name}? This cannot be undone.`,
                                 )
                               }
                             >
@@ -579,6 +604,14 @@ function Dashboard({ onLoggedOut }: { onLoggedOut: () => void }) {
                           </div>
                         </td>
                       </tr>
+                      {openTranscript === f.name && f.transcript?.status === 'ready' && (
+                        <tr className="transcript-row">
+                          <td colSpan={6}>
+                            <TranscriptPanel name={f.name} onClose={() => setOpenTranscript(null)} />
+                          </td>
+                        </tr>
+                      )}
+                      </Fragment>
                     );
                   })}
                 </tbody>

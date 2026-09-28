@@ -9,11 +9,11 @@ web
 ## Users
 
 - **Call participants:** people in a video call, often not technical. A link lands them in a room; they type a name, check camera and mic, and talk. They reach the controls mid-conversation, so every control has to be found in a glance.
-- **Operators:** whoever runs this deployment. They sign in to `/admin` to see live rooms, mute or remove people, start or stop recordings, play and download recordings, and check that services are healthy.
+- **Operators:** whoever runs this deployment. They sign in to `/admin` to see live rooms, mute or remove people, start or stop recordings, play and download recordings, read their transcripts, and check that services are healthy.
 
 ## Product Purpose
 
-Space is self-hosted video calling on LiveKit: a media server, a token service (the only holder of the LiveKit credentials), audio recording and compression, and an operator control center. The `demo` app is the reference call UI. It stands in for how a consuming app (today, Petition Studio) embeds calls. It proves the stack end to end and doubles as the permanent operator console at `/admin`.
+Space is self-hosted video calling on LiveKit: a media server, a token service (the only holder of the LiveKit credentials), audio recording and transcription, and an operator control center. The `demo` app is the reference call UI. It stands in for how a consuming app (today, Petition Studio) embeds calls. It proves the stack end to end and doubles as the permanent operator console at `/admin`.
 
 Success looks like this: joining takes one screen, a call feels as dependable as the tools people already use, and an operator can act on any room or recording in seconds.
 
@@ -40,7 +40,7 @@ Space is a neutral, unbranded video tool that any future app can embed through t
   - background blur and virtual backgrounds
   - emoji reactions
   - raise hand
-  - audio recording, with a REC badge showing who started it
+  - audio recording, on by default in every call (anyone can stop it), with a REC badge showing who started it when someone did
   - invite link
   - fullscreen
   - reconnect banner and a weak-connection readout
@@ -56,6 +56,7 @@ Space is a neutral, unbranded video tool that any future app can embed through t
   - live rooms and participants, with mute, remove, and close-room actions
   - start and stop recordings
   - a recordings list with play, download, and delete
+  - every recording's transcript (Soniox; numbered speakers, times, languages): read, download as text, retry a failed one
 - No AI agent for now.
 
 ## Brand Commitments

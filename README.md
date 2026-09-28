@@ -155,15 +155,21 @@ Set `ADMIN_PASSWORD` and `ADMIN_SHARED_SECRET` in `demo/.env`; the secret must m
 ## 🎙️ Audio Recording & Transcription Pipeline
 
 1. **Recording Initiation:**
-   - Any participant can click **Record** in the control bar, or the operator can start it from `/admin`.
-   - The demo's `/api/recording/start` calls token-service's `POST /recording/start`, which starts a LiveKit **RoomCompositeEgress** (audio-only, 24 kbps Opus). Everyone in the room sees the `REC` badge, with a timer and who started it.
+   - Every call is recorded by default: when the first person joins, LiveKit's `participant_joined` webhook tells token-service, which starts a LiveKit **RoomCompositeEgress** (audio-only, 24 kbps Opus). Everyone in the room sees the `REC` badge with a timer. `RECORD_ALL_CALLS=0` in `token-service/.env` turns this off.
+   - Anyone in the call can press **Stop** (or **Record** again), and the operator can do the same from `/admin`. Once stopped by hand, a call isn't re-recorded when more people join.
 
 2. **Storage & Auto-Stop:**
-   - The Egress worker container mixes everyone's audio (no Chrome: egress's audio-only pipeline) and encodes it straight to the final 24 kbps Opus, about 11 MB an hour, clear for listening and for Whisper / Deepgram speech-to-text. `RECORDING_AUDIO_KBPS` in `token-service/.env` changes the rate.
+   - The Egress worker container mixes everyone's audio (no Chrome: egress's audio-only pipeline) and encodes it straight to the final 24 kbps Opus, about 11 MB an hour. `RECORDING_AUDIO_KBPS` in `token-service/.env` changes the rate.
    - Recordings automatically stop if all participants leave the room (`room_finished` webhook).
 
 3. **Archival:**
    - When the Egress finishes, LiveKit sends an `egress_ended` webhook to `token-service`, which moves the finished file from `./egress/raw/` to `./egress/compressed/<room>-<timestamp>.ogg`. There is no second encoding pass.
+
+4. **Transcription (Soniox):**
+   - With `SONIOX_API_KEY` set in `token-service/.env`, every finished recording is sent to Soniox's async speech-to-text (`stt-async-v5`, speakers separated, language detected) and the transcript is saved as `./egress/transcripts/<recording>.ogg.json`. Soniox's copies are deleted as soon as it's done. A 1-hour call costs about $0.10.
+   - `TRANSCRIPTION_LANGUAGE_HINTS` (e.g. `en,ur`) and `TRANSCRIPTION_TERMS` (e.g. `USCIS,NIW`) improve accuracy for the languages and words your calls use.
+   - `/admin` shows each recording's transcript (view, download as `.txt`, retry a failed one). Consumers read them with `GET /recording/transcripts?room=<room>` (consumer secret).
+   - Speakers are numbered ("Speaker 1", "Speaker 2"): the recording is one mixed track, so it carries no names.
 
 ---
 
@@ -180,4 +186,4 @@ Built on LiveKit's React components and hooks (`@livekit/components-react`), wit
 - **Settings (side panel):** camera preview; camera, microphone and speaker selection; background blur (light or strong) or virtual backgrounds.
 - **Resilience:** a reconnecting banner, and end screens that say why the call ended (left, ended by you, ended for everyone, removed, or joined from another tab).
 - **Audio first on weak connections:** video gives way before audio. The server pauses video for a viewer whose connection can't carry even the smallest video layer; the camera is sent at lower priority than the mic (540p max), and after 10 seconds of a poor connection your camera pauses on its own, coming back once the connection has been good for 10 seconds.
-- **Admin (`/admin`):** password-protected operator console. Service health; server metrics (CPU and load, memory, network throughput, TLS certificate expiry, deployed commit, host uptime, live call and recording-storage totals, and a per-service table of status, uptime, CPU, memory, version and PID); live rooms and participants; remove, mute and close room; start and stop recording; play, download and delete recordings.
+- **Admin (`/admin`):** password-protected operator console. Service health; server metrics (CPU and load, memory, network throughput, TLS certificate expiry, deployed commit, host uptime, live call and recording-storage totals, and a per-service table of status, uptime, CPU, memory, version and PID); live rooms and participants; remove, mute and close room; start and stop recording; play, download and delete recordings; read, download and retry transcripts.

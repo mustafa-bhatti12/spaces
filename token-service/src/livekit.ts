@@ -13,7 +13,6 @@ import {
   TrackSource,
   TrackType,
   TokenVerifier,
-  WebhookConfig,
 } from 'livekit-server-sdk';
 
 export interface CallConnectionDetails {
@@ -317,8 +316,9 @@ const pendingStarts = new Map<string, Promise<RecordingInfo>>();
 /**
  * Starts a single mixed-audio recording of every participant currently in the room. Tied to the
  * room's lifecycle -- LiveKit stops it automatically once the room empties, same as if /stop had
- * been called. The webhook lets us know the moment the file is finalized so it can be moved into
- * the finished-recordings directory without polling or guessing when Egress is done writing it.
+ * been called. LiveKit's webhook (livekit/config.yaml `webhook.urls`) reports egress_ended the
+ * moment the file is finalized, so it can be moved into the finished-recordings directory without
+ * polling or guessing when Egress is done writing it.
  *
  * Idempotent: if a recording is already active for this room, returns that one instead of
  * starting a second.
@@ -350,7 +350,6 @@ export async function startRoomAudioRecording(room: string, startedByName?: stri
         // Leaving layout/customBaseUrl unset keeps this on egress's Chrome-free audio pipeline.
         audioOnly: true,
         encodingOptions: new EncodingOptions({ audioCodec: AudioCodec.OPUS, audioBitrate: RECORDING_AUDIO_KBPS }),
-        webhooks: [new WebhookConfig({ url: process.env.RECORDING_WEBHOOK_URL ?? 'http://localhost:8880/recording/webhook' })],
       },
     );
     if (startedByName) recordingStartedBy.set(info.egressId, startedByName);
@@ -365,11 +364,13 @@ export async function startRoomAudioRecording(room: string, startedByName?: stri
   }
 }
 
-export async function stopRecording(egressId: string): Promise<void> {
+/** Stops a recording; returns the room it was recording. */
+export async function stopRecording(egressId: string): Promise<string> {
   const { apiKey, apiSecret, serverUrl } = requireLiveKitEnv();
   const egress = new EgressClient(serverUrl, apiKey, apiSecret);
-  await egress.stopEgress(egressId);
+  const info = await egress.stopEgress(egressId);
   recordingStartedBy.delete(egressId);
+  return info.roomName;
 }
 
 /** Recordings currently in progress for a room (starting, active, or wrapping up). */
@@ -394,7 +395,15 @@ export async function listAllActiveRecordings(): Promise<RecordingInfo[]> {
 // handler.
 export async function stopAllActiveRecordings(room: string): Promise<void> {
   const active = await getActiveRecordings(room);
-  await Promise.all(active.map((r) => stopRecording(r.egressId)));
+  const results = await Promise.allSettled(active.map((r) => stopRecording(r.egressId)));
+  for (const result of results) {
+    // The usual case: LiveKit already finished the recording with the room, and listEgress still
+    // listed it as ending. Stopping it again is refused with failed_precondition; nothing to do.
+    if (result.status === 'fulfilled') continue;
+    const err: unknown = result.reason;
+    const alreadyFinished = typeof err === 'object' && err !== null && 'code' in err && err.code === 'failed_precondition';
+    if (!alreadyFinished) throw err;
+  }
 }
 
 function requireLiveKitEnv() {

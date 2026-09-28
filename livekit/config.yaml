@@ -18,10 +18,12 @@ redis:
   address: localhost:6379
 keys:
   devkey: secret
-# Lets LiveKit sign the `Authorize` header on outbound egress webhooks with devkey's secret --
-# without this, StartRoomCompositeEgress's own `webhooks` field is silently unusable ("no signing
-# key or secret was provided"). No `urls` here: only egress requests that ask for a webhook get
-# one; this repo doesn't want every room/participant event firing at token-service too.
+# Every room, participant and egress event goes to token-service (on this host), signed with devkey's
+# secret. It records each call once someone joins (participant_joined), moves a finished recording
+# into place and transcribes it (egress_ended), and cleans up when a room closes (room_finished).
+# start-all.sh swaps in the real key pair on a VPS; the URL stays localhost.
 webhook:
   api_key: devkey
+  urls:
+    - http://localhost:8880/recording/webhook
 log_level: debug

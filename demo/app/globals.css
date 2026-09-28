@@ -1406,6 +1406,21 @@ code { font: 0.875em var(--mono); background: var(--key); padding: 1px 6px; bord
 .kind-raw { background: var(--warn-soft); color: var(--warn); }
 .file-actions { display: flex; align-items: center; justify-content: flex-end; gap: 6px; }
 .file-actions audio { height: 36px; max-width: 260px; color-scheme: dark; }
+/* Transcripts (recordings table) */
+.transcript-state { display: inline-flex; align-items: center; gap: 8px; color: var(--ink-3); font-size: 0.8125rem; white-space: nowrap; }
+.transcript-failed { color: var(--alert-ink); font-weight: 600; }
+.rec-table .transcript-row td, .rec-table tbody tr.transcript-row:hover td { padding: 0 14px 14px; background: transparent; }
+.transcript { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px 14px; border-radius: var(--r-key); background: var(--screen); box-shadow: var(--recess); }
+.transcript-head { display: flex; align-items: center; gap: 8px; }
+.transcript-meta { flex: 1; min-width: 0; color: var(--ink-3); font-size: 0.8125rem; font-variant-numeric: tabular-nums; }
+.transcript-lines { list-style: none; margin: 0; padding: 0; max-height: 420px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+.transcript-lines li { display: grid; grid-template-columns: 64px 92px 1fr; gap: 10px; align-items: baseline; }
+.transcript-lines p { margin: 0; color: var(--ink); font-size: 0.875rem; line-height: 1.55; overflow-wrap: anywhere; }
+.transcript-time { color: var(--ink-3); font-size: 0.75rem; }
+.transcript-speaker { color: var(--screen-ink); font-size: 0.75rem; font-weight: 650; white-space: nowrap; }
+@media (max-width: 560px) {
+  .transcript-lines li { grid-template-columns: 1fr; gap: 2px; }
+}
 .console .toast-slot { bottom: 28px; }
 
 /* ---------- Responsive ---------- */

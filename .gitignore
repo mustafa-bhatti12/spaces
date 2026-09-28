@@ -145,6 +145,7 @@ vite.config.ts.timestamp-*
 # LiveKit egress recordings (local dev output, never committed)
 egress/raw/
 egress/compressed/
+egress/transcripts/
 
 # Redis dump
 dump.rdb
