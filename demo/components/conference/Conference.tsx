@@ -60,6 +60,7 @@ export function Conference({ roomName, details, choices, identity, onLeave, chil
         },
         // LiveKit's audioDefaults set voiceIsolation: true (Chrome's "Voice isolation"). Off
         // until Settings → Microphone → Noise cancellation; useNoiseFilter then applies it.
+        // Do not attach a mic AudioWorklet (DeepFilterNet3 added delay and chewed speech).
         audioCaptureDefaults: {
           deviceId: choices.audioDeviceId || undefined,
           voiceIsolation: false,

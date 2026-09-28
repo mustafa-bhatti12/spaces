@@ -348,17 +348,13 @@ works from the same machine; test multi-device calls on the Railway deployment.
   the device (the track holds `{exact: id}`, never equal to the plain id). `components/PreJoin.tsx`
   is `PreJoin`'s markup without those; keep its callbacks stable and its menus selection-free.
   Measure with a `getUserMedia` counter in the page (one call per visit is the target).
-- **Noise cancellation is DeepFilterNet3 in the browser, not Krisp.** LiveKit's Krisp filter only works on
-  LiveKit Cloud. LiveKit's `audioDefaults` set Chrome's `voiceIsolation` constraint to true; we
-  override it to false in `Conference` / `PreJoin`. `useNoiseFilter.ts` applies it only when Settings
-  → Microphone → Noise cancellation is on (same switch as DeepFilterNet3).
-  `useNoiseFilter.ts` sets `deepfilternet3-noise-filter` (pinned 1.3.0) as the mic track's processor. Its
-  wasm (16 MB, ~4.3 MB gzipped as served) and model (8 MB, byte-identical to upstream
-  `Rikorose/DeepFilterNet` `models/DeepFilterNet3_onnx.tar.gz`) are committed under
-  `demo/public/deepfilternet3/v3/`, since the package otherwise fetches them from its author's CDN and
-  the npm tarball doesn't ship them. Bumping the package means re-fetching both from
-  `cdn.mezon.ai/.../deepfilternet3/<vN>/` (check the path in its `AssetLoader`). Measured on the local
-  Intel Mac: about +26% of one core for the speaker's Chrome; it defaults off so that cost is opt-in.
+- **Noise cancellation is Chrome Voice isolation, not DeepFilterNet3 and not Krisp.** LiveKit's Krisp
+  filter only works on LiveKit Cloud. We tried DeepFilterNet3 (`deepfilternet3-noise-filter` as a
+  LiveKit AudioWorklet processor, wasm + model under `demo/public/deepfilternet3/`) and dropped it:
+  it added delay and chewed speech. Do not bring it back. LiveKit's `audioDefaults` set Chrome's
+  `voiceIsolation` constraint to true; we override it to false in `Conference` / `PreJoin`.
+  `useNoiseFilter.ts` applies it only when Settings → Microphone → Noise cancellation is on.
+  Echo cancellation and ordinary `noiseSuppression` stay on either way.
 - **`supportsBackgroundProcessors()` creates a WebGL context per call.** Calling it on every render
   hit Chrome's context limit ("Too many active WebGL contexts") — check once (`useState`
   initializer in `useBackgroundEffect.ts`).

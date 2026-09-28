@@ -1,18 +1,11 @@
 'use client';
 
 import { useLocalParticipant } from '@livekit/components-react';
-import { DeepFilterNoiseFilter, DeepFilterNoiseFilterProcessor } from 'deepfilternet3-noise-filter';
 import { LocalAudioTrack } from 'livekit-client';
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 
 const PREF_KEY = 'spaces-noise-filter';
 const CHANGE_EVENT = 'spaces-noise-filter-change';
-/** 0–100; how hard DeepFilterNet3 attenuates what it classes as noise. */
-const SUPPRESSION_LEVEL = 80;
-// Served from our own origin (the package defaults to the author's CDN): pinned, and reachable on
-// networks and embedding pages that block third-party hosts. The package appends v3/pkg/df_bg.wasm
-// and v3/models/DeepFilterNet3_onnx.tar.gz; both are committed under public/deepfilternet3/.
-const ASSETS = { cdnUrl: '/deepfilternet3' };
 
 function subscribe(onChange: () => void) {
   window.addEventListener(CHANGE_EVENT, onChange);
@@ -37,11 +30,9 @@ export interface NoiseFilterControls {
 }
 
 /**
- * Noise cancellation on the local mic: DeepFilterNet3 (WebAssembly in an AudioWorklet, via
- * deepfilternet3-noise-filter) as the mic track's LiveKit processor, so everyone hears, and the
- * recording captures, the filtered audio. Runs in each browser; no server cost. Lives at the
- * conference level so it survives closing Settings; LiveKit keeps the processor across device
- * switches and mute (mute disables the source track, so the filter outputs silence).
+ * Noise cancellation on the local mic: Chrome's Voice isolation constraint, off until Settings
+ * → Microphone → Noise cancellation is on. Echo cancellation and ordinary noiseSuppression stay
+ * on either way. No AudioWorklet processor — DeepFilterNet3 added delay and chewed speech.
  */
 export function useNoiseFilter(): NoiseFilterControls {
   const { microphoneTrack } = useLocalParticipant();
@@ -49,7 +40,7 @@ export function useNoiseFilter(): NoiseFilterControls {
   const [applying, setApplying] = useState(false);
   const [error, setError] = useState('');
   const [supported] = useState(
-    () => DeepFilterNoiseFilterProcessor.isSupported() && typeof AudioWorkletNode !== 'undefined',
+    () => 'voiceIsolation' in (navigator.mediaDevices?.getSupportedConstraints?.() ?? {}),
   );
   const track = microphoneTrack?.track instanceof LocalAudioTrack ? microphoneTrack.track : undefined;
 
@@ -59,25 +50,20 @@ export function useNoiseFilter(): NoiseFilterControls {
   }, []);
 
   useEffect(() => {
-    if (!track) return;
-    // Capture defaults leave this off; turn Chrome's Voice isolation on only with the switch.
-    void track.applyConstraints({ voiceIsolation: enabled }).catch(() => {});
-    if (!supported) return;
-    const active = track.getProcessor() instanceof DeepFilterNoiseFilterProcessor;
-    if (enabled === active) return;
+    if (!supported || !track) return;
+    // A leftover DeepFilterNet3 processor (from before we dropped it) would still delay the mic.
+    if (track.getProcessor()) void track.stopProcessor().catch(() => {});
     let cancelled = false;
     setApplying(true);
     setError('');
-    const change = enabled
-      ? track.setProcessor(DeepFilterNoiseFilter({ noiseReductionLevel: SUPPRESSION_LEVEL, assetConfig: ASSETS }))
-      : track.stopProcessor();
-    change
-      .catch(async (err: Error) => {
-        // A half-initialised processor would leave the mic silent; fall back to the plain mic.
-        if (enabled) await track.stopProcessor().catch(() => {});
+    void track
+      .applyConstraints({ voiceIsolation: enabled })
+      .catch((err: Error) => {
         if (!cancelled) setError(`Noise cancellation couldn't start: ${err.message}`);
       })
-      .finally(() => setApplying(false));
+      .finally(() => {
+        if (!cancelled) setApplying(false);
+      });
     return () => {
       cancelled = true;
     };
