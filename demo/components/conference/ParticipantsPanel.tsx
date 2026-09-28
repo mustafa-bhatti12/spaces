@@ -10,26 +10,47 @@ import {
 } from '@livekit/components-react';
 import type { Participant } from 'livekit-client';
 import { Track } from 'livekit-client';
-import { Hand, Mic, MicOff, Video, VideoOff } from 'lucide-react';
+import { Hand, Mic, MicOff, ShieldMinus, ShieldPlus, Video, VideoOff } from 'lucide-react';
 import { useState } from 'react';
 import { SidePanel } from './SidePanel';
 import { initials } from '../ui/Device';
 import { SwitchRow } from '../ui/SwitchRow';
 import { HAND_ATTRIBUTE } from './Tile';
+import type { Hosting } from './useHosts';
 import type { WaitingRoomControls } from './useWaitingRoom';
 
-/** Set by token-service on the host's join token (see mintToken's `host`). */
-const HOST_ATTRIBUTE = 'space.host';
-
-function ParticipantRow({ participant }: { participant: Participant }) {
+function ParticipantRow({
+  participant,
+  host,
+  onSetHost,
+}: {
+  participant: Participant;
+  host: boolean;
+  /** Present when we host and this is someone else: make them a host, or stop them hosting. */
+  onSetHost?: (host: boolean) => Promise<void>;
+}) {
   const speaking = useIsSpeaking(participant);
   const hand = useParticipantAttribute(HAND_ATTRIBUTE, { participant });
-  const host = useParticipantAttribute(HOST_ATTRIBUTE, { participant }) === 'true';
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
   const { name: infoName, identity } = useParticipantInfo({ participant });
   const { isMuted: micMuted } = useTrackMutedIndicator({ participant, source: Track.Source.Microphone });
   const { isMuted: camMuted } = useTrackMutedIndicator({ participant, source: Track.Source.Camera });
   const name = infoName || identity || 'Guest';
-  const status = hand ? 'Hand raised' : speaking ? 'Speaking' : participant.isScreenShareEnabled ? 'Sharing screen' : '';
+  const status = error || (hand ? 'Hand raised' : speaking ? 'Speaking' : participant.isScreenShareEnabled ? 'Sharing screen' : '');
+  const setHost = async () => {
+    if (!onSetHost) return;
+    setBusy(true);
+    setError('');
+    try {
+      await onSetHost(!host);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const hostAction = host ? `Remove ${name} as host` : `Make ${name} a host`;
 
   return (
     <li className={`person${speaking ? ' person-speaking' : ''}`}>
@@ -42,13 +63,18 @@ function ParticipantRow({ participant }: { participant: Participant }) {
           {participant.isLocal && <span className="person-you"> (you)</span>}
           {host && <span className="person-host">Host</span>}
         </span>
-        {status && <span className={`person-status${hand ? ' person-status-hand' : ''}`}>{status}</span>}
+        {status && <span className={`person-status${error ? ' person-status-error' : hand ? ' person-status-hand' : ''}`}>{status}</span>}
       </span>
       <span className="person-icons">
         {hand && <Hand className="icon-hand" aria-label="Hand raised" />}
         {micMuted ? <MicOff className="icon-off" aria-label="Mic off" /> : <Mic aria-label="Mic on" />}
         {camMuted ? <VideoOff className="icon-off" aria-label="Camera off" /> : <Video aria-label="Camera on" />}
         <ConnectionQualityIndicator participant={participant} />
+        {onSetHost && (
+          <button type="button" className="person-action" disabled={busy} onClick={setHost} aria-label={hostAction} title={hostAction}>
+            {host ? <ShieldMinus aria-hidden="true" /> : <ShieldPlus aria-hidden="true" />}
+          </button>
+        )}
       </span>
     </li>
   );
@@ -117,8 +143,19 @@ function WaitingRoomSection({ lobby }: { lobby: WaitingRoomControls }) {
   );
 }
 
-/** Everyone in the room, raised hands first, then speakers, then by name. The host also sees the waiting room. */
-export function ParticipantsPanel({ lobby, onClose }: { lobby: WaitingRoomControls | null; onClose: () => void }) {
+/**
+ * Everyone in the room, raised hands first, then speakers, then by name. Hosts also see the waiting
+ * room, and can make anyone else a host (or stop them hosting).
+ */
+export function ParticipantsPanel({
+  hosting,
+  lobby,
+  onClose,
+}: {
+  hosting: Hosting;
+  lobby: WaitingRoomControls | null;
+  onClose: () => void;
+}) {
   const participants = useParticipants();
   const sorted = [...participants].sort((a, b) => {
     const handA = a.attributes[HAND_ATTRIBUTE] ? 1 : 0;
@@ -132,7 +169,12 @@ export function ParticipantsPanel({ lobby, onClose }: { lobby: WaitingRoomContro
       {lobby && <WaitingRoomSection lobby={lobby} />}
       <ul className="people-list">
         {sorted.map((p) => (
-          <ParticipantRow key={p.identity} participant={p} />
+          <ParticipantRow
+            key={p.identity}
+            participant={p}
+            host={hosting.hosts.includes(p.identity)}
+            onSetHost={hosting.isHost && !p.isLocal ? (host) => hosting.setHost(p.identity, host) : undefined}
+          />
         ))}
       </ul>
     </SidePanel>

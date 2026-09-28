@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { requireSharedSecret } from './auth';
-import { isHostToken, mintToken, notifyRoom, setWaitingRoom } from './livekit';
+import { hostIdentity, mintToken, notifyRoom, setWaitingRoom } from './livekit';
 import { lobby } from './lobby';
 
 /** Data-message topic telling a room's clients the waiting list changed (the host refetches it). */
@@ -23,13 +23,13 @@ export async function lobbyRoutes(app: FastifyInstance): Promise<void> {
   sweeper.unref();
   app.addHook('onClose', async () => clearInterval(sweeper));
 
-  /** The room when `token` is its host's join token; otherwise replies 400/403 and returns null. */
+  /** The room when `token` belongs to one of its hosts; otherwise replies 400/403 and returns null. */
   const hostRoom = async (room: unknown, token: unknown, reply: FastifyReply): Promise<string | null> => {
     if (typeof room !== 'string' || !room || typeof token !== 'string' || !token) {
       reply.code(400).send({ error: 'room and token are required.' });
       return null;
     }
-    if (!(await isHostToken(room, token))) {
+    if (!(await hostIdentity(room, token))) {
       reply.code(403).send({ error: 'Only the host can do this.' });
       return null;
     }

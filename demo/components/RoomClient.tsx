@@ -271,7 +271,7 @@ export function RoomClient({ roomName }: { roomName: string }) {
           defaults={{}}
           joinLabel={stage.kind === 'joining' ? 'Joining…' : 'Join call'}
           userLabel="Enter your name (e.g. Alex)"
-          onValidate={(values) => values.username.trim().length > 0 && stage.kind !== 'joining'}
+          busy={stage.kind === 'joining'}
           onSubmit={handleSubmit}
           onError={handlePreviewError}
           beforeJoin={

@@ -3,8 +3,6 @@ export interface ConnectionDetails {
   roomName: string;
   participantName: string;
   participantToken: string;
-  /** This participant started the room, so they may end it for everyone. */
-  host: boolean;
 }
 
 /** What this participant saw of the call, for the end screen. */

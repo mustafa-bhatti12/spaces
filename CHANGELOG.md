@@ -5,6 +5,8 @@ the detail. Agents: add a line here with every change that ships (see `AGENTS.md
 
 ## 2026-09-28
 
+- **More than one host:** a host can make anyone in the call a host too (the shield key on their row in People, shown on hover), or stop them hosting. It takes effect at once, with a "You're a host now" / "You're no longer a host" notice; every host can run the waiting room and end the call for everyone. Nobody can change their own role, so a call always keeps a host.
+- **Your name is filled in again:** the pre-join remembers the name from your last call. Join no longer greys out while the field looks empty to the page but shows a name (browser autofill or restored form state left a filled field with a dead button); pressing Join with no name points at the field instead.
 - **Waiting room:** the host can switch it on while entering their name, or any time from People. People then ask to join and wait on an "Asking to join…" screen; the host gets a join-request notification (Admit / Deny, or Admit all for several) and a list in People. Turning it off lets everyone waiting in. A request nobody answers ends after 10 minutes, like Google Meet. token-service enforces it, so a guest can't get a token around it.
 - **More call states:** "You're the only one here" with a copy-invite key while you're alone; "Alice joined" notifications; a "Weak connection" readout in the dock while your link is poor; and the end screen shows how long you were in the call and how many people joined.
 - **Notification motion:** notifications slide in from their edge and leave the same way, faster than they arrived. Each new join request pulses once and adds the asker's avatar, and new video tiles fade in instead of popping. Under reduced motion they only fade.

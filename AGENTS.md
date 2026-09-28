@@ -84,27 +84,31 @@ graph LR
 - `token-service` is the **only** thing in this repo (or any consumer) that ever holds real LiveKit
   credentials. Everything else gets a short-lived, room-scoped join token.
 - **Two bearer secrets, checked in `token-service/src/auth.ts`:** `TOKEN_SERVICE_SHARED_SECRET` for
-  consumer routes (`/token`, `/rooms`, `/participant`, `/recording/*`, `/room/end`, `/lobby/*`) — held by `demo` and later
+  consumer routes (`/token`, `/rooms`, `/participant`, `/recording/*`, `/room/end`, `/room/host`, `/lobby/*`) — held by `demo` and later
   Petition Studio's API; `ADMIN_SHARED_SECRET` for the operator-only `/admin/*` routes (remove people,
   close rooms, delete recordings) — held only by `demo`'s `/admin` server routes
   (`demo/lib/server/tokenService.ts`, `kind: 'admin'`). Never give a consumer the admin secret; a
   leaked consumer secret must not be able to moderate or delete. Neither is a user-auth system —
   `token-service` has no concept of a logged-in person.
-- **Hosting is the consumer's decision; token-service only records and enforces it.** `/token` with
-  `host: true` stores the identity in the room's LiveKit metadata (`recordRoomHost`, creating the room
-  if needed; `GET /rooms` reports it as `host`) and mints a token with `roomAdmin` + attribute
-  `space.host`. `/room/end` takes the participant's own join token and deletes the room only if the
-  token verifies and carries `roomAdmin` for that room (expired tokens accepted for 24 h, since calls
-  outlive the 2 h TTL). The demo's rule (`demo/app/api/connect/route.ts`): no recorded host, or you
-  are the recorded host → you host. Since demo identities are unauthenticated device ids, that's only
-  as strong as the demo's join itself; a real consumer passes `host` from its own auth. The
-  `space.host` attribute is display-only (participants can edit their own attributes).
+- **Hosting is the consumer's decision; token-service only records and enforces it.** A room's
+  hosts are a `hosts` list in its LiveKit metadata, not anything in the join token. `/token` with
+  `host: true` adds the identity to it (`recordRoomHost`, creating the room if needed; `GET /rooms`
+  reports `hosts`). `/room/host` lets a host make someone in the call a host or stop them hosting
+  (never themselves, so a room can't lose its last host that way; someone demoted is admitted so
+  they can rejoin past the waiting room). Every host action (`/room/end`, `/room/host`,
+  `/lobby/pending|answer|settings`) takes the caller's own join token, verifies it (`tokenIdentity`;
+  expired tokens accepted for 24 h, since calls outlive the 2 h TTL) and checks that identity is in
+  `hosts` right now (`hostIdentity`), so a promotion or demotion takes effect with no new token.
+  Clients read the same metadata to show who hosts (tamper-proof, unlike participant attributes).
+  The demo's rule (`demo/app/api/connect/route.ts`): no recorded host, or you are in `hosts` → you
+  host. Since demo identities are unauthenticated device ids, that's only as strong as the demo's
+  join itself; a real consumer passes `host` from its own auth.
 - **The waiting room is enforced in token-service, not left to the consumer.** It's a
-  `waitingRoom` flag in the same room metadata as `host` (set by the host on `/token` or
-  `/lobby/settings`). With it on, `/token` for a non-host answers `409` unless the host already
+  `waitingRoom` flag in the same room metadata as `hosts` (set by a host on `/token` or
+  `/lobby/settings`). With it on, `/token` for a non-host answers `409` unless a host already
   admitted that identity; the guest instead calls `/lobby/ask` and polls `/lobby/status`, which
   returns their join token once admitted. Listing, admitting, denying and switching it off
-  (`/lobby/pending|answer|settings`) take the host's join token as proof, like `/room/end`.
+  (`/lobby/pending|answer|settings`) are host actions (see above).
   Requests live in token-service memory (`lobby.ts`): an asker that stops polling for 20 s is
   dropped, an unanswered one times out after 10 minutes (Meet's behaviour), and a restart forgets
   them all (waiting browsers just ask again). Admitted identities rejoin without asking until the
@@ -392,11 +396,11 @@ works from the same machine; test multi-device calls on the Railway deployment.
 - `token-service/src/system.ts` — `GET /admin/system`: host CPU/memory/network, per-service process rows, versions, TLS expiry, deployed commit. Linux-only parts return null on macOS; rates are deltas between calls (first call after a restart has nulls). It runs on every console poll, so keep it cheap; the comments explain why it reads cgroup files instead of `docker stats`.
 - `token-service/src/recordings.ts` — recording directories, safe filename resolution, file listing, `finishRecording` (webhook: raw/ → compressed/).
 - `token-service/src/auth.ts` — the two bearer-secret `preHandler`s.
-- `demo/app/api/*` — call-page server routes (`connect`, `rooms`, `rooms/status` (pre-join: occupancy, would-you-host, waiting room), `lobby/status` (guest poll), `lobby/[action]` (host), `whoami`, `recording/{start,stop,status}`) → token-service consumer routes.
+- `demo/app/api/*` — call-page server routes (`connect`, `rooms`, `rooms/status` (pre-join: occupancy, would-you-host, waiting room), `rooms/end`, `rooms/host`, `lobby/status` (guest poll), `lobby/[action]` (host), `whoami`, `recording/{start,stop,status}`) → token-service consumer routes.
 - `demo/app/admin/*` — `/admin` page + `login`/`logout`/`session` routes + `api/[...path]` streaming proxy → token-service `/admin/*`.
 - `demo/lib/server/tokenService.ts` — the only token-service client (both secrets); `demo/lib/server/adminSession.ts` — admin cookie + rate limit.
-- `demo/components/RoomClient.tsx` — pre-join (`PreJoin.tsx`, LiveKit's `PreJoin` markup with one camera open; the would-be host gets the waiting-room switch) → `WaitingScreen` if the room has a waiting room → join → end screen (with a duration/people summary).
-- `demo/components/conference/*` — `Conference` (Room lifecycle, audio-first publish defaults, duplicate-identity heartbeat, host's end-for-everyone, the end-screen summary), `ConferenceLayout` (VideoConference prefab expanded; one side panel at a time), `Dock` (status readout · media · talk · more · Leave), `LeaveDialog` (leave confirmation for everyone; host also gets end-for-everyone), `Tile`, `SidePanel`, `ParticipantsPanel` (host: waiting-room switch + requests), `SettingsPanel` + `useBackgroundEffect`, `useAudioFirst` (pauses the camera on a weak uplink; reports a weak link to the dock), `ChatToasts` (the notification stack: chat, joins, plus the host's `WaitingNotice` and the alone card), `useWaitingRoom` (host side), `useReactions`, `useRecording`.
+- `demo/components/RoomClient.tsx` — pre-join (`PreJoin.tsx`, LiveKit's `PreJoin` markup with one camera open; the name field is controlled, prefilled with the last-used name, and Join is never disabled for an empty-looking field: submit reads the field itself, because autofill or restored form state can show a value React never heard about; the would-be host gets the waiting-room switch) → `WaitingScreen` if the room has a waiting room → join → end screen (with a duration/people summary).
+- `demo/components/conference/*` — `Conference` (Room lifecycle, audio-first publish defaults, duplicate-identity heartbeat, end-for-everyone, the end-screen summary), `ConferenceLayout` (VideoConference prefab expanded; one side panel at a time; tells you when you become or stop being a host), `useHosts` (room settings from metadata: who hosts, make/remove host), `Dock` (status readout · media · talk · more · Leave), `LeaveDialog` (leave confirmation for everyone; hosts also get end-for-everyone), `Tile`, `SidePanel`, `ParticipantsPanel` (hosts: waiting-room switch + requests, make/remove host per row), `SettingsPanel` + `useBackgroundEffect`, `useAudioFirst` (pauses the camera on a weak uplink; reports a weak link to the dock), `ChatToasts` (the notification stack: chat, joins, plus the host's `WaitingNotice` and the alone card), `useWaitingRoom` (host side), `useReactions`, `useRecording`.
 - `demo/components/ui/*` — `Menu` (dock popover), `Device` (wordmark, LED, readout, initials), `SwitchRow`.
 - `demo/components/admin/AdminDashboard.tsx` — the control center UI; `ServerPanel.tsx` (Server section: metric strips + processes table); `format.ts` (bytes, rates, durations).
 - `demo/public/backgrounds/*.webp` — virtual-background images (1920×1080, WebP q80); `thumbs/*.webp` are the 320 px settings-tile previews. Add a background as both.

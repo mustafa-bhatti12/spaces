@@ -4,15 +4,15 @@ import { jsonBody, relayJson, tokenServiceFetch } from '@/lib/server/tokenServic
 
 /**
  * The demo's hosting rule: whoever starts a room hosts it. A room with no recorded host is being
- * started, so the joiner becomes host; the recorded host keeps hosting when they rejoin. The record
- * lives in the room itself, so it goes away when the room does.
+ * started, so the joiner becomes host; recorded hosts (including anyone a host made host) keep
+ * hosting when they rejoin. The record lives in the room itself, so it goes away when the room does.
  */
 async function isHost(room: string, identity: string): Promise<boolean> {
   const res = await tokenServiceFetch('/rooms');
   if (!res.ok) throw new Error(`token-service /rooms returned ${res.status}`);
-  const rooms: { name: string; host: string | null }[] = await res.json();
-  const host = rooms.find((r) => r.name === room)?.host ?? null;
-  return host === null || host === identity;
+  const rooms: { name: string; hosts: string[] }[] = await res.json();
+  const hosts = rooms.find((r) => r.name === room)?.hosts ?? [];
+  return hosts.length === 0 || hosts.includes(identity);
 }
 
 // Mints a join token for (room, display name, per-browser identity) via token-service's consumer
@@ -43,6 +43,5 @@ export async function POST(request: NextRequest) {
     if (!asked.ok) return asked;
     return Response.json({ waiting: true, requestId: (await asked.json()).requestId });
   }
-  if (!res.ok) return res;
-  return Response.json({ ...(await res.json()), host });
+  return res;
 }

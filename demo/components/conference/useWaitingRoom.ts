@@ -1,7 +1,8 @@
 'use client';
 
-import { useDataChannel, useRoomInfo } from '@livekit/components-react';
+import { useDataChannel } from '@livekit/components-react';
 import { useCallback, useEffect, useState } from 'react';
+import { useRoomSettings } from './useHosts';
 
 /** token-service's lobbyRoutes LOBBY_TOPIC: someone asked, gave up, or was answered. */
 const LOBBY_TOPIC = 'space.lobby';
@@ -22,14 +23,6 @@ export interface WaitingRoomControls {
   answer: (ids: string[] | 'all', admit: boolean) => Promise<void>;
 }
 
-function waitingRoomOn(metadata: string | undefined): boolean {
-  try {
-    return JSON.parse(metadata || '{}').waitingRoom === true;
-  } catch {
-    return false;
-  }
-}
-
 async function post(action: string, body: object): Promise<Response> {
   const res = await fetch(`/api/lobby/${action}`, {
     method: 'POST',
@@ -46,11 +39,10 @@ async function post(action: string, body: object): Promise<Response> {
 /**
  * The waiting room as the host sees it. On/off is room metadata (every client hears changes); the
  * list of people asking comes from token-service, refetched when it signals a change. Null for
- * anyone who isn't the host: only a host token can list or answer.
+ * anyone who isn't a host: only a host's token can list or answer.
  */
 export function useWaitingRoom(roomName: string, hostToken: string | undefined): WaitingRoomControls | null {
-  const { metadata } = useRoomInfo();
-  const enabled = waitingRoomOn(metadata);
+  const enabled = useRoomSettings().waitingRoom;
   const [pending, setPending] = useState<WaitingPerson[]>([]);
 
   const refresh = useCallback(async () => {

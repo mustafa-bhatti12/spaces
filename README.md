@@ -172,11 +172,11 @@ Set `ADMIN_PASSWORD` and `ADMIN_SHARED_SECRET` in `demo/.env`; the secret must m
 Built on LiveKit's React components and hooks (`@livekit/components-react`), with Space's own look: warm graphite, signal-light colours, and one grouped control dock.
 
 - **Lobby:** start a new room (random name) or join by name, plus a live list of active rooms.
-- **Pre-join:** LiveKit `PreJoin` with camera preview, mic and camera on/off, device pickers, and a remembered display name.
+- **Pre-join:** LiveKit `PreJoin` with camera preview, mic and camera on/off, device pickers, and the display name from your last call filled in.
 - **Layouts:** adaptive grid, and a focus view with a thumbnail strip. Click a tile to pin it; screen shares take the stage automatically.
 - **Dock:** a status readout (room, people, `REC` timer and who started it), then three key groups: mic, camera and screen share (device menus included); react (emoji, plus raise hand), chat with an unread badge, and people; and More (record, copy invite link, settings, full screen). Leave sits on its own. The mic key's ring is green when live, red when muted, and brighter while you speak.
-- **Host:** whoever starts a room hosts it (and still does after rejoining), marked `HOST` in the people panel. Leave always asks for confirmation; only the host's dialog also offers ending the call for everyone.
-- **People panel:** everyone in the room with speaking state, mic/camera status, connection quality and raised hands (listed first).
+- **Host:** whoever starts a room hosts it (and still does after rejoining), marked `HOST` in the people panel. A host can make anyone in the call a host too, or stop them hosting, from the people panel. Leave always asks for confirmation; only hosts also get ending the call for everyone.
+- **People panel:** everyone in the room with speaking state, mic/camera status, connection quality and raised hands (listed first). Hosts also get the waiting room here.
 - **Settings (side panel):** camera preview; camera, microphone and speaker selection; background blur (light or strong) or virtual backgrounds.
 - **Resilience:** a reconnecting banner, and end screens that say why the call ended (left, ended by you, ended for everyone, removed, or joined from another tab).
 - **Audio first on weak connections:** video gives way before audio. The server pauses video for a viewer whose connection can't carry even the smallest video layer; the camera is sent at lower priority than the mic (540p max), and after 10 seconds of a poor connection your camera pauses on its own, coming back once the connection has been good for 10 seconds.

@@ -32,6 +32,7 @@ import { useAudioFirst } from './useAudioFirst';
 import { useBackgroundEffect } from './useBackgroundEffect';
 import { useReactions } from './useReactions';
 import { useRecording } from './useRecording';
+import { useHosts } from './useHosts';
 import { useWaitingRoom } from './useWaitingRoom';
 import { WaitingNotice } from './WaitingNotice';
 
@@ -42,13 +43,14 @@ import { WaitingNotice } from './WaitingNotice';
  */
 export function ConferenceLayout({
   roomName,
-  hostToken,
+  joinToken,
   onEndForAll,
 }: {
   roomName: string;
-  /** The host's join token (host only): proof for waiting-room actions. */
-  hostToken?: string;
-  onEndForAll?: () => Promise<void>;
+  /** Our join token: token-service's proof of who we are for host actions (it checks the hosts list). */
+  joinToken: string;
+  /** Ends the call for everyone; offered only while we host. */
+  onEndForAll: () => Promise<void>;
 }) {
   const [widget, setWidget] = useState<WidgetState>({ showChat: false, unreadMessages: 0, showSettings: false });
   const [sidePanel, setSidePanel] = useState<Exclude<Panel, 'chat'>>(null);
@@ -62,7 +64,8 @@ export function ConferenceLayout({
   const [mirror] = useMirrorVideo();
   const { reactions, react } = useReactions();
   const rec = useRecording(roomName, localParticipant.name || localParticipant.identity);
-  const lobby = useWaitingRoom(roomName, hostToken);
+  const hosting = useHosts(roomName, joinToken);
+  const lobby = useWaitingRoom(roomName, hosting.isHost ? joinToken : undefined);
   const [aloneDismissed, setAloneDismissed] = useState(false);
 
   // Participant attributes are synchronized through LiveKit, so every client renders this
@@ -152,6 +155,16 @@ export function ConferenceLayout({
   }, []);
   const { weak: weakConnection } = useAudioFirst(flash);
 
+  // Another host can make us a host (or stop us hosting) mid-call; say so when it happens.
+  const wasHost = useRef<boolean | null>(null);
+  useEffect(() => {
+    if (connectionState !== ConnectionState.Connected) return;
+    if (wasHost.current !== null && wasHost.current !== hosting.isHost) {
+      flash(hosting.isHost ? "You're a host now" : "You're no longer a host");
+    }
+    wasHost.current = hosting.isHost;
+  }, [connectionState, hosting.isHost, flash]);
+
   const openChat = useCallback(() => {
     if (!widget.showChat) layoutContext.widget.dispatch?.({ msg: 'toggle_chat' });
   }, [layoutContext.widget, widget.showChat]);
@@ -236,7 +249,7 @@ export function ConferenceLayout({
               onTogglePanel={togglePanel}
               onReact={react}
               onInvite={invite}
-              onEndForAll={onEndForAll}
+              onEndForAll={hosting.isHost ? onEndForAll : undefined}
               recording={{
                 current: rec.recording,
                 busy: rec.busy,
@@ -246,7 +259,7 @@ export function ConferenceLayout({
             />
           </div>
           <Chat style={{ display: widget.showChat ? undefined : 'none' }} />
-          {sidePanel === 'people' && <ParticipantsPanel lobby={lobby} onClose={() => setSidePanel(null)} />}
+          {sidePanel === 'people' && <ParticipantsPanel hosting={hosting} lobby={lobby} onClose={() => setSidePanel(null)} />}
           {sidePanel === 'settings' && <SettingsPanel background={background} onClose={() => setSidePanel(null)} />}
         </LayoutContextProvider>
       </div>

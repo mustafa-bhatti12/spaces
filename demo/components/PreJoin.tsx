@@ -10,6 +10,7 @@ import {
 } from '@livekit/components-react';
 import { facingModeFromLocalTrack, LocalVideoTrack, Track, type LocalAudioTrack } from 'livekit-client';
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { getSavedDisplayName, saveDisplayName } from '@/lib/client/identity';
 import { useMirrorVideo } from '@/lib/client/mirror';
 
 // LiveKit's own placeholder for "no camera chosen yet". Cameras have no device with this id
@@ -20,7 +21,8 @@ interface PreJoinProps {
   defaults: Partial<LocalUserChoices>;
   joinLabel: string;
   userLabel: string;
-  onValidate: (values: LocalUserChoices) => boolean;
+  /** A join is in flight: the Join button is disabled. */
+  busy: boolean;
   onSubmit: (values: LocalUserChoices) => void;
   onError: (error: Error) => void;
   /** Rendered between the name field and the Join button (the host's waiting-room switch). */
@@ -34,8 +36,13 @@ interface PreJoinProps {
  * opened; each open takes a real camera about a second. Here the preview opens each device once,
  * and the camera's real id is saved for the call and the next visit.
  * `onError` must be referentially stable: `usePreviewTracks` reopens the camera when it changes.
+ *
+ * The name field is controlled and starts with the name saved on the last join. Join is never
+ * disabled for an empty-looking field: browsers can show a value (autofill, restored form state,
+ * typing before hydration) that React hasn't heard about, which left a filled field with a dead
+ * button. Submitting reads the field itself, and an empty name just flags the field.
  */
-export function PreJoin({ defaults, joinLabel, userLabel, onValidate, onSubmit, onError, beforeJoin }: PreJoinProps) {
+export function PreJoin({ defaults, joinLabel, userLabel, busy, onSubmit, onError, beforeJoin }: PreJoinProps) {
   const {
     userChoices: initial,
     saveAudioInputDeviceId,
@@ -50,6 +57,15 @@ export function PreJoin({ defaults, joinLabel, userLabel, onValidate, onSubmit, 
   const [videoDeviceId, setVideoDeviceId] = useState(initial.videoDeviceId);
   const [mirror] = useMirrorVideo();
   const [username, setUsername] = useState('');
+  const [nameMissing, setNameMissing] = useState(false);
+  const nameInput = useRef<HTMLInputElement>(null);
+
+  // After hydration (the page is server-rendered, localStorage isn't): keep anything already in the
+  // field, otherwise fill in the saved name.
+  useEffect(() => {
+    const shown = nameInput.current?.value ?? '';
+    setUsername((current) => current || shown || getSavedDisplayName());
+  }, []);
 
   useEffect(() => {
     saveAudioInputEnabled(audioEnabled);
@@ -115,13 +131,18 @@ export function PreJoin({ defaults, joinLabel, userLabel, onValidate, onSubmit, 
   }, [videoTrack]);
 
   const choices: LocalUserChoices = { username, videoEnabled, videoDeviceId, audioEnabled, audioDeviceId };
-  const isValid = onValidate(choices);
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    const name = username.trim();
-    const final = { ...choices, username: name };
-    if (onValidate(final)) onSubmit(final);
+    if (busy) return;
+    const name = (nameInput.current?.value ?? username).trim();
+    if (!name) {
+      setNameMissing(true);
+      nameInput.current?.focus();
+      return;
+    }
+    saveDisplayName(name);
+    onSubmit({ ...choices, username: name });
   };
 
   return (
@@ -168,17 +189,28 @@ export function PreJoin({ defaults, joinLabel, userLabel, onValidate, onSubmit, 
 
       <form className="lk-username-container" onSubmit={submit}>
         <input
+          ref={nameInput}
           className="lk-form-control"
           id="username"
           name="display-name"
           type="text"
           value={username}
           placeholder={userLabel}
-          onChange={(e) => setUsername(e.target.value)}
+          onChange={(e) => {
+            setUsername(e.target.value);
+            if (e.target.value.trim()) setNameMissing(false);
+          }}
           autoComplete="off"
+          aria-invalid={nameMissing || undefined}
+          aria-describedby={nameMissing ? 'username-missing' : undefined}
         />
+        {nameMissing && (
+          <p id="username-missing" className="prejoin-name-missing" role="alert">
+            Enter your name to join
+          </p>
+        )}
         {beforeJoin}
-        <button className="lk-button lk-join-button" type="submit" disabled={!isValid}>
+        <button className="lk-button lk-join-button" type="submit" disabled={busy}>
           {joinLabel}
         </button>
       </form>

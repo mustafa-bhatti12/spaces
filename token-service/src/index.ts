@@ -10,6 +10,8 @@ import {
   listActiveRooms,
   mintToken,
   recordRoomHost,
+  setRoomHost,
+  hostIdentity,
   startRoomAudioRecording,
   stopAllActiveRecordings,
   stopRecording,
@@ -79,7 +81,7 @@ fastify.post<{ Body: { room?: string; identity?: string; name?: string; host?: b
         reply.code(409).send({ error: 'This call has a waiting room. Ask to join.', waitingRoom: true });
         return;
       }
-      reply.send(await mintToken({ room, identity, name, host: host === true }));
+      reply.send(await mintToken({ room, identity, name }));
     } catch (err) {
       console.error('Failed to mint LiveKit token:', err);
       reply.code(500).send({ error: 'Could not mint a token.' });
@@ -87,8 +89,8 @@ fastify.post<{ Body: { room?: string; identity?: string; name?: string; host?: b
   },
 );
 
-// Ends a room for everyone on behalf of its host. The participant's own join token is the proof:
-// only tokens minted with host: true carry roomAdmin for that room.
+// Ends a room for everyone on behalf of a host. The participant's own join token is the proof of who
+// they are; the room's hosts list says whether they host.
 fastify.post<{ Body: { room?: string; token?: string } }>('/room/end', { preHandler: requireSharedSecret }, async (req, reply) => {
   const { room, token } = req.body ?? {};
   if (typeof room !== 'string' || !room || typeof token !== 'string' || !token) {
@@ -106,6 +108,42 @@ fastify.post<{ Body: { room?: string; token?: string } }>('/room/end', { preHand
     reply.code(500).send({ error: 'Could not end the call.' });
   }
 });
+
+// A host makes someone in the call a host too (host: true), or stops them hosting (host: false).
+// Proof is the caller's own join token, as for /room/end. Nobody changes their own role, so a room
+// never loses its last host this way. Someone who stops hosting can still rejoin past the waiting room.
+fastify.post<{ Body: { room?: string; token?: string; identity?: string; host?: boolean } }>(
+  '/room/host',
+  { preHandler: requireSharedSecret },
+  async (req, reply) => {
+    const { room, token, identity, host } = req.body ?? {};
+    if (typeof room !== 'string' || !room || typeof token !== 'string' || !token || typeof identity !== 'string' || !identity || typeof host !== 'boolean') {
+      reply.code(400).send({ error: 'room, token, identity (strings) and host (boolean) are required.' });
+      return;
+    }
+    try {
+      const caller = await hostIdentity(room, token);
+      if (!caller) {
+        reply.code(403).send({ error: 'Only a host can change who hosts.' });
+        return;
+      }
+      if (caller === identity) {
+        reply.code(400).send({ error: "You can't change your own host role." });
+        return;
+      }
+      if (host && !(await getParticipantSid(room, identity))) {
+        reply.code(404).send({ error: "That person isn't in the call." });
+        return;
+      }
+      await setRoomHost(room, identity, host);
+      if (!host) lobby.admit(room, identity);
+      reply.send({ identity, host });
+    } catch (err) {
+      console.error('Failed to change a room host:', err);
+      reply.code(500).send({ error: 'Could not change who hosts.' });
+    }
+  },
+);
 
 fastify.post<{ Body: { room?: string; startedBy?: string } }>(
   '/recording/start',

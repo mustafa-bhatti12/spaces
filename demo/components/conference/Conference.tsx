@@ -124,7 +124,7 @@ export function Conference({ roomName, details, choices, identity, onLeave }: Co
     return () => clearInterval(timer);
   }, [room, roomName, identity, onLeave]);
 
-  // Host only: token-service deletes the room, and LiveKit disconnects everyone (us included).
+  // Hosts only: token-service deletes the room, and LiveKit disconnects everyone (us included).
   const endForAll = useCallback(async () => {
     leavingAs.current = { kind: 'ended' };
     try {
@@ -143,11 +143,7 @@ export function Conference({ roomName, details, choices, identity, onLeave }: Co
 
   return (
     <RoomContext.Provider value={room}>
-      <ConferenceLayout
-        roomName={roomName}
-        hostToken={details.host ? details.participantToken : undefined}
-        onEndForAll={details.host ? endForAll : undefined}
-      />
+      <ConferenceLayout roomName={roomName} joinToken={details.participantToken} onEndForAll={endForAll} />
     </RoomContext.Provider>
   );
 }

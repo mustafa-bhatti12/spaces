@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mintToken, listActiveRooms, endRoomAsHost } from './livekit';
+import { mintToken, listActiveRooms, tokenIdentity } from './livekit';
 
 test('throws when LiveKit env vars are missing', async () => {
   delete process.env.LIVEKIT_API_KEY;
@@ -36,21 +36,22 @@ function useDevEnv() {
   process.env.LIVEKIT_URL = 'ws://localhost:7880';
 }
 
-test('endRoomAsHost refuses a non-host token for the room', async () => {
+// tokenIdentity is the gate in front of every host action (which then checks the room's hosts list).
+test('tokenIdentity returns who a token was issued to, for its own room', async () => {
   useDevEnv();
   const guest = await mintToken({ room: 'r1', identity: 'guest', name: 'Guest' });
-  assert.equal(await endRoomAsHost('r1', guest.participantToken), 'forbidden');
+  assert.equal(await tokenIdentity('r1', guest.participantToken), 'guest');
 });
 
-test('endRoomAsHost refuses a host token for a different room', async () => {
+test('tokenIdentity refuses a token for a different room', async () => {
   useDevEnv();
-  const host = await mintToken({ room: 'r1', identity: 'host', name: 'Host', host: true });
-  assert.equal(await endRoomAsHost('r2', host.participantToken), 'forbidden');
+  const host = await mintToken({ room: 'r1', identity: 'host', name: 'Host' });
+  assert.equal(await tokenIdentity('r2', host.participantToken), null);
 });
 
-test('endRoomAsHost refuses a host token signed with another secret', async () => {
+test('tokenIdentity refuses a token signed with another secret', async () => {
   process.env.LIVEKIT_API_SECRET = 'someone-elses-secret';
-  const forged = await mintToken({ room: 'r1', identity: 'host', name: 'Host', host: true });
+  const forged = await mintToken({ room: 'r1', identity: 'host', name: 'Host' });
   useDevEnv();
-  assert.equal(await endRoomAsHost('r1', forged.participantToken), 'forbidden');
+  assert.equal(await tokenIdentity('r1', forged.participantToken), null);
 });
