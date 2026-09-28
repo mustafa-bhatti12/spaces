@@ -49,6 +49,7 @@ Lean and readable: nothing in the UI is set below 12px (0.75rem) except mono bad
 - **Menu**: a panel above its key, 14px radius, with `--pop` shadow. On phones it becomes a bottom sheet.
 - **Face** (`.face`): a 14px-radius shell with the `--lift` shadow. Elevation comes from the shadow alone, never a border as well.
 - **Side panel**: a floating 14px card, and only one is open at a time (people, settings, or LiveKit's Chat restyled to match).
+- **Chat notification** (`ChatToasts`): a new message while chat is closed shows as a 16px-radius translucent card with avatar, sender, mono time and a 3-line preview, stacked (up to 3, newest nearest the dock) at the stage's bottom-right. Click opens the chat; × dismisses; hover holds them. System messages (invite copied, recording errors) keep the centered `.toast`.
 - **Leave dialog**: a compact destructive confirmation (native `<dialog>`, portaled to `body`): red-tinted icon, title, one line, and right-aligned keys with Cancel focused. Guests confirm with a `-destroy` Leave; the host also gets `-destroy` End for everyone, with Leave demoted to a plain key.
 - **Destructive actions**: always separated from safe ones by a `.danger-gap` (16px), outlined until hover or focus, and confirmed.
 
@@ -64,4 +65,4 @@ Motion uses exponential ease-out (`--ease-out`), for menus rising 6px, panels sl
 | ≤1080px | legends are hidden and keys are 50px |
 | ≤900px | layouts go to one column and the readout floats over the stage |
 | ≤760px | side panels cover the stage |
-| ≤560px | 46px keys; device chevrons and Share are hidden (device switching is in Settings); menus become sheets |
+| ≤560px | 46px keys; device chevrons and Share are hidden (device switching is in Settings); menus become sheets; chat notifications become a top banner (2 at most, newest on top, 2-line preview) |

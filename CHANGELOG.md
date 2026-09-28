@@ -3,6 +3,10 @@
 What shipped, newest first. One line per user- or operator-visible change; commit hashes point at
 the detail. Agents: add a line here with every change that ships (see `AGENTS.md`).
 
+## 2026-09-28
+
+- **Chat message notifications:** new messages while chat is closed now show as message cards (avatar, sender, time, up to three lines of text) stacked bottom-right of the call, or as a banner across the top on phones. Click or tap one to open the chat, × to dismiss; hovering holds them.
+
 ## 2026-09-25
 
 - **Unified dock device pills & telemetry disabled:** dock mic and camera capsules now show consistent corner curvature, inset separator lines, and unified alert styling when muted or off; Next.js anonymous telemetry disabled across dev and build pipelines.

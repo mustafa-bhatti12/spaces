@@ -11,7 +11,6 @@ import {
   isTrackReference,
   LayoutContextProvider,
   RoomAudioRenderer,
-  useChat,
   useConnectionState,
   useCreateLayoutContext,
   useLocalParticipant,
@@ -24,6 +23,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { WifiOff } from 'lucide-react';
 import { MIRROR_ATTRIBUTE, useMirrorVideo } from '@/lib/client/mirror';
 import type { Panel } from './Dock';
+import { ChatToasts } from './ChatToasts';
 import { Dock } from './Dock';
 import { ParticipantsPanel } from './ParticipantsPanel';
 import { SettingsPanel } from './SettingsPanel';
@@ -51,8 +51,6 @@ export function ConferenceLayout({ roomName, onEndForAll }: { roomName: string; 
   const [mirror] = useMirrorVideo();
   const { reactions, react } = useReactions();
   const rec = useRecording(roomName, localParticipant.name || localParticipant.identity);
-  const { chatMessages } = useChat();
-  const lastNotifiedChatId = useRef<string | undefined>(undefined);
 
   // Participant attributes are synchronized through LiveKit, so every client renders this
   // participant's camera with the same orientation.
@@ -117,18 +115,9 @@ export function ConferenceLayout({ roomName, onEndForAll }: { roomName: string; 
   }, []);
   useAudioFirst(flash);
 
-  useEffect(() => {
-    const message = chatMessages.at(-1);
-    if (!message) return;
-    const messageId = message.id ?? String(message.timestamp);
-    if (messageId === lastNotifiedChatId.current) return;
-    lastNotifiedChatId.current = messageId;
-    if (widget.showChat || message.from?.identity === localParticipant.identity) return;
-
-    const sender = message.from?.name || message.from?.identity || 'Someone';
-    const preview = message.message.trim().replace(/\s+/g, ' ') || 'Sent an attachment';
-    flash(`${sender}: ${preview.length > 120 ? `${preview.slice(0, 117)}…` : preview}`);
-  }, [chatMessages, flash, localParticipant.identity, widget.showChat]);
+  const openChat = useCallback(() => {
+    if (!widget.showChat) layoutContext.widget.dispatch?.({ msg: 'toggle_chat' });
+  }, [layoutContext.widget, widget.showChat]);
 
   const { error: recError, clearError: clearRecError } = rec;
   useEffect(() => {
@@ -175,6 +164,7 @@ export function ConferenceLayout({ roomName, onEndForAll }: { roomName: string; 
                   </FocusLayoutContainer>
                 </div>
               )}
+              <ChatToasts chatOpen={widget.showChat} onOpenChat={openChat} />
             </div>
             <Dock
               roomName={roomName}

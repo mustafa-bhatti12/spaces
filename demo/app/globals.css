@@ -1096,6 +1096,87 @@ code { font: 0.875em var(--mono); background: var(--key); padding: 1px 6px; bord
 .toast-error { background: var(--alert); color: #fff; }
 @keyframes toast-in { from { opacity: 0; transform: translateY(8px); } }
 
+/* Chat message notifications (ChatToasts): bottom-right of the stage, a top banner on phones. */
+.chat-toasts {
+  position: absolute;
+  right: 24px;
+  bottom: 12px;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  width: min(360px, calc(100% - 48px));
+  pointer-events: none;
+}
+.chat-toast {
+  position: relative;
+  width: 100%;
+  border-radius: 16px;
+  background: oklch(0.24 0.007 70 / 0.94);
+  -webkit-backdrop-filter: blur(16px) saturate(1.3);
+  backdrop-filter: blur(16px) saturate(1.3);
+  box-shadow: var(--pop), inset 0 0 0 1px rgb(255 255 255 / 0.07);
+  pointer-events: auto;
+  animation: chat-toast-in 320ms var(--ease-out) both;
+}
+.chat-toast-open {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 44px 13px 12px;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 160ms var(--ease-out);
+}
+.chat-toast-open:focus-visible { outline: 2px solid var(--live); outline-offset: 2px; }
+.chat-toast-open:active { background: rgb(255 255 255 / 0.04); }
+.chat-toast .avatar { width: 38px; height: 38px; font-size: 0.8125rem; }
+.chat-toast-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; padding-top: 1px; }
+.chat-toast-head { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.chat-toast-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.875rem; font-weight: 650; color: var(--ink); }
+.chat-toast-time { flex-shrink: 0; font-family: var(--mono); font-size: 0.75rem; font-variant-numeric: tabular-nums; color: var(--ink-3); }
+.chat-toast-text {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
+  font-size: 0.875rem;
+  line-height: 1.4;
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+.chat-toast-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--ink-3);
+  cursor: pointer;
+  transition: background 160ms var(--ease-out), color 160ms var(--ease-out);
+}
+.chat-toast-close svg { width: 16px; height: 16px; }
+.chat-toast-close:focus-visible { outline: 2px solid var(--live); outline-offset: 1px; }
+@media (hover: hover) and (pointer: fine) {
+  .chat-toast-open:hover { background: rgb(255 255 255 / 0.035); }
+  .chat-toast-close:hover { background: rgb(255 255 255 / 0.08); color: var(--ink); }
+}
+@keyframes chat-toast-in { from { opacity: 0; transform: translateX(24px) scale(0.98); } }
+@keyframes chat-toast-drop { from { opacity: 0; transform: translateY(-16px) scale(0.98); } }
+
 /* ---------- End screens & sign-in ---------- */
 .end-screen, .gate { min-height: 100dvh; display: flex; flex-direction: column; padding-bottom: 8vh; }
 .end-face, .gate-face {
@@ -1420,6 +1501,23 @@ code { font: 0.875em var(--mono); background: var(--key); padding: 1px 6px; bord
   .dock-readout { top: calc(16px + env(safe-area-inset-top)); left: 16px; max-width: calc(100vw - 32px); }
   .menu-panel { position: fixed; left: 8px; right: 8px; bottom: 72px; transform: none; animation-name: sheet-in; }
   .toast-slot { bottom: 84px; }
+  /* Phones: a notification banner across the top (over the room readout), newest first, two at most. */
+  .chat-toasts {
+    position: fixed;
+    top: calc(8px + env(safe-area-inset-top));
+    left: 8px;
+    right: 8px;
+    bottom: auto;
+    z-index: 45;
+    width: auto;
+    flex-direction: column-reverse;
+    align-items: stretch;
+  }
+  .chat-toast:not(:nth-last-child(-n + 2)) { display: none; }
+  .chat-toast { animation-name: chat-toast-drop; }
+  .chat-toast-open { padding: 11px 48px 12px 11px; }
+  .chat-toast-text { -webkit-line-clamp: 2; line-clamp: 2; }
+  .chat-toast-close { top: 6px; right: 6px; width: 36px; height: 36px; }
 }
 @media (max-width: 420px) {
   .dock .key,
