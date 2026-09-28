@@ -7,7 +7,7 @@ import { promisify } from 'node:util';
 
 /**
  * Host and service metrics for the operator console. token-service runs natively on the droplet
- * next to LiveKit, Redis, Caddy and the compressor, so it reads them straight from the OS: `os`,
+ * next to LiveKit, Redis and Caddy, so it reads them straight from the OS: `os`,
  * `/proc` (Linux) and `ps`, plus `docker` for the recording worker. Anything a platform can't
  * provide (no `/proc` on macOS) comes back null rather than failing the whole snapshot.
  *
@@ -226,10 +226,6 @@ async function psRows(): Promise<PsRow[]> {
     .map((m) => ({ pid: Number(m[1]), uptimeSec: parseEtime(m[2]), rssBytes: Number(m[3]) * 1024, args: m[4] }));
 }
 
-async function cwdOf(pid: number): Promise<string | null> {
-  return fs.promises.readlink(`/proc/${pid}/cwd`).catch(() => null);
-}
-
 async function fromPs(name: string, row: PsRow | undefined, version: string | null): Promise<ServiceProcess> {
   if (!row) return { name, running: false, pid: null, uptimeSec: null, rssBytes: null, cpuPct: null, version };
   return { name, running: true, pid: row.pid, uptimeSec: row.uptimeSec, rssBytes: row.rssBytes, cpuPct: await procCpuPct(row.pid), version };
@@ -336,14 +332,6 @@ async function egressWorker(): Promise<ServiceProcess> {
 
 async function processes(): Promise<ServiceProcess[]> {
   const [rows, v] = await Promise.all([psRows(), versions()]);
-  const compressorRow = await (async () => {
-    // `npm start` runs it as `sh -c node server.js` -> `node server.js`; the node child is the service.
-    for (const r of rows.filter((r) => /^(\S*\/)?node\s+server\.js\b/.test(r.args))) {
-      if ((await cwdOf(r.pid))?.endsWith('/compressor')) return r;
-    }
-    return rows.find((r) => r.args.includes('compressor/server.js'));
-  })();
-
   const self: ServiceProcess = {
     name: 'Token service',
     running: true,
@@ -357,7 +345,6 @@ async function processes(): Promise<ServiceProcess[]> {
   return Promise.all([
     fromPs('LiveKit server', rows.find((r) => /(^|\/)livekit-server\s/.test(r.args)), v.livekit),
     Promise.resolve(self),
-    fromPs('Compressor', compressorRow, null),
     fromPs('Redis', rows.find((r) => /(^|\/)redis-server\s/.test(r.args)), v.redis),
     fromPs('Caddy', rows.find((r) => /(^|\/)caddy run\b/.test(r.args)), v.caddy),
     egressWorker(),

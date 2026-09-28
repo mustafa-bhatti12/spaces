@@ -18,7 +18,6 @@ interface Check {
 }
 interface Health {
   livekit: Check;
-  compressor: Check;
   egressWorker: Check;
   disk: { freeBytes: number; totalBytes: number } | null;
 }
@@ -328,7 +327,6 @@ function Dashboard({ onLoggedOut }: { onLoggedOut: () => void }) {
               <>
                 <HealthSegment name="LiveKit server" check={health.livekit} okLabel="Running" badLabel="Unreachable" />
                 <HealthSegment name="Recording worker" check={health.egressWorker} okLabel="Running" badLabel="Not running" />
-                <HealthSegment name="Compressor" check={health.compressor} okLabel="Running" badLabel="Unreachable" />
                 <DiskSegment disk={health.disk} />
               </>
             ) : (

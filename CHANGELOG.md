@@ -5,6 +5,7 @@ the detail. Agents: add a line here with every change that ships (see `AGENTS.md
 
 ## 2026-09-28
 
+- **Recording uses less CPU:** egress now writes recordings straight at 24 kbps Opus, so the separate ffmpeg compressor is gone. It used to pin one of the droplet's two cores for about 86 s per recorded hour after every call. Files are the same size as before (about 11 MB an hour). The recording worker is pinned to egress v1.14.1, and the admin console no longer lists a Compressor.
 - **Escape closes side panels:** Escape closes the open chat, people or settings panel, even while typing a message. An open dock menu or the Leave dialog takes the key first, and focus returns to the panel's dock key.
 - **Chat message notifications:** new messages while chat is closed now show as message cards (avatar, sender, time, up to three lines of text) stacked bottom-right of the call, or as a banner across the top on phones. Click or tap one to open the chat, × to dismiss; hovering holds them.
 

@@ -1,10 +1,12 @@
 import path from 'node:path';
 import {
   AccessToken,
+  AudioCodec,
   EgressClient,
   EgressInfo,
   EncodedFileOutput,
   EncodedFileType,
+  EncodingOptions,
   ParticipantInfo_State,
   RoomServiceClient,
   TrackSource,
@@ -241,8 +243,7 @@ function toRecordingInfo(info: EgressInfo): RecordingInfo {
 
 // LiveKit Egress runs in its own Docker container (see ../egress/) and writes the raw recording
 // under the path *as that container sees it* -- /out/raw/<file>, from ../egress mounted at /out.
-// Everything server-side (this process, the compressor) needs the real host path instead; this is
-// the one place that mapping is defined.
+// This process needs the real host path instead; this is the one place that mapping is defined.
 const EGRESS_CONTAINER_RAW_DIR = '/out/raw';
 export const EGRESS_HOST_RAW_DIR = process.env.EGRESS_RAW_DIR ?? path.join(__dirname, '..', '..', 'egress', 'raw');
 
@@ -259,6 +260,11 @@ export function containerPathToHostPath(containerPath: string): string {
   return path.join(EGRESS_HOST_RAW_DIR, relative);
 }
 
+// Speech for listening and transcription, not music: 24 kbps Opus is a fifth of egress's 128 kbps
+// default. Egress encodes the mix anyway, so asking it for the final bitrate costs nothing extra
+// (measured: same egress CPU at 24 as at 128) and leaves no second transcode to run afterwards.
+const RECORDING_AUDIO_KBPS = Number(process.env.RECORDING_AUDIO_KBPS ?? 24);
+
 // Serializes concurrent start requests for the same room onto one in-flight attempt, so two
 // participants clicking "record" within the same tick can't each mint a separate egress session
 // for the same room (the second would otherwise double-record and orphan itself -- nothing in
@@ -268,8 +274,8 @@ const pendingStarts = new Map<string, Promise<RecordingInfo>>();
 /**
  * Starts a single mixed-audio recording of every participant currently in the room. Tied to the
  * room's lifecycle -- LiveKit stops it automatically once the room empties, same as if /stop had
- * been called. The webhook lets us know the moment the file is finalized so it can be handed to
- * the compressor without polling or guessing when Egress is done writing it.
+ * been called. The webhook lets us know the moment the file is finalized so it can be moved into
+ * the finished-recordings directory without polling or guessing when Egress is done writing it.
  *
  * Idempotent: if a recording is already active for this room, returns that one instead of
  * starting a second.
@@ -298,7 +304,9 @@ export async function startRoomAudioRecording(room: string, startedByName?: stri
         disableManifest: true,
       }),
       {
-        audioOnly: true, // leaving layout/customBaseUrl unset is what keeps this on the audio-only billing rate
+        // Leaving layout/customBaseUrl unset keeps this on egress's Chrome-free audio pipeline.
+        audioOnly: true,
+        encodingOptions: new EncodingOptions({ audioCodec: AudioCodec.OPUS, audioBitrate: RECORDING_AUDIO_KBPS }),
         webhooks: [new WebhookConfig({ url: process.env.RECORDING_WEBHOOK_URL ?? 'http://localhost:8880/recording/webhook' })],
       },
     );

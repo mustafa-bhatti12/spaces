@@ -5,8 +5,8 @@ droplet procedures (deploy, safe restart, verify) are in the `spaces-droplet-ops
 is called **Spaces** in the UI (`demo/components/ui/Logo.tsx`); the repo and paths still say `space`.
 
 **The stack in one line:** a self-hosted LiveKit video-calling stack — `livekit-server` (media),
-`token-service` (TS/Fastify, the only holder of LiveKit credentials), `compressor` (JS/Fastify,
-internal-only), Redis and a Dockerized LiveKit Egress worker for audio recording, all on one
+`token-service` (TS/Fastify, the only holder of LiveKit credentials), Redis and a Dockerized
+LiveKit Egress worker for audio recording, all on one
 DigitalOcean droplet behind Caddy — plus one Next.js 16 app on Railway, `demo`, serving the
 LiveKit-React-components call UI at `/` (a stand-in consumer) and the operator control center at
 `/admin`.
@@ -25,10 +25,10 @@ keep this repo generic so any future consumer can reuse it the same way. Don't e
 - **Where a change goes live:** push to `main` → Railway rebuilds `demo` by itself (a few minutes).
   Droplet changes need `ssh space-do 'cd ~/space && git pull -q --ff-only'`. token-service runs
   under `tsx watch`, so a pull reloads it with no call impact. Anything else (`start-all.sh`,
-  `livekit/config.yaml`, `egress/config.yaml`, compressor, `.env`) needs `systemctl restart
+  `livekit/config.yaml`, `egress/config.yaml`, `.env`) needs `systemctl restart
   spaces`, which drops live calls: check for live rooms first and ask the user if anyone is in one.
 - **Verify on the real surface:** `/root/tools/stack-check.sh` on the droplet (health, every
-  service, a join over the public URL, a recording through to its compressed file); `puppeteer-core`
+  service, a join over the public URL, a recording through to its finished file); `puppeteer-core`
   scripts in `/tmp` for UI and calls (see "Testing"). `npm test` in `token-service`, `npm run build`
   in `demo`.
 - **Record what shipped** in `CHANGELOG.md` (newest first, one line per user-visible change), and
@@ -49,7 +49,6 @@ graph LR
     CA["Caddy :443\nspaces.hofmigration.com"]
     TS["token-service :8880"]
     LK["livekit-server\n:7880 / 7881 tcp / 7882 udp"]
-    CO["compressor\n127.0.0.1:8890"]
     RD[(Redis :6379)]
     EG["egress worker\n(Docker)"]
   end
@@ -68,17 +67,15 @@ graph LR
   EG -->|redis pub/sub| RD
   EG -->|writes| RAW[egress/raw/*.ogg]
   LK -->|"webhook (localhost): egress_ended, room_finished"| TS
-  TS -->|"POST /compress"| CO
-  CO -->|writes| COMP[egress/compressed/*.ogg]
+  TS -->|"moves finished file"| COMP[egress/compressed/*.ogg]
 ```
 
 | Service | Lang | Runs on | Port | Holds | Purpose |
 |---|---|---|---|---|---|
 | `livekit-server` | Go binary | droplet | 7880 ws/http, 7881 tcp, 7882 udp | LiveKit key pair (runtime config) | Media server (SFU). Native, not Docker — see below. |
 | `token-service` | TypeScript, Fastify | droplet | 8880 | LiveKit key pair, both bearer secrets | **Only** thing that mints tokens or talks to LiveKit's admin/egress API. Consumer routes + operator `/admin/*` routes. |
-| `compressor` | JS, Fastify | droplet | 8890, bound `127.0.0.1` | nothing | Shrinks a finished recording via `ffmpeg`. Never LAN-reachable, so no auth. |
 | Redis | — | droplet | 6379 | — | Job queue LiveKit server ↔ Egress worker use to coordinate. Recording-only; calling works without it. |
-| Egress worker | Docker (`livekit/egress`) | droplet | — | LiveKit key pair (runtime config) | Joins a room as a hidden participant, records mixed audio to `egress/raw/`. |
+| Egress worker | Docker (`livekit/egress:v1.14.1`, pinned) | droplet | — | LiveKit key pair (runtime config) | Joins a room as a hidden participant, mixes everyone's audio and writes 24 kbps Opus to `egress/raw/`; token-service moves it to `egress/compressed/` when egress reports it finished. |
 | Caddy | — | droplet | 80/443 | Let's Encrypt certs | TLS for `spaces.hofmigration.com`: `/rtc` → LiveKit, `/twirp` + `/recording/webhook` blocked, everything else → token-service. Also, via the `layer4` plugin (custom build, see README), TURN/TLS for `turn.hofmigration.com` → LiveKit's TURN on `127.0.0.1:5349`. Config: `deploy/Caddyfile`. |
 | `demo` | TypeScript, Next.js 16, React 19, Node ≥ 22.22 (`livekit-client`'s `machina` requires it), `@livekit/components-react` | Railway `https://spaces-demo.up.railway.app` (also local via `start-all.sh`) | `$PORT` (8888 locally) | `TOKEN_SERVICE_SHARED_SECRET`; plus `ADMIN_SHARED_SECRET` + `ADMIN_PASSWORD` for `/admin` | `/` + `/rooms/[room]`: full call UI (pre-join, grid/focus, chat, people, devices, background blur/virtual backgrounds, reactions, raise hand, record, invite, reconnect banner) — throwaway, simulates Petition Studio's path. `/admin`: the permanent operator control center. Server routes under `app/api/*` and `app/admin/*` hold the secrets; the browser never sees them. |
 
@@ -113,9 +110,6 @@ graph LR
   accepted for a stand-in; Petition Studio will gate who joins which room.
 - **Tokens grant `canUpdateOwnMetadata`** so a participant can set its own `hand` attribute (raise
   hand). It only covers the participant's own metadata/attributes.
-- `compressor` has **no auth at all** — deliberately. It's bound to `127.0.0.1`, so nothing outside
-  this host can reach it regardless. Don't add a shared secret to it; that would be solving a problem
-  the bind address already solves.
 - LiveKit webhooks are verified via `WebhookReceiver` (JWT in the `Authorization` header, signed with
   the LiveKit API secret) — see gotchas below for the header-name trap. LiveKit posts them to
   `localhost:8880`; Caddy answers `404` for `/recording/webhook` from outside.
@@ -126,9 +120,9 @@ graph LR
   `ADMIN_SHARED_SECRET`), and `write_runtime_configs` renders `.runtime/livekit.yaml` and
   `.runtime/egress.yaml` with that key pair. The committed YAMLs keep only the dev pair — never put a
   real key in them.
-- **Only `compressor` is loopback-bound.** `token-service` (8880), `livekit-server` (7880) and the
-  Redis that `start-all.sh` launches (6379, `--bind 0.0.0.0 --protected-mode no`, no password) all
-  listen on `0.0.0.0`. On the droplet the Cloud Firewall keeps them private and Caddy is the only
+- **The droplet services listen on `0.0.0.0`:** `token-service` (8880), `livekit-server` (7880) and
+  the Redis that `start-all.sh` launches (6379, `--bind 0.0.0.0 --protected-mode no`, no password).
+  On the droplet the Cloud Firewall keeps them private and Caddy is the only
   public way in — see "Deployment". Redis must stay `0.0.0.0` (the Egress container reaches it over
   the Docker bridge, not loopback), so don't "fix" this by rebinding it to `127.0.0.1`.
 - **Never expose `/twirp`** (LiveKit's admin API) publicly. Caddy blocks it; `token-service` reaches
@@ -161,7 +155,7 @@ Egress container → host traffic the way host `ufw` can):
 
 |Open to the internet|Keep closed|
 |---|---|
-|22/tcp SSH, 80/tcp + 443/tcp Caddy, 7881/tcp + 7882/udp LiveKit media|6379 Redis, 7880 LiveKit (browsers reach `/rtc` via Caddy), 8880 token-service (via Caddy), 8888, 8890 compressor|
+|22/tcp SSH, 80/tcp + 443/tcp Caddy, 7881/tcp + 7882/udp LiveKit media|6379 Redis, 7880 LiveKit (browsers reach `/rtc` via Caddy), 8880 token-service (via Caddy), 8888|
 
 Railway's outbound IPs aren't static, so token-service can't be IP-allowlisted; the bearer secrets
 over Caddy's HTTPS are the protection. Those are inbound rules. **Outbound stays DigitalOcean's
@@ -196,13 +190,13 @@ public STUN list, and the SFU is reached on its own public `node_ip` anyway.
 
 What `start-all.sh` does and doesn't do on a bare Linux host:
 
-- **Does:** `apt-get` installs Redis/ffmpeg, installs `livekit-server`, generates real credentials
+- **Does:** `apt-get` installs Redis, installs `livekit-server`, generates real credentials
   once (see "Security model"), writes `.runtime/livekit.yaml` (key pair + `use_external_ip: true` +
   `node_ip: <public IPv4>` so ICE candidates are reachable) and `.runtime/egress.yaml`.
   `SPACE_PUBLIC_IP` overrides IP detection. It does **not** start the demo on a VPS (Railway hosts it).
 - **Doesn't:** install Node (need Node 20+ first — `ensure_npm_env` only runs `npm install`),
   install Docker (`curl -fsSL https://get.docker.com | sh`), or install/configure Caddy. It runs in
-  the foreground and supervises: if LiveKit, token-service, the compressor or its Redis exits, it
+  the foreground and supervises: if LiveKit, token-service or its Redis exits, it
   stops the rest and exits 1.
 - **On the droplet it runs under systemd as `spaces.service`** (`deploy/spaces.service`, symlinked
   into `/etc/systemd/system/`; install steps are in the unit's header). It starts on boot and
@@ -216,7 +210,7 @@ What `start-all.sh` does and doesn't do on a bare Linux host:
 - **Host `ufw`:** if enabled with default-deny incoming, it also drops the Egress container's traffic
   to host Redis/LiveKit over `docker0`. It's inactive on the droplet; keep it that way, or
   `ufw allow from 172.17.0.0/16`.
-- **Logs:** `/tmp/livekit.log`, `/tmp/token-service.log`, `/tmp/compressor.log`, `/tmp/redis.log`,
+- **Logs:** `/tmp/livekit.log`, `/tmp/token-service.log`, `/tmp/redis.log`,
   `/tmp/demo.log` (local only), `journalctl -u spaces` (start-all's own output: which service died,
   restarts), `docker logs space-egress`, `journalctl -u caddy`.
 - **Harmless startup lines:** `could not validate external IP ... from 172.17.0.1:7882 ... context
@@ -266,8 +260,15 @@ works from the same machine; test multi-device calls on the Railway deployment.
   before at least one participant has joined it — LiveKit rooms are created on first join, not
   pre-created. `POST /recording/start` on a room nobody's in yet 404s
   (`"requested room does not exist"`).
-- **Audio-only billing only applies if `layout` and `customBaseUrl` are left unset** on the egress
-  request. Setting either routes the recording through the video pipeline even with `audioOnly: true`.
+- **Recording must stay on egress's audio-only pipeline (no Chrome).** An `audioOnly` room
+  composite with `layout` and `customBaseUrl` unset runs on egress's SDK source (GStreamer mixing,
+  `ShouldUseSDKSource` in egress's `pkg/config/pipeline.go`); setting either one starts headless
+  Chrome. Measured on the droplet (2 vCPU): about 15% of one core per recording, the same at 24 kbps
+  as at egress's 128 kbps default, so the bitrate is set on the request (`RECORDING_AUDIO_KBPS`, 24)
+  instead of transcoding afterwards. A separate ffmpeg compressor used to do that second pass and
+  pinned a core for about 86 s per recorded hour; it's gone, don't bring one back. For Opus, egress
+  always mixes at 48 kHz stereo (`audioFrequency` is ignored). The image is pinned because this
+  depends on egress's version: re-measure before bumping it.
 - **Identity is a per-browser `deviceId` (localStorage), not the typed display name.** Rejoining with
   the same identity evicts the earlier connection instead of adding a second participant — this is
   intentional (stops the same browser tab-duplicating into a room under two names) but means the
@@ -332,13 +333,12 @@ works from the same machine; test multi-device calls on the Railway deployment.
   `101 Switching Protocols` proves Caddy → LiveKit signaling end-to-end.
 - `token-service` has real unit tests (`npm test`, Node's built-in test runner) for `mintToken` /
   `listActiveRooms` and `resolveRecordingFile` (the only gate between an admin-supplied filename and
-  `fs.unlink`/reads — keep its traversal cases). `demo` and `compressor` have no test suite; verify
+  `fs.unlink`/reads — keep its traversal cases). `demo` has no test suite; verify
   with `npm run build` (typecheck) plus a browser run. Don't add a test framework speculatively.
 
 ## Conventions
 
-- `token-service` and `demo` are TypeScript; `compressor` is plain JS (small, mechanical, not worth
-  a build step).
+- `token-service` and `demo` are TypeScript.
 - Droplet HTTP services use **Fastify**, not Express. The demo is **Next.js 16 App Router**: route
   handlers in `app/**/route.ts`, async `params`, `PageProps`/`RouteContext` generated types (run
   `npx next typegen` or a build before `tsc`). Read `demo/node_modules/next/dist/docs/` before using
@@ -370,7 +370,7 @@ works from the same machine; test multi-device calls on the Railway deployment.
 - `token-service/src/index.ts` — consumer routes, including the `/recording/webhook` receiver.
 - `token-service/src/admin.ts` — the operator `/admin/*` routes (overview, health, system metrics, moderation, recording files with Range support).
 - `token-service/src/system.ts` — `GET /admin/system`: host CPU/memory/network, per-service process rows, versions, TLS expiry, deployed commit. Linux-only parts return null on macOS; rates are deltas between calls (first call after a restart has nulls). It runs on every console poll, so keep it cheap; the comments explain why it reads cgroup files instead of `docker stats`.
-- `token-service/src/recordings.ts` — recording directories, safe filename resolution, file listing.
+- `token-service/src/recordings.ts` — recording directories, safe filename resolution, file listing, `finishRecording` (webhook: raw/ → compressed/).
 - `token-service/src/auth.ts` — the two bearer-secret `preHandler`s.
 - `demo/app/api/*` — call-page server routes (`connect`, `rooms`, `whoami`, `recording/{start,stop,status}`) → token-service consumer routes.
 - `demo/app/admin/*` — `/admin` page + `login`/`logout`/`session` routes + `api/[...path]` streaming proxy → token-service `/admin/*`.
@@ -380,11 +380,10 @@ works from the same machine; test multi-device calls on the Railway deployment.
 - `demo/components/ui/*` — `Menu` (dock popover), `Device` (wordmark, LED, readout, initials).
 - `demo/components/admin/AdminDashboard.tsx` — the control center UI; `ServerPanel.tsx` (Server section: metric strips + processes table); `format.ts` (bytes, rates, durations).
 - `demo/public/backgrounds/*.jpg` — virtual-background images.
-- `compressor/server.js` — the one `/compress` endpoint.
 - `livekit/config.yaml`, `egress/config.yaml` — real (non-`--dev`) server config templates with the dev key pair; read the comments in each before editing.
 - `deploy/spaces.service` (systemd unit running `start-all.sh`), `deploy/Caddyfile` (site + TURN SNI route, example hosts).
 - `start-all.sh` — local (macOS) / VPS orchestration for the droplet side, plus `next dev` for
-  the demo when not on a VPS. Tries to install Redis / LiveKit / ffmpeg when they're missing.
+  the demo when not on a VPS. Tries to install Redis / LiveKit when they're missing.
   Degrades gracefully (calling still works) if Redis/Docker still aren't there.
 - `.runtime/` (gitignored, mode 700) — generated `livekit.yaml` / `egress.yaml` with the real key
   pair; never edit, edit the committed templates. Runtime logs: `/tmp/*.log` (see "Deployment").

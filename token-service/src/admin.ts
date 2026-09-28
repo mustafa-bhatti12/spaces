@@ -46,14 +46,9 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.get('/health', async () => {
-    const compressorUrl = process.env.COMPRESSOR_URL ?? 'http://127.0.0.1:8890';
-    const [livekit, compressor, egressWorker] = await Promise.all([
+    const [livekit, egressWorker] = await Promise.all([
       listActiveRooms().then(
         (rooms): Check => ({ ok: true, detail: `${rooms.length} active room(s)` }),
-        (err: Error): Check => ({ ok: false, detail: err.message }),
-      ),
-      fetch(`${compressorUrl}/health`, { signal: AbortSignal.timeout(2000) }).then(
-        (res): Check => ({ ok: res.ok, detail: res.ok ? 'reachable' : `responded ${res.status}` }),
         (err: Error): Check => ({ ok: false, detail: err.message }),
       ),
       // The egress worker is a Docker container started by start-all.sh; LiveKit's API only shows
@@ -66,7 +61,7 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       (s) => ({ freeBytes: s.bavail * s.bsize, totalBytes: s.blocks * s.bsize }),
       () => null,
     );
-    return { livekit, compressor, egressWorker, disk };
+    return { livekit, egressWorker, disk };
   });
 
   // Host + per-service metrics (CPU, memory, network, versions, TLS expiry, deployed commit).

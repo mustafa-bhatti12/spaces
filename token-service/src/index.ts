@@ -14,6 +14,7 @@ import {
   stopRecording,
 } from './livekit';
 import { requireSharedSecret } from './auth';
+import { finishRecording } from './recordings';
 import { adminRoutes } from './admin';
 
 const fastify = Fastify();
@@ -157,7 +158,6 @@ fastify.register(async (scoped) => {
     process.env.LIVEKIT_API_KEY ?? '',
     process.env.LIVEKIT_API_SECRET ?? '',
   );
-  const compressorUrl = process.env.COMPRESSOR_URL ?? 'http://127.0.0.1:8890';
 
   scoped.post<{ Body: string }>('/recording/webhook', async (req, reply) => {
     let event;
@@ -170,7 +170,7 @@ fastify.register(async (scoped) => {
     }
 
     // Always ack once the signature checks out -- LiveKit retries a non-2xx response, and a
-    // transient compressor failure shouldn't turn into repeated compression attempts.
+    // transient file-move failure shouldn't turn into repeated attempts.
     reply.send({ received: true });
 
     const info = event.egressInfo;
@@ -188,17 +188,9 @@ fastify.register(async (scoped) => {
     }
     for (const file of info.fileResults) {
       try {
-        const inputPath = containerPathToHostPath(file.filename);
-        const res = await fetch(`${compressorUrl}/compress`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ inputPath }),
-        });
-        if (!res.ok) {
-          console.error(`Compressor responded ${res.status} for ${inputPath}`);
-        }
+        await finishRecording(containerPathToHostPath(file.filename));
       } catch (err) {
-        console.error(`Failed to hand ${file.filename} to the compressor:`, err);
+        console.error(`Failed to move finished recording ${file.filename}:`, err);
       }
     }
   });

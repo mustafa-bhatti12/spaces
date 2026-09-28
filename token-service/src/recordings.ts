@@ -2,9 +2,9 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { EGRESS_HOST_RAW_DIR } from './livekit';
 
-// Where finished recordings live on this host. raw/ holds in-progress or not-yet-compressed egress
-// output (the compressor deletes a raw file once its compressed copy exists); compressed/ holds the
-// kept copies. COMPRESSED_DIR must match compressor's own setting of the same name.
+// Where recordings live on this host. raw/ is where egress writes a recording as it finalizes;
+// compressed/ holds finished ones (egress already encodes them at the final bitrate, so "compressed"
+// is just the name the admin console and existing files use).
 export const RECORDING_DIRS = {
   raw: EGRESS_HOST_RAW_DIR,
   compressed: process.env.EGRESS_COMPRESSED_DIR ?? path.join(__dirname, '..', '..', 'egress', 'compressed'),
@@ -35,6 +35,24 @@ export function resolveRecordingFile(kind: string, name: string): string | null 
   const dir = path.resolve(RECORDING_DIRS[kind as RecordingKind]);
   const resolved = path.resolve(dir, name);
   return path.dirname(resolved) === dir ? resolved : null;
+}
+
+/**
+ * Moves a finalized egress file (host path inside raw/) into compressed/, keeping its name. Egress
+ * only reports a file once it's fully written, so compressed/ never holds a partial recording.
+ */
+export async function finishRecording(rawPath: string): Promise<string> {
+  const target = path.join(RECORDING_DIRS.compressed, path.basename(rawPath));
+  await fs.mkdir(RECORDING_DIRS.compressed, { recursive: true });
+  try {
+    await fs.rename(rawPath, target);
+  } catch (err) {
+    // The two directories can be pointed at different filesystems (EGRESS_*_DIR), where rename fails.
+    if ((err as NodeJS.ErrnoException).code !== 'EXDEV') throw err;
+    await fs.copyFile(rawPath, target);
+    await fs.unlink(rawPath);
+  }
+  return target;
 }
 
 /** Every recording file on disk, newest first. A missing directory just contributes nothing. */

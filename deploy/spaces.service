@@ -1,5 +1,5 @@
-# Runs the droplet side of Spaces (Redis, LiveKit, the recording worker container, token-service,
-# compressor) via start-all.sh at boot, and restarts the stack if one of those services dies.
+# Runs the droplet side of Spaces (Redis, LiveKit, the recording worker container, token-service)
+# via start-all.sh at boot, and restarts the stack if one of those services dies.
 # Caddy and Docker are their own system services; Ubuntu's redis-server.service stays disabled
 # because start-all.sh runs a Redis the recording container can reach (0.0.0.0, not 127.0.0.1).
 #
@@ -11,7 +11,7 @@
 # Per-service logs stay in /tmp/*.log (see AGENTS.md "Deployment").
 
 [Unit]
-Description=Spaces (LiveKit, token-service, compressor, Redis, recording worker)
+Description=Spaces (LiveKit, token-service, Redis, recording worker)
 Wants=network-online.target docker.service
 After=network-online.target docker.service
 # A crash loop (e.g. a broken config) stops retrying after 5 failures in 5 minutes.

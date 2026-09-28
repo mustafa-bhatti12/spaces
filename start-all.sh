@@ -12,7 +12,6 @@ STARTED_REDIS=0
 EGRESS_STARTED=0
 LK_PID=""
 TS_PID=""
-CO_PID=""
 DEMO_PID=""
 PUBLIC_IP="${SPACE_PUBLIC_IP:-}"
 LK_CONFIG=""
@@ -134,18 +133,6 @@ install_redis_if_needed() {
     apt_install redis-server || return 1
     # Packaged redis binds 127.0.0.1 only; the egress container cannot reach that.
     as_root service redis-server stop >/dev/null 2>&1 || true
-  else
-    return 1
-  fi
-}
-
-install_ffmpeg_if_needed() {
-  have ffmpeg && return 0
-  echo "📦 ffmpeg not found, installing (needed to compress recordings)..."
-  if [ "$(uname)" = "Darwin" ]; then
-    have brew && brew install ffmpeg || return 1
-  elif have apt-get; then
-    apt_install ffmpeg || return 1
   else
     return 1
   fi
@@ -342,7 +329,6 @@ fi
 sleep 1
 
 # --- 3. LiveKit Egress worker (Docker) ---
-install_ffmpeg_if_needed || true
 if ! have docker && [ -S /var/run/docker.sock ] && [ "$(id -u)" -ne 0 ] && can_sudo; then
   docker() { sudo -n docker "$@"; }
 fi
@@ -363,6 +349,8 @@ else
   # host.docker.internal + host-gateway works on Docker Desktop and Linux.
   # Volume is egress:/out so /out/raw/<file> is egress/raw/<file>.
   # --restart on-failure: Docker restarts a crashed worker itself; cleanup() still removes it.
+  # Pinned: token-service relies on this version recording audio-only rooms without Chrome
+  # (egress's SDK source), so bump it deliberately and re-measure, not through :latest.
   if docker run -d --name space-egress --restart on-failure \
       --add-host=host.docker.internal:host-gateway \
       --cap-add=SYS_ADMIN \
@@ -370,7 +358,7 @@ else
       -e EGRESS_CONFIG_FILE=/etc/egress.yaml \
       -v "${EGRESS_CONFIG}:/etc/egress.yaml" \
       -v "${ROOT}/egress:/out" \
-      livekit/egress:latest > /tmp/egress-container-id.txt 2>/tmp/egress.log; then
+      livekit/egress:v1.14.1 > /tmp/egress-container-id.txt 2>/tmp/egress.log; then
     EGRESS_STARTED=1
   else
     echo "⚠️  Could not start LiveKit Egress (see /tmp/egress.log) -- recording disabled."
@@ -389,17 +377,7 @@ cd "$ROOT"
 
 sleep 1
 
-# --- 5. Compressor ---
-echo "🗜️  Starting Compressor on :8890..."
-ensure_npm_env compressor
-cd compressor
-npm run dev > /tmp/compressor.log 2>&1 &
-CO_PID=$!
-cd "$ROOT"
-
-sleep 1
-
-# --- 6. Demo web app (Next.js) ---
+# --- 5. Demo web app (Next.js) ---
 # On a VPS the demo is hosted on Railway instead (it reaches token-service through Caddy), so the
 # droplet doesn't spend RAM on it. Locally (macOS) it runs here in dev mode.
 if [ "$(uname)" != "Darwin" ]; then
@@ -417,7 +395,6 @@ if [ -n "$DEMO_PID" ]; then
   echo "   - Space Meet:  http://localhost:8888  (admin: /admin)"
 fi
 echo "   - Token API:   http://localhost:8880"
-echo "   - Compressor:  http://127.0.0.1:8890"
 echo "   - LiveKit:     http://localhost:7880"
 if [ "$EGRESS_STARTED" = "1" ]; then
   echo "   - Egress:      Docker container 'space-egress' (writes to ./egress/raw)"
@@ -430,7 +407,6 @@ cleanup() {
   echo "🛑 Stopping all services..."
   [ -n "$LK_PID" ] && kill "$LK_PID" 2>/dev/null || true
   [ -n "$TS_PID" ] && kill "$TS_PID" 2>/dev/null || true
-  [ -n "$CO_PID" ] && kill "$CO_PID" 2>/dev/null || true
   [ -n "$DEMO_PID" ] && kill "$DEMO_PID" 2>/dev/null || true
   if [ "$STARTED_REDIS" = "1" ] && [ -n "$REDIS_PID" ]; then
     kill "$REDIS_PID" 2>/dev/null || true
@@ -448,7 +424,7 @@ trap cleanup SIGINT SIGTERM
 # Restart=on-failure) brings the whole stack back; run by hand, you see which one died.
 # `sleep & wait` keeps the Ctrl+C / SIGTERM trap responsive.
 while true; do
-  for entry in "LiveKit:$LK_PID" "token-service:$TS_PID" "compressor:$CO_PID" "Redis:$REDIS_PID"; do
+  for entry in "LiveKit:$LK_PID" "token-service:$TS_PID" "Redis:$REDIS_PID"; do
     pid="${entry#*:}"
     if [ -n "$pid" ] && ! kill -0 "$pid" 2>/dev/null; then
       echo "❌ ${entry%%:*} (pid $pid) exited -- stopping the rest."

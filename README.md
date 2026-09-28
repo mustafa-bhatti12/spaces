@@ -1,12 +1,12 @@
 # Space — Self-Hosted Video Calling & Audio Recording Service
 
-This repository provides self-hosted LiveKit WebRTC video calling, room token minting, Google Meet-style call controls, and audio recording with automated compression pipelines.
+This repository provides self-hosted LiveKit WebRTC video calling, room token minting, Google Meet-style call controls, and low-bitrate audio recording.
 
 ---
 
 ## 🖥️ Production-style deployment (droplet + Caddy + Railway)
 
-Media, token-service, recording and compression run on one Linux VPS (Ubuntu / Debian) behind Caddy. One Next.js app, `demo`, runs on Railway: it serves the call page at `/` and the admin control center at `/admin`, and reaches the VPS over HTTPS, which is the same path a real consumer app takes.
+Media, token-service and recording run on one Linux VPS (Ubuntu / Debian) behind Caddy. One Next.js app, `demo`, runs on Railway: it serves the call page at `/` and the admin control center at `/admin`, and reaches the VPS over HTTPS, which is the same path a real consumer app takes.
 
 ### 1. VPS
 
@@ -31,7 +31,7 @@ Tell token-service which public URL to give browsers:
 echo "LIVEKIT_PUBLIC_URL=wss://space.example.com" >> token-service/.env
 ```
 
-Then install it as a service so it starts on boot and restarts itself if LiveKit, token-service, the compressor or Redis dies. `deploy/spaces.service` assumes the repo is at `/root/space`; edit its paths if yours isn't.
+Then install it as a service so it starts on boot and restarts itself if LiveKit, token-service or Redis dies. `deploy/spaces.service` assumes the repo is at `/root/space`; edit its paths if yours isn't.
 
 ```bash
 ln -sf /root/space/deploy/spaces.service /etc/systemd/system/spaces.service
@@ -75,7 +75,7 @@ Without the TURN record and `TURN_DOMAIN`, skip the plugin and the `layer4` bloc
 
 Firewall (a cloud firewall is preferred over `ufw`, because `ufw` also blocks the Egress container's traffic to the host):
 - Inbound open: **22/tcp**, **80/tcp**, **443/tcp** (site and TURN), **7881/tcp**, **7882/udp**.
-- Everything else closed, including 6379, 7880, 8880, 8888 and 8890.
+- Everything else closed, including 6379, 7880, 8880 and 8888.
 - Outbound: leave the default allow-all, or media breaks.
 
 ### 3. Railway
@@ -115,8 +115,7 @@ This script automatically launches:
 1. **LiveKit Media Server** on `http://localhost:7880` (WebRTC on `:7881` TCP & `:7882` UDP)
 2. **Redis & LiveKit Egress** (installs Redis when missing; starts Egress if Docker is available)
 3. **Token Service** on `http://localhost:8880`
-4. **Compressor Service** on `http://localhost:8890`
-5. **Space demo** (Next.js dev server) on `http://localhost:8888`. The browser connects to LiveKit at `ws://localhost:7880`, so local calls work from this machine only. Test calls between devices on the Railway deployment.
+4. **Space demo** (Next.js dev server) on `http://localhost:8888`. The browser connects to LiveKit at `ws://localhost:7880`, so local calls work from this machine only. Test calls between devices on the Railway deployment.
 
 ---
 
@@ -157,15 +156,14 @@ Set `ADMIN_PASSWORD` and `ADMIN_SHARED_SECRET` in `demo/.env`; the secret must m
 
 1. **Recording Initiation:**
    - Any participant can click **Record** in the control bar, or the operator can start it from `/admin`.
-   - The demo's `/api/recording/start` calls token-service's `POST /recording/start`, which starts a LiveKit **RoomCompositeEgress** (audio-only). Everyone in the room sees the `REC` badge, with a timer and who started it.
+   - The demo's `/api/recording/start` calls token-service's `POST /recording/start`, which starts a LiveKit **RoomCompositeEgress** (audio-only, 24 kbps Opus). Everyone in the room sees the `REC` badge, with a timer and who started it.
 
 2. **Storage & Auto-Stop:**
-   - The audio stream is captured by the Egress worker container to `./egress/raw/<room>-<timestamp>.ogg`.
+   - The Egress worker container mixes everyone's audio (no Chrome: egress's audio-only pipeline) and encodes it straight to the final 24 kbps Opus, about 11 MB an hour, clear for listening and for Whisper / Deepgram speech-to-text. `RECORDING_AUDIO_KBPS` in `token-service/.env` changes the rate.
    - Recordings automatically stop if all participants leave the room (`room_finished` webhook).
 
-3. **Compression & Archival:**
-   - When the Egress finishes, LiveKit sends an `egress_ended` webhook to `token-service`.
-   - `token-service` sends the raw audio to `compressor/` (`:8890`), which encodes it into a lightweight, high-clarity opus file in `./egress/compressed/` ready for Whisper / Deepgram speech-to-text processing.
+3. **Archival:**
+   - When the Egress finishes, LiveKit sends an `egress_ended` webhook to `token-service`, which moves the finished file from `./egress/raw/` to `./egress/compressed/<room>-<timestamp>.ogg`. There is no second encoding pass.
 
 ---
 

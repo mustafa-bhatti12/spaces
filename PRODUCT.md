@@ -49,7 +49,7 @@ Space is a neutral, unbranded video tool that any future app can embed through t
   - end screens: left, you ended the call, call ended (by the host or an admin), removed, duplicate tab, error
 - Admin features:
   - password login
-  - service health (LiveKit, recording worker, compressor, disk)
+  - service health (LiveKit, recording worker, disk)
   - server metrics: CPU, memory, network, TLS expiry, deployed commit, per-service processes
   - live rooms and participants, with mute, remove, and close-room actions
   - start and stop recordings
