@@ -152,6 +152,30 @@ export async function hostIdentity(room: string, token: string): Promise<string 
   return (await getRoomSettings(room))?.hosts.includes(identity) ? identity : null;
 }
 
+/** What an embedding page needs to join with a token it was handed: verified here, never trusted from the URL. */
+export interface EmbedSession {
+  room: string;
+  identity: string;
+  name: string;
+  serverUrl: string;
+}
+
+/**
+ * Verifies a join token minted by /token (signature and expiry, no clock grace) and returns who it's
+ * for. The embed page calls this so the LiveKit URL comes from us, not from whoever built the link.
+ */
+export async function inspectJoinToken(token: string): Promise<EmbedSession | null> {
+  const { apiKey, apiSecret, serverUrl } = requireLiveKitEnv();
+  try {
+    const grants = await new TokenVerifier(apiKey, apiSecret).verify(token);
+    const room = grants.video?.room;
+    if (!room || !grants.video?.roomJoin || !grants.sub) return null;
+    return { room, identity: grants.sub, name: grants.name || grants.sub, serverUrl: process.env.LIVEKIT_PUBLIC_URL || serverUrl };
+  } catch {
+    return null;
+  }
+}
+
 /** Ends `room` for everyone if `token` belongs to one of its hosts (see hostIdentity). */
 export async function endRoomAsHost(room: string, token: string): Promise<'ended' | 'forbidden'> {
   if (!(await hostIdentity(room, token))) return 'forbidden';

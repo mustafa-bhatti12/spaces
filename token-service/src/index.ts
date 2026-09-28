@@ -24,6 +24,7 @@ import * as autoRecord from './autoRecord';
 import { adminRoutes } from './admin';
 import { lobby } from './lobby';
 import { lobbyRoutes } from './lobbyRoutes';
+import { embedRoutes } from './embedRoutes';
 
 const fastify = Fastify();
 
@@ -293,6 +294,7 @@ fastify.register(async (scoped) => {
 
 fastify.register(adminRoutes, { prefix: '/admin' });
 fastify.register(lobbyRoutes, { prefix: '/lobby' });
+fastify.register(embedRoutes, { prefix: '/embed' });
 
 const port = Number(process.env.PORT ?? 8880);
 fastify

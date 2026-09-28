@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mintToken, listActiveRooms, tokenIdentity } from './livekit';
+import { AccessToken } from 'livekit-server-sdk';
+import { mintToken, listActiveRooms, tokenIdentity, inspectJoinToken } from './livekit';
 
 test('throws when LiveKit env vars are missing', async () => {
   delete process.env.LIVEKIT_API_KEY;
@@ -54,4 +55,41 @@ test('tokenIdentity refuses a token signed with another secret', async () => {
   const forged = await mintToken({ room: 'r1', identity: 'host', name: 'Host' });
   useDevEnv();
   assert.equal(await tokenIdentity('r1', forged.participantToken), null);
+});
+
+test('inspectJoinToken returns room, identity and name from a valid join token', async () => {
+  useDevEnv();
+  const { participantToken } = await mintToken({ room: 'r1', identity: 'u1', name: 'Sara' });
+  const session = await inspectJoinToken(participantToken);
+  assert.deepEqual(session, { room: 'r1', identity: 'u1', name: 'Sara', serverUrl: 'ws://localhost:7880' });
+});
+
+test('inspectJoinToken prefers LIVEKIT_PUBLIC_URL for the browser', async () => {
+  useDevEnv();
+  process.env.LIVEKIT_PUBLIC_URL = 'wss://calls.example.com';
+  try {
+    const { participantToken } = await mintToken({ room: 'r1', identity: 'u1', name: 'Sara' });
+    assert.equal((await inspectJoinToken(participantToken))?.serverUrl, 'wss://calls.example.com');
+  } finally {
+    delete process.env.LIVEKIT_PUBLIC_URL;
+  }
+});
+
+test('inspectJoinToken rejects a token signed with another secret', async () => {
+  useDevEnv();
+  const at = new AccessToken('devkey', 'not-the-secret', { identity: 'u1', name: 'x' });
+  at.addGrant({ room: 'r1', roomJoin: true });
+  assert.equal(await inspectJoinToken(await at.toJwt()), null);
+});
+
+test('inspectJoinToken rejects a token without a room join grant', async () => {
+  useDevEnv();
+  const at = new AccessToken('devkey', 'secret', { identity: 'u1' });
+  at.addGrant({ roomList: true });
+  assert.equal(await inspectJoinToken(await at.toJwt()), null);
+});
+
+test('inspectJoinToken rejects garbage', async () => {
+  useDevEnv();
+  assert.equal(await inspectJoinToken('not-a-jwt'), null);
 });
