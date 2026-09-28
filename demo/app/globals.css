@@ -1679,3 +1679,4 @@ code { font: 0.875em var(--mono); background: var(--key); padding: 1px 6px; bord
   .waiting-notice-icon::after { animation: none !important; }
 }
 @keyframes reaction-fade { 0%, 80% { opacity: 1; } 100% { opacity: 0; } }
+.prejoin-locked-name { margin: 0; font-weight: 600; text-align: center; }

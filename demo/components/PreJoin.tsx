@@ -27,6 +27,8 @@ interface PreJoinProps {
   onError: (error: Error) => void;
   /** Rendered between the name field and the Join button (the host's waiting-room switch). */
   beforeJoin?: ReactNode;
+  /** The name is fixed (embedded calls): shown as text instead of the input, and used on submit. */
+  lockedName?: string;
 }
 
 /**
@@ -42,7 +44,7 @@ interface PreJoinProps {
  * typing before hydration) that React hasn't heard about, which left a filled field with a dead
  * button. Submitting reads the field itself, and an empty name just flags the field.
  */
-export function PreJoin({ defaults, joinLabel, userLabel, busy, onSubmit, onError, beforeJoin }: PreJoinProps) {
+export function PreJoin({ defaults, joinLabel, userLabel, busy, onSubmit, onError, beforeJoin, lockedName }: PreJoinProps) {
   const {
     userChoices: initial,
     saveAudioInputDeviceId,
@@ -56,7 +58,7 @@ export function PreJoin({ defaults, joinLabel, userLabel, busy, onSubmit, onErro
   const [audioDeviceId, setAudioDeviceId] = useState(initial.audioDeviceId);
   const [videoDeviceId, setVideoDeviceId] = useState(initial.videoDeviceId);
   const [mirror] = useMirrorVideo();
-  const [username, setUsername] = useState('');
+  const [username, setUsername] = useState(lockedName ?? '');
   const [nameMissing, setNameMissing] = useState(false);
   const nameInput = useRef<HTMLInputElement>(null);
 
@@ -135,6 +137,10 @@ export function PreJoin({ defaults, joinLabel, userLabel, busy, onSubmit, onErro
   const submit = (event: FormEvent) => {
     event.preventDefault();
     if (busy) return;
+    if (lockedName) {
+      onSubmit({ ...choices, username: lockedName });
+      return;
+    }
     const name = (nameInput.current?.value ?? username).trim();
     if (!name) {
       setNameMissing(true);
@@ -188,6 +194,9 @@ export function PreJoin({ defaults, joinLabel, userLabel, busy, onSubmit, onErro
       </div>
 
       <form className="lk-username-container" onSubmit={submit}>
+        {lockedName ? (
+          <p className="prejoin-locked-name">{lockedName}</p>
+        ) : (
         <input
           ref={nameInput}
           className="lk-form-control"
@@ -204,6 +213,7 @@ export function PreJoin({ defaults, joinLabel, userLabel, busy, onSubmit, onErro
           aria-invalid={nameMissing || undefined}
           aria-describedby={nameMissing ? 'username-missing' : undefined}
         />
+        )}
         {nameMissing && (
           <p id="username-missing" className="prejoin-name-missing" role="alert">
             Enter your name to join

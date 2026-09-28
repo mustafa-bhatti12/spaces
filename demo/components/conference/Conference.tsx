@@ -4,7 +4,7 @@ import type { LocalUserChoices } from '@livekit/components-react';
 import { RoomContext, useSequentialRoomConnectDisconnect } from '@livekit/components-react';
 import type { RemoteParticipant } from 'livekit-client';
 import { DisconnectReason, Room, RoomEvent, VideoPreset, VideoPresets } from 'livekit-client';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { ConferenceLayout } from './ConferenceLayout';
 import type { ConnectionDetails, LeaveReason } from './types';
 
@@ -39,6 +39,8 @@ interface ConferenceProps {
   choices: LocalUserChoices;
   identity: string;
   onLeave: (reason: LeaveReason) => void;
+  /** Rendered inside the RoomContext, next to the layout (the embed bridge). */
+  children?: ReactNode;
 }
 
 /**
@@ -46,7 +48,7 @@ interface ConferenceProps {
  * useSequentialRoomConnectDisconnect, so re-renders never reconnect — LiveKit's "don't remount
  * LiveKitRoom" guidance, applied to the RoomContext pattern.
  */
-export function Conference({ roomName, details, choices, identity, onLeave }: ConferenceProps) {
+export function Conference({ roomName, details, choices, identity, onLeave, children }: ConferenceProps) {
   const [room] = useState(
     () =>
       new Room({
@@ -144,6 +146,7 @@ export function Conference({ roomName, details, choices, identity, onLeave }: Co
   return (
     <RoomContext.Provider value={room}>
       <ConferenceLayout roomName={roomName} joinToken={details.participantToken} onEndForAll={endForAll} />
+      {children}
     </RoomContext.Provider>
   );
 }

@@ -161,7 +161,7 @@ interface DockProps {
   panel: Panel;
   onTogglePanel: (panel: Exclude<Panel, 'chat' | null>) => void;
   onReact: (emoji: string) => void;
-  onInvite: () => void;
+  onInvite?: () => void;
   /** Present only for the host: the Leave dialog then also offers "End call for everyone". */
   onEndForAll?: () => Promise<void>;
   recording: { current: ActiveRecording | null; busy: boolean; onToggle: () => void };
@@ -344,15 +344,17 @@ export function Dock({ roomName, participantCount, panel, onTogglePanel, onReact
                 >
                   {recording.busy ? 'Working…' : rec ? 'Stop recording' : 'Record'}
                 </MenuItem>
-                <MenuItem
-                  icon={Link}
-                  onSelect={() => {
-                    onInvite();
-                    close();
-                  }}
-                >
-                  Copy invite link
-                </MenuItem>
+                {onInvite && (
+                  <MenuItem
+                    icon={Link}
+                    onSelect={() => {
+                      onInvite();
+                      close();
+                    }}
+                  >
+                    Copy invite link
+                  </MenuItem>
+                )}
                 <span className="menu-sep" role="separator" />
                 <MenuItem
                   icon={Settings2}

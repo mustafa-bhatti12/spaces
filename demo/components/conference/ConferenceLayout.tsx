@@ -35,6 +35,7 @@ import { useRecording } from './useRecording';
 import { useHosts } from './useHosts';
 import { useWaitingRoom } from './useWaitingRoom';
 import { WaitingNotice } from './WaitingNotice';
+import { useEmbed } from '../embed/EmbedContext';
 
 /**
  * LiveKit's VideoConference prefab, expanded so the demo can add its own panels and controls:
@@ -65,7 +66,8 @@ export function ConferenceLayout({
   const { reactions, react } = useReactions();
   const rec = useRecording(roomName, localParticipant.name || localParticipant.identity);
   const hosting = useHosts(roomName, joinToken);
-  const lobby = useWaitingRoom(roomName, hosting.isHost ? joinToken : undefined);
+  const embed = useEmbed();
+  const lobby = useWaitingRoom(roomName, hosting.isHost && !embed ? joinToken : undefined);
   const [aloneDismissed, setAloneDismissed] = useState(false);
 
   // Participant attributes are synchronized through LiveKit, so every client renders this
@@ -232,10 +234,12 @@ export function ConferenceLayout({
                         </button>
                         <p className="alone-title">You&apos;re the only one here</p>
                         <p className="alone-text">Share this call&apos;s link with the people you want to talk to.</p>
-                        <button type="button" className="key key-go" onClick={invite}>
-                          <Link2 aria-hidden="true" />
-                          Copy invite link
-                        </button>
+                        {!embed && (
+                          <button type="button" className="key key-go" onClick={invite}>
+                            <Link2 aria-hidden="true" />
+                            Copy invite link
+                          </button>
+                        )}
                       </div>
                     )}
                   </>
@@ -248,7 +252,7 @@ export function ConferenceLayout({
               panel={panel}
               onTogglePanel={togglePanel}
               onReact={react}
-              onInvite={invite}
+              onInvite={embed ? undefined : invite}
               onEndForAll={hosting.isHost ? onEndForAll : undefined}
               recording={{
                 current: rec.recording,
