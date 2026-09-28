@@ -86,7 +86,7 @@ graph LR
 - `token-service` is the **only** thing in this repo (or any consumer) that ever holds real LiveKit
   credentials. Everything else gets a short-lived, room-scoped join token.
 - **Two bearer secrets, checked in `token-service/src/auth.ts`:** `TOKEN_SERVICE_SHARED_SECRET` for
-  consumer routes (`/token`, `/rooms`, `/participant`, `/recording/*`, `/room/end`, `/room/host`, `/lobby/*`) — held by `demo` and later
+  consumer routes (`/token`, `/embed/session`, `/rooms`, `/participant`, `/recording/*`, `/room/end`, `/room/host`, `/lobby/*`) — held by `demo` and later
   Petition Studio's API; `ADMIN_SHARED_SECRET` for the operator-only `/admin/*` routes (remove people,
   close rooms, delete recordings) — held only by `demo`'s `/admin` server routes
   (`demo/lib/server/tokenService.ts`, `kind: 'admin'`). Never give a consumer the admin secret; a
@@ -201,7 +201,8 @@ at Bluehost, which hosts `hofmigration.com` DNS) → Caddy on the droplet.
 **Railway:** one service, `demo` (Root Directory `demo`; Railway runs `npm run build` then
 `npm start`, and sets `PORT`), at `https://spaces-demo.up.railway.app`. Variables:
 `TOKEN_SERVICE_URL=https://spaces.hofmigration.com`, `TOKEN_SERVICE_SHARED_SECRET`,
-`ADMIN_SHARED_SECRET`, `ADMIN_PASSWORD`, `TRUST_PROXY=1`. It reaches token-service over the same
+`ADMIN_SHARED_SECRET`, `ADMIN_PASSWORD`, `TRUST_PROXY=1`, `EMBED_ALLOWED_ORIGINS` (the consumer's
+origin(s); unset = nothing but Spaces itself may frame `/embed`). It reaches token-service over the same
 HTTPS path Petition Studio's API (also on Railway) will use.
 
 Firewall (DigitalOcean Cloud Firewall — it filters outside the droplet, so it can't block the
@@ -447,7 +448,7 @@ works from the same machine; test multi-device calls on the Railway deployment.
 - `demo/proxy.ts` — `frame-ancestors` CSP on `/embed` from `EMBED_ALLOWED_ORIGINS`.
 - `demo/lib/embed.ts` — `spaces-embed/1` protocol types, allowed-origin parsing, message validators.
 - `demo/app/embed/page.tsx` + `demo/app/api/embed/session/route.ts` — the `/embed` page and its token-check relay to token-service `/embed/session`.
-- `demo/components/embed/*` — `EmbedContext` (`EmbedProvider`/`useEmbed()`, non-null when embedded), `EmbedClient` (fragment token → session → pre-join → call → end), `EmbedBridge` (room events → parent; parent `send` → LiveKit data).
+- `demo/components/embed/*` — `EmbedContext` (`EmbedContext.Provider`, supplied by `EmbedClient`, / `useEmbed()`, non-null when embedded), `EmbedClient` (fragment token → session → pre-join → call → end), `EmbedBridge` (room events → parent; parent `send` → LiveKit data).
 - `demo/components/ui/*` — `Menu` (dock popover), `Device` (wordmark, LED, readout, initials), `SwitchRow`.
 - `demo/components/admin/AdminDashboard.tsx` — the control center UI; `ServerPanel.tsx` (Server section: metric strips + processes table); `format.ts` (bytes, rates, durations).
 - `demo/public/backgrounds/*.webp` — virtual-background images (1920×1080, WebP q80); `thumbs/*.webp` are the 320 px settings-tile previews. Add a background as both.
