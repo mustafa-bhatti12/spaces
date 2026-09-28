@@ -9,6 +9,7 @@ import { SwitchRow } from '../ui/SwitchRow';
 import { SidePanel } from './SidePanel';
 import type { BackgroundEffectControls } from './useBackgroundEffect';
 import { BACKGROUND_EFFECTS } from './useBackgroundEffect';
+import type { NoiseFilterControls } from './useNoiseFilter';
 
 const COLLAPSE_CAMERA_AFTER = 4;
 
@@ -51,7 +52,15 @@ function CameraDeviceSelect() {
  * Devices and background effects, as a side panel so the call stays visible while you adjust.
  * Device lists use LiveKit's MediaDeviceSelect, which switches the active device on the room.
  */
-export function SettingsPanel({ background, onClose }: { background: BackgroundEffectControls; onClose: () => void }) {
+export function SettingsPanel({
+  background,
+  noiseFilter,
+  onClose,
+}: {
+  background: BackgroundEffectControls;
+  noiseFilter: NoiseFilterControls;
+  onClose: () => void;
+}) {
   const { localParticipant, cameraTrack } = useLocalParticipant();
   const [mirror, setMirror] = useMirrorVideo();
   const cameraRef = cameraTrack
@@ -111,6 +120,22 @@ export function SettingsPanel({ background, onClose }: { background: BackgroundE
         <section className="settings-section" aria-labelledby="set-mic">
           <h3 id="set-mic">Microphone</h3>
           <MediaDeviceSelect kind="audioinput" />
+          {noiseFilter.supported ? (
+            <SwitchRow
+              label="Noise cancellation"
+              hint={noiseFilter.applying ? 'Starting…' : 'Removes background noise from your mic, on this device'}
+              checked={noiseFilter.enabled}
+              disabled={noiseFilter.applying}
+              onChange={noiseFilter.setEnabled}
+            />
+          ) : (
+            <p className="note">This browser doesn&apos;t support noise cancellation.</p>
+          )}
+          {noiseFilter.error && (
+            <p className="note note-alert" role="alert">
+              {noiseFilter.error}
+            </p>
+          )}
         </section>
 
         <section className="settings-section" aria-labelledby="set-speaker">

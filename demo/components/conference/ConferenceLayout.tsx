@@ -30,6 +30,7 @@ import { SettingsPanel } from './SettingsPanel';
 import { Tile } from './Tile';
 import { useWeakConnection } from './useWeakConnection';
 import { useBackgroundEffect } from './useBackgroundEffect';
+import { useNoiseFilter } from './useNoiseFilter';
 import { useReactions } from './useReactions';
 import { useRecording } from './useRecording';
 import { useHosts } from './useHosts';
@@ -62,6 +63,7 @@ export function ConferenceLayout({
   const participants = useParticipants();
   const { localParticipant } = useLocalParticipant();
   const background = useBackgroundEffect();
+  const noiseFilter = useNoiseFilter();
   const [mirror] = useMirrorVideo();
   const { reactions, react } = useReactions();
   const rec = useRecording(roomName, localParticipant.name || localParticipant.identity);
@@ -269,7 +271,7 @@ export function ConferenceLayout({
           </div>
           <Chat style={{ display: widget.showChat ? undefined : 'none' }} />
           {sidePanel === 'people' && <ParticipantsPanel hosting={hosting} lobby={lobby} onClose={() => setSidePanel(null)} />}
-          {sidePanel === 'settings' && <SettingsPanel background={background} onClose={() => setSidePanel(null)} />}
+          {sidePanel === 'settings' && <SettingsPanel background={background} noiseFilter={noiseFilter} onClose={() => setSidePanel(null)} />}
         </LayoutContextProvider>
       </div>
       <div className="reactions-layer" aria-hidden="true">

@@ -5,6 +5,7 @@ the detail. Agents: add a line here with every change that ships (see `AGENTS.md
 
 ## 2026-09-28
 
+- **Noise cancellation:** a Settings switch (Microphone) runs DeepFilterNet3 on your mic in the browser, so others and the recording hear your voice without the background noise (about 30 dB less noise in testing). On by default on laptops and desktops, off on phones and tablets; remembered per browser. No server cost.
 - **Embed mode:** consumer apps can iframe a call at `/embed` with a join token in the URL fragment (verified by token-service `POST /embed/session`), framed only by `EMBED_ALLOWED_ORIGINS`, and talk to it over the `spaces-embed/1` postMessage bridge (join/leave/recording/screenshare events, `app.*` data messages). Embedded calls hide invite links and the waiting room; the token decides who hosts.
 - **Smaller status pill on phones:** the room name, people count and REC readout at the top of a call is 24 px tall with 11 px text (was 32 px and 13 px).
 - **Video no longer pauses on a weak connection:** your camera no longer pauses itself, and the server no longer pauses video for a viewer on a weak link. The weak-connection readout stays.

@@ -79,7 +79,7 @@ graph LR
 | Redis | — | droplet | 6379 | — | Job queue LiveKit server ↔ Egress worker use to coordinate. Recording-only; calling works without it. |
 | Egress worker | Docker (`livekit/egress:v1.14.1`, pinned) | droplet | — | LiveKit key pair (runtime config) | Joins a room as a hidden participant, mixes everyone's audio and writes 24 kbps Opus to `egress/raw/`; token-service moves it to `egress/compressed/` when egress reports it finished. |
 | Caddy | — | droplet | 80/443 | Let's Encrypt certs | TLS for `spaces.hofmigration.com`: `/rtc` → LiveKit, `/twirp` + `/recording/webhook` blocked, everything else → token-service. Also, via the `layer4` plugin (custom build, see README), TURN/TLS for `turn.hofmigration.com` → LiveKit's TURN on `127.0.0.1:5349`. Config: `deploy/Caddyfile`. |
-| `demo` | TypeScript, Next.js 16, React 19, Node ≥ 22.22 (`livekit-client`'s `machina` requires it), `@livekit/components-react` | Railway `https://spaces-demo.up.railway.app` (also local via `start-all.sh`) | `$PORT` (8888 locally) | `TOKEN_SERVICE_SHARED_SECRET`; plus `ADMIN_SHARED_SECRET` + `ADMIN_PASSWORD` for `/admin` | `/` + `/rooms/[room]`: full call UI (pre-join, grid/focus, chat, people, devices, background blur/virtual backgrounds, reactions, raise hand, record, invite, reconnect banner). `/embed`: the same call UI, token-only, for consumer apps to iframe (see "Embed mode"). `/admin`: the permanent operator control center. Server routes under `app/api/*` and `app/admin/*` hold the secrets; the browser never sees them. |
+| `demo` | TypeScript, Next.js 16, React 19, Node ≥ 22.22 (`livekit-client`'s `machina` requires it), `@livekit/components-react` | Railway `https://spaces-demo.up.railway.app` (also local via `start-all.sh`) | `$PORT` (8888 locally) | `TOKEN_SERVICE_SHARED_SECRET`; plus `ADMIN_SHARED_SECRET` + `ADMIN_PASSWORD` for `/admin` | `/` + `/rooms/[room]`: full call UI (pre-join, grid/focus, chat, people, devices, background blur/virtual backgrounds, noise cancellation, reactions, raise hand, record, invite, reconnect banner). `/embed`: the same call UI, token-only, for consumer apps to iframe (see "Embed mode"). `/admin`: the permanent operator control center. Server routes under `app/api/*` and `app/admin/*` hold the secrets; the browser never sees them. |
 
 ## Security model
 
@@ -348,6 +348,15 @@ works from the same machine; test multi-device calls on the Railway deployment.
   the device (the track holds `{exact: id}`, never equal to the plain id). `components/PreJoin.tsx`
   is `PreJoin`'s markup without those; keep its callbacks stable and its menus selection-free.
   Measure with a `getUserMedia` counter in the page (one call per visit is the target).
+- **Noise cancellation is DeepFilterNet3 in the browser, not Krisp.** LiveKit's Krisp filter only works on
+  LiveKit Cloud, and Chrome's `voiceIsolation` constraint only acts on some ChromeOS devices.
+  `useNoiseFilter.ts` sets `deepfilternet3-noise-filter` (pinned 1.3.0) as the mic track's processor. Its
+  wasm (16 MB, ~4.3 MB gzipped as served) and model (8 MB, byte-identical to upstream
+  `Rikorose/DeepFilterNet` `models/DeepFilterNet3_onnx.tar.gz`) are committed under
+  `demo/public/deepfilternet3/v3/`, since the package otherwise fetches them from its author's CDN and
+  the npm tarball doesn't ship them. Bumping the package means re-fetching both from
+  `cdn.mezon.ai/.../deepfilternet3/<vN>/` (check the path in its `AssetLoader`). Measured on the local
+  Intel Mac: about +26% of one core for the speaker's Chrome; that's why it defaults off on touch devices.
 - **`supportsBackgroundProcessors()` creates a WebGL context per call.** Calling it on every render
   hit Chrome's context limit ("Too many active WebGL contexts") — check once (`useState`
   initializer in `useBackgroundEffect.ts`).
@@ -387,6 +396,10 @@ works from the same machine; test multi-device calls on the Railway deployment.
   `/tmp`), not in the repo. The omp browser tool's screenshots hung here once (Sept 2026); use
   puppeteer for scripted runs and `bsk` when you need the user's logged-in Chrome (Railway,
   Bluehost, GitHub settings).
+- Chrome's `--use-file-for-fake-audio-capture=<wav>` delivers silence on macOS unless the audio service
+  sandbox is off: add `--disable-features=AudioServiceSandbox,AudioServiceOutOfProcess`. To compare
+  audio, read the listener's `inbound-rtp` `audioLevel` from `getStats()` (wrap `RTCPeerConnection` in
+  `evaluateOnNewDocument` to get the peer connections).
 - LiveKit's Chat panel stays mounted while hidden (`display: none`): wait for
   `.lk-chat-form-input` to be **visible** before typing, or keystrokes are silently lost.
 - Verify the server/egress layers with the `lk` CLI (`lk room join --url ws://localhost:7880
@@ -444,7 +457,7 @@ works from the same machine; test multi-device calls on the Railway deployment.
 - `demo/app/admin/*` — `/admin` page + `login`/`logout`/`session` routes + `api/[...path]` streaming proxy → token-service `/admin/*`.
 - `demo/lib/server/tokenService.ts` — the only token-service client (both secrets); `demo/lib/server/adminSession.ts` — admin cookie + rate limit.
 - `demo/components/RoomClient.tsx` — pre-join (`PreJoin.tsx`, LiveKit's `PreJoin` markup with one camera open; the name field is controlled, prefilled with the last-used name, and Join is never disabled for an empty-looking field: submit reads the field itself, because autofill or restored form state can show a value React never heard about; the would-be host gets the waiting-room switch) → `WaitingScreen` if the room has a waiting room → join → end screen (with a duration/people summary).
-- `demo/components/conference/*` — `Conference` (Room lifecycle, audio-first publish defaults, duplicate-identity heartbeat, end-for-everyone, the end-screen summary), `ConferenceLayout` (VideoConference prefab expanded; one side panel at a time; tells you when you become or stop being a host), `useHosts` (room settings from metadata: who hosts, make/remove host), `Dock` (status readout · media · talk · more · Leave), `LeaveDialog` (leave confirmation for everyone; hosts also get end-for-everyone), `Tile`, `SidePanel`, `ParticipantsPanel` (hosts: waiting-room switch + requests, make/remove host per row), `SettingsPanel` + `useBackgroundEffect`, `useWeakConnection` (reports a weak link to the dock), `ChatToasts` (the notification stack: chat, joins, plus the host's `WaitingNotice` and the alone card), `useWaitingRoom` (host side), `useReactions`, `useRecording`.
+- `demo/components/conference/*` — `Conference` (Room lifecycle, audio-first publish defaults, duplicate-identity heartbeat, end-for-everyone, the end-screen summary), `ConferenceLayout` (VideoConference prefab expanded; one side panel at a time; tells you when you become or stop being a host), `useHosts` (room settings from metadata: who hosts, make/remove host), `Dock` (status readout · media · talk · more · Leave), `LeaveDialog` (leave confirmation for everyone; hosts also get end-for-everyone), `Tile`, `SidePanel`, `ParticipantsPanel` (hosts: waiting-room switch + requests, make/remove host per row), `SettingsPanel` + `useBackgroundEffect` + `useNoiseFilter`, `useWeakConnection` (reports a weak link to the dock), `ChatToasts` (the notification stack: chat, joins, plus the host's `WaitingNotice` and the alone card), `useWaitingRoom` (host side), `useReactions`, `useRecording`.
 - `demo/proxy.ts` — `frame-ancestors` CSP on `/embed` from `EMBED_ALLOWED_ORIGINS`.
 - `demo/lib/embed.ts` — `spaces-embed/1` protocol types, allowed-origin parsing, message validators.
 - `demo/app/embed/page.tsx` + `demo/app/api/embed/session/route.ts` — the `/embed` page and its token-check relay to token-service `/embed/session`.
