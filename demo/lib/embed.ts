@@ -5,6 +5,7 @@ export const MAX_PAYLOAD_BYTES = 4096;
 export type ShareSurface = 'browser' | 'window' | 'monitor' | 'unknown';
 export type EmbedEvent =
   | { type: 'ready' }
+  | { type: 'expired' }
   | { type: 'joined'; room: string; identity: string }
   | { type: 'left'; reason: string }
   | { type: 'recording'; active: boolean }

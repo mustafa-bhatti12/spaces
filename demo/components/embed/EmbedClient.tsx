@@ -65,18 +65,34 @@ export function EmbedClient({ parentOrigin }: { parentOrigin: string | null }) {
     })
       .then(async (res) => {
         const data = await res.json().catch(() => ({}));
+        if (res.status === 401) api.post({ type: 'expired' });
         if (!res.ok) throw new Error(data.error || `Could not open the call (HTTP ${res.status}).`);
         setSession({ ...data, token });
         setStage({ kind: 'prejoin' });
       })
       .catch((err: Error) => err.name !== 'AbortError' && setStage({ kind: 'invalid', message: err.message }));
     return () => ctrl.abort();
-  }, []);
+  }, [api]);
 
   const handleLeave = useCallback((reason: LeaveReason) => {
     setStage({ kind: 'ended', reason });
     api.post({ type: 'left', reason: reason.kind });
   }, [api]);
+  // The token may have lapsed while the call ended; check it before showing the pre-join again.
+  const handleRejoin = useCallback(async () => {
+    if (!session) return;
+    const res = await fetch('/api/embed/session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: session.token }),
+    }).catch(() => null);
+    if (res?.status === 401) {
+      setStage({ kind: 'invalid', message: 'This call link has expired.' });
+      api.post({ type: 'expired' });
+      return;
+    }
+    setStage({ kind: 'prejoin' });
+  }, [api, session]);
   const handlePreviewError = useCallback((err: Error) => setStage({ kind: 'prejoin', error: err.message }), []);
   const details = useMemo<ConnectionDetails | null>(
     () => session && { serverUrl: session.serverUrl, roomName: session.room, participantName: session.name, participantToken: session.token },
@@ -104,7 +120,7 @@ export function EmbedClient({ parentOrigin }: { parentOrigin: string | null }) {
     );
   } else {
     const title = stage.kind === 'ended' ? 'You left the call' : stage.kind === 'invalid' ? 'This call link has expired' : 'Opening the call…';
-    const text = stage.kind === 'invalid' ? `${stage.message} Reopen the call from the page that sent you here.` : stage.kind === 'ended' ? (framed ? 'You can rejoin below.' : 'You can close this tab.') : '';
+    const text = stage.kind === 'invalid' ? (framed && parentOrigin ? 'Getting a fresh link…' : `${stage.message} Reopen the call from the page that sent you here.`) : stage.kind === 'ended' ? (framed ? 'You can rejoin below.' : 'You can close this tab.') : '';
     body = (
       <main className="end-screen">
         <header className="page-top"><Wordmark /></header>
@@ -112,7 +128,7 @@ export function EmbedClient({ parentOrigin }: { parentOrigin: string | null }) {
           <h1 className="title">{title}</h1>
           {text && <p className="lede">{text}</p>}
           {stage.kind === 'ended' && session && (
-            <div className="end-actions"><button type="button" className="key key-go" onClick={() => setStage({ kind: 'prejoin' })}>Rejoin</button></div>
+            <div className="end-actions"><button type="button" className="key key-go" onClick={handleRejoin}>Rejoin</button></div>
           )}
         </section>
       </main>
