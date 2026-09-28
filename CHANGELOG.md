@@ -5,6 +5,7 @@ the detail. Agents: add a line here with every change that ships (see `AGENTS.md
 
 ## 2026-09-28
 
+- **Smaller status pill on phones:** the room name, people count and REC readout at the top of a call is 24 px tall with 11 px text (was 32 px and 13 px).
 - **Video no longer pauses on a weak connection:** your camera no longer pauses itself, and the server no longer pauses video for a viewer on a weak link. The weak-connection readout stays.
 - **Every call is recorded:** the recording starts by itself when the first person joins; anyone can still stop it, and it then stays off for that call. `RECORD_ALL_CALLS=0` turns this off.
 - **Transcripts (Soniox):** every finished recording is transcribed with speakers separated ("Speaker 1", "Speaker 2"), times and languages. In `/admin`, each recording has a Transcript key (read it under the row, download it as `.txt`, retry a failed one); consumers get `GET /recording/transcripts?room=`. Recordings from before this were transcribed too. `TRANSCRIPTION_LANGUAGE_HINTS` and `TRANSCRIPTION_TERMS` tune accuracy.
