@@ -28,7 +28,7 @@ import { Dock } from './Dock';
 import { ParticipantsPanel } from './ParticipantsPanel';
 import { SettingsPanel } from './SettingsPanel';
 import { Tile } from './Tile';
-import { useAudioFirst } from './useAudioFirst';
+import { useWeakConnection } from './useWeakConnection';
 import { useBackgroundEffect } from './useBackgroundEffect';
 import { useReactions } from './useReactions';
 import { useRecording } from './useRecording';
@@ -155,7 +155,7 @@ export function ConferenceLayout({
     setToast({ id, text: message });
     setTimeout(() => setToast((current) => (current?.id === id ? null : current)), 3000);
   }, []);
-  const { weak: weakConnection } = useAudioFirst(flash);
+  const weakConnection = useWeakConnection();
 
   // Another host can make us a host (or stop us hosting) mid-call; say so when it happens.
   const wasHost = useRef<boolean | null>(null);

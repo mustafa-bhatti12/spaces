@@ -46,7 +46,7 @@ Space is a neutral, unbranded video tool that any future app can embed through t
   - reconnect banner and a weak-connection readout
   - notifications: chat messages, people joining, join requests (host), "you're the only one here"
   - host (whoever started the room) can end the call for everyone and make others hosts too; everyone confirms Leave
-  - audio first on weak connections: video pauses before audio breaks up
+  - audio first on weak connections: the camera is sent at lower priority than the mic; video is never paused
   - relay over HTTPS (TURN on 443) for networks that block direct media
   - end screens: left, you ended the call, call ended (by the host or an admin), removed, duplicate tab, error, request declined, no response; with how long you were in and how many joined
 - Admin features:

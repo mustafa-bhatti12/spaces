@@ -346,14 +346,11 @@ works from the same machine; test multi-device calls on the Railway deployment.
   until every participant leaves, so a replacement started right away just dies on the busy ports.
   A second SIGTERM forces it down. `systemctl restart spaces` doesn't wait for the drain: start-all's
   `cleanup` sends one SIGTERM, then systemd kills what's left (`KillMode=mixed`).
-- **Audio first is split between server and client.** Downlink: the SFU's congestion control never
-  throttles audio and steps video down per subscriber; `allow_pause: true` (`livekit/config.yaml`,
-  default `false`) lets it pause video when even the lowest layer won't fit. Uplink: the SDK sends
-  the mic at priority `high`; `Conference.tsx` marks the camera `very-low` (Chrome takes a sender's
-  priority from `encodings[0]`, so the SDK only sets that one) with a 540p top layer, and
-  `useAudioFirst` pauses the camera after 10 s of Poor/Lost quality, resuming after 10 s of Good.
-  Don't cap layers with `setPublishingQuality()` for this: dynacast's own `setPublishingLayers()`
-  overwrites it on the next subscription update.
+- **Video is never paused for bandwidth (user decision).** The SFU's congestion control
+  steps video down per subscriber and never throttles audio, but `allow_pause` stays off
+  (`livekit/config.yaml`), so it never pauses video outright. Uplink: the SDK sends the mic at priority
+  `high`; `Conference.tsx` marks the camera `very-low` (Chrome takes a sender's priority from
+  `encodings[0]`, so the SDK only sets that one) with a 540p top layer. Don't bring back the camera auto-pause on Poor quality (the removed `useAudioFirst`).
 
 ## Testing / verification notes
 
@@ -420,7 +417,7 @@ works from the same machine; test multi-device calls on the Railway deployment.
 - `demo/app/admin/*` — `/admin` page + `login`/`logout`/`session` routes + `api/[...path]` streaming proxy → token-service `/admin/*`.
 - `demo/lib/server/tokenService.ts` — the only token-service client (both secrets); `demo/lib/server/adminSession.ts` — admin cookie + rate limit.
 - `demo/components/RoomClient.tsx` — pre-join (`PreJoin.tsx`, LiveKit's `PreJoin` markup with one camera open; the name field is controlled, prefilled with the last-used name, and Join is never disabled for an empty-looking field: submit reads the field itself, because autofill or restored form state can show a value React never heard about; the would-be host gets the waiting-room switch) → `WaitingScreen` if the room has a waiting room → join → end screen (with a duration/people summary).
-- `demo/components/conference/*` — `Conference` (Room lifecycle, audio-first publish defaults, duplicate-identity heartbeat, end-for-everyone, the end-screen summary), `ConferenceLayout` (VideoConference prefab expanded; one side panel at a time; tells you when you become or stop being a host), `useHosts` (room settings from metadata: who hosts, make/remove host), `Dock` (status readout · media · talk · more · Leave), `LeaveDialog` (leave confirmation for everyone; hosts also get end-for-everyone), `Tile`, `SidePanel`, `ParticipantsPanel` (hosts: waiting-room switch + requests, make/remove host per row), `SettingsPanel` + `useBackgroundEffect`, `useAudioFirst` (pauses the camera on a weak uplink; reports a weak link to the dock), `ChatToasts` (the notification stack: chat, joins, plus the host's `WaitingNotice` and the alone card), `useWaitingRoom` (host side), `useReactions`, `useRecording`.
+- `demo/components/conference/*` — `Conference` (Room lifecycle, audio-first publish defaults, duplicate-identity heartbeat, end-for-everyone, the end-screen summary), `ConferenceLayout` (VideoConference prefab expanded; one side panel at a time; tells you when you become or stop being a host), `useHosts` (room settings from metadata: who hosts, make/remove host), `Dock` (status readout · media · talk · more · Leave), `LeaveDialog` (leave confirmation for everyone; hosts also get end-for-everyone), `Tile`, `SidePanel`, `ParticipantsPanel` (hosts: waiting-room switch + requests, make/remove host per row), `SettingsPanel` + `useBackgroundEffect`, `useWeakConnection` (reports a weak link to the dock), `ChatToasts` (the notification stack: chat, joins, plus the host's `WaitingNotice` and the alone card), `useWaitingRoom` (host side), `useReactions`, `useRecording`.
 - `demo/components/ui/*` — `Menu` (dock popover), `Device` (wordmark, LED, readout, initials), `SwitchRow`.
 - `demo/components/admin/AdminDashboard.tsx` — the control center UI; `ServerPanel.tsx` (Server section: metric strips + processes table); `format.ts` (bytes, rates, durations).
 - `demo/public/backgrounds/*.webp` — virtual-background images (1920×1080, WebP q80); `thumbs/*.webp` are the 320 px settings-tile previews. Add a background as both.

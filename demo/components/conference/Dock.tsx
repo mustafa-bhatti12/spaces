@@ -165,7 +165,7 @@ interface DockProps {
   /** Present only for the host: the Leave dialog then also offers "End call for everyone". */
   onEndForAll?: () => Promise<void>;
   recording: { current: ActiveRecording | null; busy: boolean; onToggle: () => void };
-  /** This participant's connection has been Poor/Lost for a few seconds (useAudioFirst). */
+  /** This participant's connection has been Poor/Lost for a few seconds (useWeakConnection). */
   weakConnection: boolean;
   /** Show the Record / Stop recording item. The REC readout shows regardless. */
   canRecord?: boolean;

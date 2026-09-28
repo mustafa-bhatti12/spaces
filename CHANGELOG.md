@@ -5,6 +5,7 @@ the detail. Agents: add a line here with every change that ships (see `AGENTS.md
 
 ## 2026-09-28
 
+- **Video no longer pauses on a weak connection:** your camera no longer pauses itself, and the server no longer pauses video for a viewer on a weak link. The weak-connection readout stays.
 - **Every call is recorded:** the recording starts by itself when the first person joins; anyone can still stop it, and it then stays off for that call. `RECORD_ALL_CALLS=0` turns this off.
 - **Transcripts (Soniox):** every finished recording is transcribed with speakers separated ("Speaker 1", "Speaker 2"), times and languages. In `/admin`, each recording has a Transcript key (read it under the row, download it as `.txt`, retry a failed one); consumers get `GET /recording/transcripts?room=`. Recordings from before this were transcribed too. `TRANSCRIPTION_LANGUAGE_HINTS` and `TRANSCRIPTION_TERMS` tune accuracy.
 - **More than one host:** a host can make anyone in the call a host too (the shield key on their row in People, shown on hover), or stop them hosting. It takes effect at once, with a "You're a host now" / "You're no longer a host" notice; every host can run the waiting room and end the call for everyone. Nobody can change their own role, so a call always keeps a host.
