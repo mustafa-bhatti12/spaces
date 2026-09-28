@@ -2,6 +2,7 @@
 
 import type { LocalUserChoices } from '@livekit/components-react';
 import { RoomContext, useSequentialRoomConnectDisconnect } from '@livekit/components-react';
+import type { RemoteParticipant } from 'livekit-client';
 import { DisconnectReason, Room, RoomEvent, VideoPreset, VideoPresets } from 'livekit-client';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ConferenceLayout } from './ConferenceLayout';
@@ -70,11 +71,21 @@ export function Conference({ roomName, details, choices, identity, onLeave }: Co
   const leavingAs = useRef<LeaveReason | null>(null);
 
   useEffect(() => {
-    const handleDisconnected = (reason?: DisconnectReason) => onLeave(leavingAs.current ?? leaveReasonFor(reason));
+    // For the end screen: how long we were in, and everyone we saw (us included).
+    let connectedAt: number | null = null;
+    const seen = new Set<string>([identity]);
+    const handleJoined = (p: RemoteParticipant) => seen.add(p.identity);
+    const handleDisconnected = (reason?: DisconnectReason) => {
+      const leave = leavingAs.current ?? leaveReasonFor(reason);
+      onLeave(connectedAt === null ? leave : { ...leave, summary: { durationMs: Date.now() - connectedAt, people: seen.size } });
+    };
     room.on(RoomEvent.Disconnected, handleDisconnected);
+    room.on(RoomEvent.ParticipantConnected, handleJoined);
 
     connect(details.serverUrl, details.participantToken)
       .then(async () => {
+        connectedAt = Date.now();
+        room.remoteParticipants.forEach((p) => seen.add(p.identity));
         // Each is best-effort: a denied camera shouldn't keep someone out of the call.
         await Promise.allSettled([
           choices.audioEnabled ? room.localParticipant.setMicrophoneEnabled(true) : undefined,
@@ -85,9 +96,10 @@ export function Conference({ roomName, details, choices, identity, onLeave }: Co
 
     return () => {
       room.off(RoomEvent.Disconnected, handleDisconnected);
+      room.off(RoomEvent.ParticipantConnected, handleJoined);
       disconnect();
     };
-  }, [room, connect, disconnect, details, choices, onLeave]);
+  }, [room, connect, disconnect, details, choices, identity, onLeave]);
 
   // Joining again from this browser (same identity) replaces the earlier connection; LiveKit's push
   // to the losing side wasn't observed arriving promptly, so poll who LiveKit thinks we are.
@@ -131,7 +143,11 @@ export function Conference({ roomName, details, choices, identity, onLeave }: Co
 
   return (
     <RoomContext.Provider value={room}>
-      <ConferenceLayout roomName={roomName} onEndForAll={details.host ? endForAll : undefined} />
+      <ConferenceLayout
+        roomName={roomName}
+        hostToken={details.host ? details.participantToken : undefined}
+        onEndForAll={details.host ? endForAll : undefined}
+      />
     </RoomContext.Provider>
   );
 }

@@ -5,6 +5,7 @@ import { Track } from 'livekit-client';
 import { ChevronDown, VideoOff } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useMirrorVideo } from '@/lib/client/mirror';
+import { SwitchRow } from '../ui/SwitchRow';
 import { SidePanel } from './SidePanel';
 import type { BackgroundEffectControls } from './useBackgroundEffect';
 import { BACKGROUND_EFFECTS } from './useBackgroundEffect';
@@ -73,18 +74,7 @@ export function SettingsPanel({ background, onClose }: { background: BackgroundE
             )}
           </div>
           <CameraDeviceSelect />
-          <button
-            type="button"
-            role="switch"
-            aria-checked={mirror}
-            className="switch-row"
-            onClick={() => setMirror(!mirror)}
-          >
-            <span className="switch-text">
-              <span className="switch-label">Mirror my video</span>
-            </span>
-            <span className="switch" aria-hidden="true" />
-          </button>
+          <SwitchRow label="Mirror my video" checked={mirror} onChange={setMirror} />
         </section>
 
         <section className="settings-section" aria-labelledby="set-bg">

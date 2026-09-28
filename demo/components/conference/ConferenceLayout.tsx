@@ -20,7 +20,7 @@ import {
 } from '@livekit/components-react';
 import { ConnectionState, RoomEvent, Track } from 'livekit-client';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { WifiOff } from 'lucide-react';
+import { Link2, WifiOff, X } from 'lucide-react';
 import { MIRROR_ATTRIBUTE, useMirrorVideo } from '@/lib/client/mirror';
 import type { Panel } from './Dock';
 import { ChatToasts } from './ChatToasts';
@@ -32,13 +32,24 @@ import { useAudioFirst } from './useAudioFirst';
 import { useBackgroundEffect } from './useBackgroundEffect';
 import { useReactions } from './useReactions';
 import { useRecording } from './useRecording';
+import { useWaitingRoom } from './useWaitingRoom';
+import { WaitingNotice } from './WaitingNotice';
 
 /**
  * LiveKit's VideoConference prefab, expanded so the demo can add its own panels and controls:
  * same grid ⇄ focus layouts (auto-focus on screen share, click a tile to pin) and LiveKit Chat, plus
  * people and settings panels, the dock, reactions and recording. One side panel at a time.
  */
-export function ConferenceLayout({ roomName, onEndForAll }: { roomName: string; onEndForAll?: () => Promise<void> }) {
+export function ConferenceLayout({
+  roomName,
+  hostToken,
+  onEndForAll,
+}: {
+  roomName: string;
+  /** The host's join token (host only): proof for waiting-room actions. */
+  hostToken?: string;
+  onEndForAll?: () => Promise<void>;
+}) {
   const [widget, setWidget] = useState<WidgetState>({ showChat: false, unreadMessages: 0, showSettings: false });
   const [sidePanel, setSidePanel] = useState<Exclude<Panel, 'chat'>>(null);
   const [toast, setToast] = useState<{ id: number; text: string } | null>(null);
@@ -51,6 +62,8 @@ export function ConferenceLayout({ roomName, onEndForAll }: { roomName: string; 
   const [mirror] = useMirrorVideo();
   const { reactions, react } = useReactions();
   const rec = useRecording(roomName, localParticipant.name || localParticipant.identity);
+  const lobby = useWaitingRoom(roomName, hostToken);
+  const [aloneDismissed, setAloneDismissed] = useState(false);
 
   // Participant attributes are synchronized through LiveKit, so every client renders this
   // participant's camera with the same orientation. Only send once connected: an update sent while
@@ -110,6 +123,10 @@ export function ConferenceLayout({ roomName, onEndForAll }: { roomName: string; 
     if (widget.showChat) layoutContext.widget.dispatch?.({ msg: 'toggle_chat' });
     setSidePanel((open) => (open === next ? null : next));
   };
+  const openPeople = () => {
+    if (widget.showChat) layoutContext.widget.dispatch?.({ msg: 'toggle_chat' });
+    setSidePanel('people');
+  };
   const panel: Panel = widget.showChat ? 'chat' : sidePanel;
 
   // Escape closes the open side panel, unless a dock menu or the Leave dialog is open above it (those
@@ -133,7 +150,7 @@ export function ConferenceLayout({ roomName, onEndForAll }: { roomName: string; 
     setToast({ id, text: message });
     setTimeout(() => setToast((current) => (current?.id === id ? null : current)), 3000);
   }, []);
-  useAudioFirst(flash);
+  const { weak: weakConnection } = useAudioFirst(flash);
 
   const openChat = useCallback(() => {
     if (!widget.showChat) layoutContext.widget.dispatch?.({ msg: 'toggle_chat' });
@@ -184,7 +201,33 @@ export function ConferenceLayout({ roomName, onEndForAll }: { roomName: string; 
                   </FocusLayoutContainer>
                 </div>
               )}
-              <ChatToasts chatOpen={widget.showChat} onOpenChat={openChat} />
+              <ChatToasts
+                chatOpen={widget.showChat}
+                onOpenChat={openChat}
+                onOpenPeople={openPeople}
+                lead={
+                  <>
+                    {/* With People open, its waiting section already shows every request. */}
+                    {lobby && sidePanel !== 'people' && <WaitingNotice lobby={lobby} onView={openPeople} />}
+                    {participants.length === 1 &&
+                      connectionState === ConnectionState.Connected &&
+                      !aloneDismissed &&
+                      !lobby?.pending.length && (
+                      <div className="chat-toast alone-card" role="status">
+                        <button type="button" className="chat-toast-close" onClick={() => setAloneDismissed(true)} aria-label="Dismiss">
+                          <X aria-hidden="true" />
+                        </button>
+                        <p className="alone-title">You&apos;re the only one here</p>
+                        <p className="alone-text">Share this call&apos;s link with the people you want to talk to.</p>
+                        <button type="button" className="key key-go" onClick={invite}>
+                          <Link2 aria-hidden="true" />
+                          Copy invite link
+                        </button>
+                      </div>
+                    )}
+                  </>
+                }
+              />
             </div>
             <Dock
               roomName={roomName}
@@ -199,10 +242,11 @@ export function ConferenceLayout({ roomName, onEndForAll }: { roomName: string; 
                 busy: rec.busy,
                 onToggle: () => void (rec.recording ? rec.stop() : rec.start()),
               }}
+              weakConnection={weakConnection}
             />
           </div>
           <Chat style={{ display: widget.showChat ? undefined : 'none' }} />
-          {sidePanel === 'people' && <ParticipantsPanel onClose={() => setSidePanel(null)} />}
+          {sidePanel === 'people' && <ParticipantsPanel lobby={lobby} onClose={() => setSidePanel(null)} />}
           {sidePanel === 'settings' && <SettingsPanel background={background} onClose={() => setSidePanel(null)} />}
         </LayoutContextProvider>
       </div>

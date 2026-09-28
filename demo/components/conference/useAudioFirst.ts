@@ -2,11 +2,13 @@
 
 import { useConnectionQualityIndicator, useLocalParticipant } from '@livekit/components-react';
 import { ConnectionQuality, Track } from 'livekit-client';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 /** How long the link must stay weak before the camera pauses, and good before it comes back. */
 const PAUSE_AFTER_MS = 10_000;
 const RESUME_AFTER_MS = 10_000;
+/** How long it must stay weak before the dock says so (brief dips aren't worth a warning). */
+const WARN_AFTER_MS = 3_000;
 
 /**
  * Audio first on a weak uplink. Under bandwidth pressure the browser already drops the camera's
@@ -19,17 +21,31 @@ const RESUME_AFTER_MS = 10_000;
  *
  * The subscriber side needs nothing here; the SFU's congestion control (allow_pause,
  * livekit/config.yaml) pauses video for a struggling viewer on its own.
+ *
+ * Returns whether this participant's connection has been weak for WARN_AFTER_MS, for the dock's
+ * "weak connection" readout.
  */
-export function useAudioFirst(notify: (message: string) => void) {
+export function useAudioFirst(notify: (message: string) => void): { weak: boolean } {
   const { localParticipant } = useLocalParticipant();
   const { quality } = useConnectionQualityIndicator({ participant: localParticipant });
   const pausedByUs = useRef(false);
+  const [weak, setWeak] = useState(false);
 
   useEffect(() => {
-    const weak = quality === ConnectionQuality.Poor || quality === ConnectionQuality.Lost;
+    const isWeak = quality === ConnectionQuality.Poor || quality === ConnectionQuality.Lost;
+    if (!isWeak) {
+      setWeak(false);
+      return;
+    }
+    const timer = setTimeout(() => setWeak(true), WARN_AFTER_MS);
+    return () => clearTimeout(timer);
+  }, [quality]);
+
+  useEffect(() => {
+    const isWeak = quality === ConnectionQuality.Poor || quality === ConnectionQuality.Lost;
     const good = quality === ConnectionQuality.Good || quality === ConnectionQuality.Excellent;
 
-    if (weak && !pausedByUs.current) {
+    if (isWeak && !pausedByUs.current) {
       const timer = setTimeout(async () => {
         const camera = localParticipant.getTrackPublication(Track.Source.Camera);
         if (!localParticipant.isCameraEnabled || !camera || camera.isMuted || camera.isUpstreamPaused) return;
@@ -65,4 +81,6 @@ export function useAudioFirst(notify: (message: string) => void) {
       return () => clearTimeout(timer);
     }
   }, [quality, localParticipant, notify]);
+
+  return { weak };
 }

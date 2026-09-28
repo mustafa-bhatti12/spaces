@@ -31,7 +31,8 @@ Space is a neutral, unbranded video tool that any future app can embed through t
 
 - Built on Next.js 16 and React 19, with `@livekit/components-react` hooks and components for all call behavior. The look is our own; `@livekit/components-styles` may stay as a base, but its visual defaults are not the design.
 - Call features:
-  - pre-join with device preview
+  - pre-join with device preview; the host can turn on a waiting room there
+  - waiting room: guests ask to join, the host admits or denies (one by one or all), requests end after 10 minutes unanswered
   - grid and focus layouts (auto-focus on screen share, click to pin)
   - chat
   - participants panel
@@ -42,11 +43,12 @@ Space is a neutral, unbranded video tool that any future app can embed through t
   - audio recording, with a REC badge showing who started it
   - invite link
   - fullscreen
-  - reconnect banner
+  - reconnect banner and a weak-connection readout
+  - notifications: chat messages, people joining, join requests (host), "you're the only one here"
   - host (whoever started the room) can end the call for everyone; everyone confirms Leave
   - audio first on weak connections: video pauses before audio breaks up
   - relay over HTTPS (TURN on 443) for networks that block direct media
-  - end screens: left, you ended the call, call ended (by the host or an admin), removed, duplicate tab, error
+  - end screens: left, you ended the call, call ended (by the host or an admin), removed, duplicate tab, error, request declined, no response; with how long you were in and how many joined
 - Admin features:
   - password login
   - service health (LiveKit, recording worker, disk)

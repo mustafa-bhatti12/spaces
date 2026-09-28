@@ -17,6 +17,8 @@ async function isHost(room: string, identity: string): Promise<boolean> {
 
 // Mints a join token for (room, display name, per-browser identity) via token-service's consumer
 // route — the exact call Petition Studio's API will make, with its own "who may join / who hosts" check.
+// With the room's waiting room on, a guest gets `{ waiting: true, requestId }` instead and polls
+// /api/lobby/status until the host answers. `waitingRoom` is the host's pre-join choice.
 export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => ({}));
   const room = normalizeRoomName(body.room);
@@ -32,9 +34,15 @@ export async function POST(request: NextRequest) {
     console.error('Could not look up the room host:', err);
     return Response.json({ error: 'Could not reach the call service. Try again shortly.' }, { status: 502 });
   }
+  const waitingRoom = host && typeof body.waitingRoom === 'boolean' ? body.waitingRoom : undefined;
   // token-service returns the public wss:// URL when LIVEKIT_PUBLIC_URL is set (droplet), or its
   // internal ws://localhost:7880 locally — which a browser on the same machine can reach directly.
-  const res = await relayJson('/token', jsonBody({ room, identity, name, host }));
+  const res = await relayJson('/token', jsonBody({ room, identity, name, host, waitingRoom }));
+  if (res.status === 409) {
+    const asked = await relayJson('/lobby/ask', jsonBody({ room, identity, name }));
+    if (!asked.ok) return asked;
+    return Response.json({ waiting: true, requestId: (await asked.json()).requestId });
+  }
   if (!res.ok) return res;
   return Response.json({ ...(await res.json()), host });
 }

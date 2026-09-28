@@ -165,6 +165,8 @@ interface DockProps {
   /** Present only for the host: the Leave dialog then also offers "End call for everyone". */
   onEndForAll?: () => Promise<void>;
   recording: { current: ActiveRecording | null; busy: boolean; onToggle: () => void };
+  /** This participant's connection has been Poor/Lost for a few seconds (useAudioFirst). */
+  weakConnection: boolean;
 }
 
 /**
@@ -173,7 +175,7 @@ interface DockProps {
  * (always confirmed in LeaveDialog). Built from LiveKit's hooks and controls (useTrackToggle,
  * MediaDeviceMenu, ChatToggle) so behavior stays LiveKit's.
  */
-export function Dock({ roomName, participantCount, panel, onTogglePanel, onReact, onInvite, onEndForAll, recording }: DockProps) {
+export function Dock({ roomName, participantCount, panel, onTogglePanel, onReact, onInvite, onEndForAll, recording, weakConnection }: DockProps) {
   const { localParticipant } = useLocalParticipant();
   const hand = useParticipantAttribute(HAND_ATTRIBUTE, { participant: localParticipant });
   const { saveAudioInputEnabled, saveVideoInputEnabled, saveAudioInputDeviceId, saveVideoInputDeviceId } =
@@ -205,6 +207,14 @@ export function Dock({ roomName, participantCount, panel, onTogglePanel, onReact
               <Led signal="alert" pulse label="Recording" />
               REC <span className="mono">{elapsed(rec.startedAt)}</span>
               {rec.startedBy && <span className="readout-by"> · {rec.startedBy}</span>}
+            </span>
+          </ReadoutSegment>
+        )}
+        {weakConnection && (
+          <ReadoutSegment>
+            <span className="readout-warn readout-weak" title="Others may hear or see you with delays or gaps">
+              <Led signal="warn" pulse />
+              Weak connection
             </span>
           </ReadoutSegment>
         )}

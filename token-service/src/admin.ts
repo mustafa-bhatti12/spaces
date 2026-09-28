@@ -14,6 +14,7 @@ import {
 } from './livekit';
 import { listRecordingFiles, RECORDING_DIRS, resolveRecordingFile } from './recordings';
 import { collectSystemSnapshot, egressContainer } from './system';
+import { lobby } from './lobby';
 
 type Check = { ok: boolean; detail: string };
 
@@ -80,6 +81,7 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       return reply.code(400).send({ error: 'room and identity are required.' });
     }
     await removeParticipant(room, identity);
+    lobby.revoke(room, identity); // with the waiting room on, they have to ask again
     return { ok: true };
   });
 

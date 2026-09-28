@@ -9,7 +9,7 @@ import {
   usePreviewTracks,
 } from '@livekit/components-react';
 import { facingModeFromLocalTrack, LocalVideoTrack, Track, type LocalAudioTrack } from 'livekit-client';
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { useMirrorVideo } from '@/lib/client/mirror';
 
 // LiveKit's own placeholder for "no camera chosen yet". Cameras have no device with this id
@@ -23,6 +23,8 @@ interface PreJoinProps {
   onValidate: (values: LocalUserChoices) => boolean;
   onSubmit: (values: LocalUserChoices) => void;
   onError: (error: Error) => void;
+  /** Rendered between the name field and the Join button (the host's waiting-room switch). */
+  beforeJoin?: ReactNode;
 }
 
 /**
@@ -33,7 +35,7 @@ interface PreJoinProps {
  * and the camera's real id is saved for the call and the next visit.
  * `onError` must be referentially stable: `usePreviewTracks` reopens the camera when it changes.
  */
-export function PreJoin({ defaults, joinLabel, userLabel, onValidate, onSubmit, onError }: PreJoinProps) {
+export function PreJoin({ defaults, joinLabel, userLabel, onValidate, onSubmit, onError, beforeJoin }: PreJoinProps) {
   const {
     userChoices: initial,
     saveAudioInputDeviceId,
@@ -175,6 +177,7 @@ export function PreJoin({ defaults, joinLabel, userLabel, onValidate, onSubmit, 
           onChange={(e) => setUsername(e.target.value)}
           autoComplete="off"
         />
+        {beforeJoin}
         <button className="lk-button lk-join-button" type="submit" disabled={!isValid}>
           {joinLabel}
         </button>

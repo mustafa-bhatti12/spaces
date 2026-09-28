@@ -2,6 +2,7 @@ import path from 'node:path';
 import {
   AccessToken,
   AudioCodec,
+  DataPacket_Kind,
   EgressClient,
   EgressInfo,
   EncodedFileOutput,
@@ -69,54 +70,85 @@ export async function mintToken(params: {
 
 export const HOST_ATTRIBUTE = 'space.host';
 
+/** What this service keeps in LiveKit's room metadata. It lives and dies with the room. */
+export interface RoomSettings {
+  /** Identity recorded by recordRoomHost, or null. */
+  host: string | null;
+  /** New joiners who aren't the host wait for the host to admit them (see lobby.ts). */
+  waitingRoom: boolean;
+}
+
+function parseRoomSettings(metadata: string | undefined): RoomSettings {
+  try {
+    const m = JSON.parse(metadata || '{}');
+    return { host: typeof m.host === 'string' && m.host ? m.host : null, waitingRoom: m.waitingRoom === true };
+  } catch {
+    return { host: null, waitingRoom: false };
+  }
+}
+
+/** The room's settings, or null when the room doesn't exist (nobody has joined or hosted it yet). */
+export async function getRoomSettings(room: string): Promise<RoomSettings | null> {
+  const [existing] = await roomService().listRooms([room]);
+  return existing ? parseRoomSettings(existing.metadata) : null;
+}
+
 /**
  * Records `identity` as the room's host in LiveKit's room metadata (creating the room if nobody has
  * joined yet), so a consumer can later ask who hosts it via listActiveRooms. Which identity hosts is
- * the consumer's decision; this only stores it where it lives and dies with the room.
+ * the consumer's decision; this only stores it where it lives and dies with the room. `waitingRoom`,
+ * when given, sets the room's waiting room at the same time (the host chose it before joining).
  */
-export async function recordRoomHost(room: string, identity: string): Promise<void> {
+export async function recordRoomHost(room: string, identity: string, waitingRoom?: boolean): Promise<void> {
   const svc = roomService();
-  const metadata = JSON.stringify({ host: identity });
   const [existing] = await svc.listRooms([room]);
+  const current = existing ? parseRoomSettings(existing.metadata) : { host: null, waitingRoom: false };
+  const next: RoomSettings = { host: identity, waitingRoom: waitingRoom ?? current.waitingRoom };
+  const metadata = JSON.stringify(next);
   if (!existing) {
     await svc.createRoom({ name: room, metadata });
-  } else if (roomHost(existing.metadata) !== identity) {
+  } else if (current.host !== next.host || current.waitingRoom !== next.waitingRoom) {
     await svc.updateRoomMetadata(room, metadata);
   }
 }
 
-function roomHost(metadata: string | undefined): string | null {
-  try {
-    const host = JSON.parse(metadata || '{}').host;
-    return typeof host === 'string' && host ? host : null;
-  } catch {
-    return null;
-  }
+/** Turns the room's waiting room on or off. Every client sees the change as a metadata update. */
+export async function setWaitingRoom(room: string, enabled: boolean): Promise<void> {
+  const settings = await getRoomSettings(room);
+  if (!settings || settings.waitingRoom === enabled) return;
+  await roomService().updateRoomMetadata(room, JSON.stringify({ ...settings, waitingRoom: enabled }));
+}
+
+/** Tells every client in the room something changed on `topic` (a hint to refetch; the byte is a placeholder). */
+export async function notifyRoom(room: string, topic: string): Promise<void> {
+  await roomService().sendData(room, new Uint8Array([1]), DataPacket_Kind.RELIABLE, { topic });
 }
 
 /**
- * Ends `room` for everyone if `token` is a join token this service minted for a host of that room.
- * Expired tokens are still accepted for a day: a long call outlives the 2h join TTL, and the signature
- * alone proves who it was issued to.
+ * True if `token` is a join token this service minted for a host of `room` (host tokens carry
+ * roomAdmin). Expired tokens are still accepted for a day: a long call outlives the 2h join TTL, and
+ * the signature alone proves who it was issued to.
  */
-export async function endRoomAsHost(room: string, token: string): Promise<'ended' | 'forbidden'> {
+export async function isHostToken(room: string, token: string): Promise<boolean> {
   const { apiKey, apiSecret } = requireLiveKitEnv();
-  let grants;
   try {
-    grants = await new TokenVerifier(apiKey, apiSecret).verify(token, '24h');
+    const grants = await new TokenVerifier(apiKey, apiSecret).verify(token, '24h');
+    return grants.video?.room === room && grants.video.roomAdmin === true;
   } catch {
-    return 'forbidden';
+    return false;
   }
-  if (grants.video?.room !== room || grants.video.roomAdmin !== true) return 'forbidden';
+}
+
+/** Ends `room` for everyone if `token` is a host's join token for it (see isHostToken). */
+export async function endRoomAsHost(room: string, token: string): Promise<'ended' | 'forbidden'> {
+  if (!(await isHostToken(room, token))) return 'forbidden';
   await closeRoom(room);
   return 'ended';
 }
 
-export interface ActiveRoom {
+export interface ActiveRoom extends RoomSettings {
   name: string;
   numParticipants: number;
-  /** Identity recorded by recordRoomHost, or null. */
-  host: string | null;
 }
 
 /**
@@ -126,11 +158,8 @@ export interface ActiveRoom {
  * gated by the same shared secret as /token.
  */
 export async function listActiveRooms(): Promise<ActiveRoom[]> {
-  const { apiKey, apiSecret, serverUrl } = requireLiveKitEnv();
-
-  const svc = new RoomServiceClient(serverUrl, apiKey, apiSecret);
-  const rooms = await svc.listRooms();
-  return rooms.map((room) => ({ name: room.name, numParticipants: room.numParticipants, host: roomHost(room.metadata) }));
+  const rooms = await roomService().listRooms();
+  return rooms.map((room) => ({ name: room.name, numParticipants: room.numParticipants, ...parseRoomSettings(room.metadata) }));
 }
 
 export interface AdminTrack {

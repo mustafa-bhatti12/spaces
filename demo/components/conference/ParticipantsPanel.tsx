@@ -11,9 +11,12 @@ import {
 import type { Participant } from 'livekit-client';
 import { Track } from 'livekit-client';
 import { Hand, Mic, MicOff, Video, VideoOff } from 'lucide-react';
+import { useState } from 'react';
 import { SidePanel } from './SidePanel';
 import { initials } from '../ui/Device';
+import { SwitchRow } from '../ui/SwitchRow';
 import { HAND_ATTRIBUTE } from './Tile';
+import type { WaitingRoomControls } from './useWaitingRoom';
 
 /** Set by token-service on the host's join token (see mintToken's `host`). */
 const HOST_ATTRIBUTE = 'space.host';
@@ -51,8 +54,71 @@ function ParticipantRow({ participant }: { participant: Participant }) {
   );
 }
 
-/** Everyone in the room, raised hands first, then speakers, then by name. */
-export function ParticipantsPanel({ onClose }: { onClose: () => void }) {
+/** Host only: the waiting-room switch and everyone asking to join. */
+function WaitingRoomSection({ lobby }: { lobby: WaitingRoomControls }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const run = async (action: () => Promise<void>) => {
+    setBusy(true);
+    setError('');
+    try {
+      await action();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <section className="waiting-section" aria-label="Waiting room">
+      <SwitchRow
+        label="Waiting room"
+        hint={lobby.enabled ? 'New people ask to join, and you let them in' : 'Anyone with the link joins straight away'}
+        checked={lobby.enabled}
+        disabled={busy}
+        onChange={(next) => run(() => lobby.setEnabled(next))}
+      />
+      {error && <p className="note note-alert">{error}</p>}
+      {lobby.pending.length > 0 && (
+        <>
+          <div className="waiting-head">
+            <h3>
+              Waiting to join <span className="side-panel-count">{lobby.pending.length}</span>
+            </h3>
+            {lobby.pending.length > 1 && (
+              <button type="button" className="key key-go" disabled={busy} onClick={() => run(() => lobby.answer('all', true))}>
+                Admit all
+              </button>
+            )}
+          </div>
+          <ul className="people-list">
+            {lobby.pending.map((p) => (
+              <li key={p.id} className="person">
+                <span className="avatar" aria-hidden="true">
+                  {initials(p.name)}
+                </span>
+                <span className="person-info">
+                  <span className="person-name">{p.name}</span>
+                </span>
+                <span className="waiting-actions">
+                  <button type="button" className="key" disabled={busy} onClick={() => run(() => lobby.answer([p.id], false))}>
+                    Deny
+                  </button>
+                  <button type="button" className="key key-go" disabled={busy} onClick={() => run(() => lobby.answer([p.id], true))}>
+                    Admit
+                  </button>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </section>
+  );
+}
+
+/** Everyone in the room, raised hands first, then speakers, then by name. The host also sees the waiting room. */
+export function ParticipantsPanel({ lobby, onClose }: { lobby: WaitingRoomControls | null; onClose: () => void }) {
   const participants = useParticipants();
   const sorted = [...participants].sort((a, b) => {
     const handA = a.attributes[HAND_ATTRIBUTE] ? 1 : 0;
@@ -63,6 +129,7 @@ export function ParticipantsPanel({ onClose }: { onClose: () => void }) {
   });
   return (
     <SidePanel title="People" count={participants.length} onClose={onClose}>
+      {lobby && <WaitingRoomSection lobby={lobby} />}
       <ul className="people-list">
         {sorted.map((p) => (
           <ParticipantRow key={p.identity} participant={p} />

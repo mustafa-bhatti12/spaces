@@ -3,14 +3,17 @@
 import type { LocalUserChoices } from '@livekit/components-react';
 import { PreJoin } from './PreJoin';
 import type { LucideIcon } from 'lucide-react';
-import { ArrowLeft, CircleSlash, DoorClosed, LogOut, RefreshCw, UserX, WifiOff } from 'lucide-react';
+import { ArrowLeft, CircleSlash, DoorClosed, Hourglass, LogOut, RefreshCw, UserX, WifiOff } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { getDeviceId } from '@/lib/client/identity';
-import type { ConnectionDetails, LeaveReason } from './conference/types';
+import type { CallSummary, ConnectionDetails, LeaveReason } from './conference/types';
 import type { Signal } from './ui/Device';
 import { Led, Readout, ReadoutSegment, Wordmark } from './ui/Device';
+import { SwitchRow } from './ui/SwitchRow';
+import type { WaitingAnswer } from './WaitingScreen';
+import { WaitingScreen } from './WaitingScreen';
 
 // livekit-client + track processors touch browser-only APIs at construction time.
 const Conference = dynamic(() => import('./conference/Conference').then((m) => m.Conference), { ssr: false });
@@ -18,6 +21,7 @@ const Conference = dynamic(() => import('./conference/Conference').then((m) => m
 type Stage =
   | { kind: 'prejoin'; error?: string }
   | { kind: 'joining' }
+  | { kind: 'waiting'; requestId: string; choices: LocalUserChoices; identity: string }
   | { kind: 'in-call'; details: ConnectionDetails; choices: LocalUserChoices; identity: string }
   | { kind: 'ended'; reason: LeaveReason };
 
@@ -48,22 +52,42 @@ const END_SCREENS: Record<LeaveReason['kind'], { title: string; body: string; ic
     signal: 'idle',
   },
   error: { title: 'The call was disconnected', body: 'Check your connection, then rejoin.', icon: WifiOff, signal: 'alert' },
+  denied: {
+    title: "You can't join this call",
+    body: 'Someone in the call declined your request to join.',
+    icon: UserX,
+    signal: 'alert',
+  },
+  'no-response': {
+    title: 'No one let you in',
+    body: 'Nobody answered your request to join within 10 minutes. You can ask again.',
+    icon: Hourglass,
+    signal: 'warn',
+  },
 };
 
-/** How many people are already in this room, for the pre-join status screen. */
-function useRoomOccupancy(roomName: string, enabled: boolean): number | null {
-  const [count, setCount] = useState<number | null>(null);
+interface RoomStatus {
+  numParticipants: number;
+  /** This browser would host the room if it joined now (see /api/connect's rule). */
+  youHost: boolean;
+  waitingRoom: boolean;
+}
+
+/** Who is in this room and whether we'd host it, for the pre-join status screen and host switch. */
+function useRoomStatus(roomName: string, enabled: boolean): RoomStatus | null {
+  const [status, setStatus] = useState<RoomStatus | null>(null);
   useEffect(() => {
     if (!enabled) return;
     let cancelled = false;
     const load = async () => {
       try {
-        const res = await fetch('/api/rooms', { cache: 'no-store' });
+        const q = `room=${encodeURIComponent(roomName)}&identity=${encodeURIComponent(getDeviceId())}`;
+        const res = await fetch(`/api/rooms/status?${q}`, { cache: 'no-store' });
         if (!res.ok) return;
-        const rooms: { name: string; numParticipants: number }[] = await res.json();
-        if (!cancelled) setCount(rooms.find((r) => r.name === roomName)?.numParticipants ?? 0);
+        const next: RoomStatus = await res.json();
+        if (!cancelled) setStatus(next);
       } catch {
-        // occupancy is a nicety; the join works without it
+        // status is a nicety; the join works without it
       }
     };
     load();
@@ -73,7 +97,7 @@ function useRoomOccupancy(roomName: string, enabled: boolean): number | null {
       clearInterval(timer);
     };
   }, [roomName, enabled]);
-  return count;
+  return status;
 }
 
 function occupancyText(count: number | null): string {
@@ -82,35 +106,98 @@ function occupancyText(count: number | null): string {
   return `${count} ${count === 1 ? 'person' : 'people'} in the call`;
 }
 
+function durationText(ms: number): string {
+  const minutes = Math.round(ms / 60_000);
+  if (minutes < 1) return 'Under a minute';
+  if (minutes < 60) return `${minutes} min`;
+  return `${Math.floor(minutes / 60)} h ${minutes % 60} min`;
+}
+
+function SummaryReadout({ summary }: { summary: CallSummary }) {
+  return (
+    <Readout className="end-summary">
+      <ReadoutSegment>
+        Duration <strong className="mono">{durationText(summary.durationMs)}</strong>
+      </ReadoutSegment>
+      <ReadoutSegment>
+        <strong className="mono">{summary.people}</strong> {summary.people === 1 ? 'person' : 'people'}
+      </ReadoutSegment>
+    </Readout>
+  );
+}
+
 export function RoomClient({ roomName }: { roomName: string }) {
   const [stage, setStage] = useState<Stage>({ kind: 'prejoin' });
-  const occupancy = useRoomOccupancy(roomName, stage.kind !== 'in-call');
+  const status = useRoomStatus(roomName, stage.kind === 'prejoin' || stage.kind === 'joining' || stage.kind === 'ended');
+  // The host's pre-join choice; until they touch the switch it follows the room's current setting.
+  const [waitingRoomChoice, setWaitingRoomChoice] = useState<boolean | null>(null);
+  const waitingRoom = waitingRoomChoice ?? status?.waitingRoom ?? false;
+  // The choices of the last join attempt, to ask again if token-service lost the request.
+  const lastChoices = useRef<LocalUserChoices | null>(null);
 
-  const handleSubmit = useCallback(
-    async (choices: LocalUserChoices) => {
+  const join = useCallback(
+    async (choices: LocalUserChoices, waitingRoomSetting?: boolean) => {
+      lastChoices.current = choices;
       setStage({ kind: 'joining' });
       const identity = getDeviceId();
       try {
         const res = await fetch('/api/connect', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ room: roomName, name: choices.username, identity }),
+          body: JSON.stringify({ room: roomName, name: choices.username, identity, waitingRoom: waitingRoomSetting }),
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || `Could not join (HTTP ${res.status}).`);
-        setStage({ kind: 'in-call', details: data as ConnectionDetails, choices, identity });
+        if (data.waiting) setStage({ kind: 'waiting', requestId: data.requestId, choices, identity });
+        else setStage({ kind: 'in-call', details: data as ConnectionDetails, choices, identity });
       } catch (err) {
         setStage({ kind: 'prejoin', error: (err as Error).message });
       }
     },
     [roomName],
   );
+  // Only a would-be host sends the switch; the server ignores it from anyone else anyway.
+  const handleSubmit = (choices: LocalUserChoices) => join(choices, status?.youHost ? waitingRoom : undefined);
 
   // Stable identity: Conference must not see a new onLeave each render (it's an effect dependency).
   const handleLeave = useCallback((reason: LeaveReason) => setStage({ kind: 'ended', reason }), []);
   // Same for PreJoin: onError is a dependency of its preview-track effect, so a new function per
   // render stops the camera and reopens it on every re-render (name load, occupancy polls).
   const handlePreviewError = useCallback((err: Error) => setStage({ kind: 'prejoin', error: err.message }), []);
+  // WaitingScreen's poll depends on these, so they're stable too.
+  const handleAdmitted = useCallback(
+    (details: ConnectionDetails) =>
+      setStage((s) => (s.kind === 'waiting' ? { kind: 'in-call', details, choices: s.choices, identity: s.identity } : s)),
+    [],
+  );
+  const handleAnswer = useCallback(
+    (answer: WaitingAnswer) => {
+      if (answer === 'ask-again') {
+        if (lastChoices.current) void join(lastChoices.current);
+        return;
+      }
+      setStage({ kind: 'ended', reason: { kind: answer } });
+    },
+    [join],
+  );
+  const cancelWaiting = useCallback(() => setStage({ kind: 'prejoin' }), []);
+
+  if (stage.kind === 'waiting') {
+    return (
+      <main className="end-screen">
+        <header className="page-top">
+          <Wordmark />
+        </header>
+        <WaitingScreen
+          roomName={roomName}
+          requestId={stage.requestId}
+          onAdmitted={handleAdmitted}
+          onAnswer={handleAnswer}
+          onCancel={cancelWaiting}
+        />
+      </main>
+    );
+  }
 
   if (stage.kind === 'in-call') {
     return (
@@ -141,9 +228,11 @@ export function RoomClient({ roomName }: { roomName: string }) {
           </h1>
           <p className="lede">{screen.body}</p>
           {stage.reason.message && <p className="note mono">{stage.reason.message}</p>}
+          {stage.reason.summary && <SummaryReadout summary={stage.reason.summary} />}
           <div className="end-actions">
             <button type="button" className="key key-go" onClick={() => setStage({ kind: 'prejoin' })}>
-              Rejoin <span className="mono">{roomName}</span>
+              {stage.reason.kind === 'denied' || stage.reason.kind === 'no-response' ? 'Ask again' : 'Rejoin'}{' '}
+              <span className="mono">{roomName}</span>
             </button>
             <Link className="key" href="/">
               Back to lobby
@@ -172,8 +261,8 @@ export function RoomClient({ roomName }: { roomName: string }) {
               <span className="mono">{roomName}</span>
             </ReadoutSegment>
             <ReadoutSegment>
-              <Led signal={occupancy ? 'live' : 'idle'} />
-              {occupancyText(occupancy)}
+              <Led signal={status?.numParticipants ? 'live' : 'idle'} />
+              {occupancyText(status?.numParticipants ?? null)}
             </ReadoutSegment>
           </Readout>
           <p className="lede">Check your camera and mic, then enter the name others will see.</p>
@@ -185,6 +274,16 @@ export function RoomClient({ roomName }: { roomName: string }) {
           onValidate={(values) => values.username.trim().length > 0 && stage.kind !== 'joining'}
           onSubmit={handleSubmit}
           onError={handlePreviewError}
+          beforeJoin={
+            status?.youHost && (
+              <SwitchRow
+                label="Waiting room"
+                hint="People ask to join, and you let them in"
+                checked={waitingRoom}
+                onChange={setWaitingRoomChoice}
+              />
+            )
+          }
         />
         <p className="prejoin-hint">Others in the room will see this name on your video tile.</p>
         <p className="prejoin-error note note-alert" role="alert" hidden={!error}>

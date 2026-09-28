@@ -6,6 +6,7 @@ import {
   endRoomAsHost,
   getActiveRecordings,
   getParticipantSid,
+  getRoomSettings,
   listActiveRooms,
   mintToken,
   recordRoomHost,
@@ -16,6 +17,8 @@ import {
 import { requireSharedSecret } from './auth';
 import { finishRecording } from './recordings';
 import { adminRoutes } from './admin';
+import { lobby } from './lobby';
+import { lobbyRoutes } from './lobbyRoutes';
 
 const fastify = Fastify();
 
@@ -49,11 +52,11 @@ fastify.get<{ Querystring: { room?: string; identity?: string } }>(
   },
 );
 
-fastify.post<{ Body: { room?: string; identity?: string; name?: string; host?: boolean } }>(
+fastify.post<{ Body: { room?: string; identity?: string; name?: string; host?: boolean; waitingRoom?: boolean } }>(
   '/token',
   { preHandler: requireSharedSecret },
   async (req, reply) => {
-    const { room, identity, name, host } = req.body ?? {};
+    const { room, identity, name, host, waitingRoom } = req.body ?? {};
     if (
       typeof room !== 'string' ||
       !room ||
@@ -67,8 +70,15 @@ fastify.post<{ Body: { room?: string; identity?: string; name?: string; host?: b
     }
 
     try {
-      // The caller decides who hosts; recording it lets GET /rooms report it on the next join.
-      if (host === true) await recordRoomHost(room, identity);
+      if (host === true) {
+        // The caller decides who hosts; recording it lets GET /rooms report it on the next join.
+        // A host may also set the waiting room as they join.
+        await recordRoomHost(room, identity, typeof waitingRoom === 'boolean' ? waitingRoom : undefined);
+      } else if ((await getRoomSettings(room))?.waitingRoom && !lobby.isAdmitted(room, identity)) {
+        // Enforced here, not left to each consumer: a guest gets in only through /lobby/ask.
+        reply.code(409).send({ error: 'This call has a waiting room. Ask to join.', waitingRoom: true });
+        return;
+      }
       reply.send(await mintToken({ room, identity, name, host: host === true }));
     } catch (err) {
       console.error('Failed to mint LiveKit token:', err);
@@ -181,6 +191,7 @@ fastify.register(async (scoped) => {
       stopAllActiveRecordings(event.room.name).catch((err) => {
         console.error(`Failed to auto-stop recording(s) for finished room ${event.room?.name}:`, err);
       });
+      lobby.forgetRoom(event.room.name);
       return;
     }
     if (event.event !== 'egress_ended' || info?.status !== EgressStatus.EGRESS_COMPLETE) {
@@ -197,6 +208,7 @@ fastify.register(async (scoped) => {
 });
 
 fastify.register(adminRoutes, { prefix: '/admin' });
+fastify.register(lobbyRoutes, { prefix: '/lobby' });
 
 const port = Number(process.env.PORT ?? 8880);
 fastify

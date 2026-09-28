@@ -49,13 +49,14 @@ Lean and readable: nothing in the UI is set below 12px (0.75rem) except mono bad
 - **Menu**: a panel above its key, 14px radius, with `--pop` shadow. On phones it becomes a bottom sheet.
 - **Face** (`.face`): a 14px-radius shell with the `--lift` shadow. Elevation comes from the shadow alone, never a border as well.
 - **Side panel**: a floating 14px card, and only one is open at a time (people, settings, or LiveKit's Chat restyled to match).
-- **Chat notification** (`ChatToasts`): a new message while chat is closed shows as a 16px-radius translucent card with avatar, sender, mono time and a 3-line preview, stacked (up to 3, newest nearest the dock) at the stage's bottom-right. Click opens the chat; × dismisses; hover holds them. System messages (invite copied, recording errors) keep the centered `.toast`.
+- **Notification stack** (`ChatToasts`): 16px-radius translucent cards at the stage's bottom-right (up to 3 chat/join cards, newest nearest the dock): new chat messages (avatar, sender, mono time, 3-line preview; click opens chat) and "joined the call" (click opens People). The host's **join request** (`WaitingNotice`) leads the stack with an amber edge, the askers' avatars and Admit/Deny (Admit all/View all for several); it hides while People is open. **Alone card**: "You're the only one here" with a green Copy invite link key. System messages (invite copied, recording errors) keep the centered `.toast`.
+- **Waiting room**: the host's `SwitchRow` on the pre-join (between name and Join) and at the top of People, which also lists who is waiting. Guests wait on an end-screen-style face with a pulsing amber "Waiting room" readout.
 - **Leave dialog**: a compact destructive confirmation (native `<dialog>`, portaled to `body`): red-tinted icon, title, one line, and right-aligned keys with Cancel focused. Guests confirm with a `-destroy` Leave; the host also gets `-destroy` End for everyone, with Leave demoted to a plain key.
 - **Destructive actions**: always separated from safe ones by a `.danger-gap` (16px), outlined until hover or focus, and confirmed.
 
 ## Motion
 
-Motion uses exponential ease-out (`--ease-out`), for menus rising 6px, panels sliding in 12px, toasts, the hand badge popping up, and reactions floating. The LED pulses only for recording and live rooms. Under reduced motion everything is instant; reactions fade instead of flying.
+Motion uses exponential ease-out (`--ease-out`), for menus rising 6px, panels sliding in 12px, toasts, the hand badge popping up, and reactions floating. Notifications are CSS transitions with `@starting-style` (not keyframes, so bursts retarget): they enter 24px from the right in 300ms (from the top on phones) and leave the same way in 180ms. A new join request fires one amber ring from its icon, and each asker's avatar scales in from 0.9. New video tiles fade in from scale 0.96. The LED pulses only for recording, live rooms, the waiting room and a weak connection. Under reduced motion notifications and tiles only fade, and everything else is instant; reactions fade instead of flying.
 
 ## Responsive
 
@@ -65,4 +66,4 @@ Motion uses exponential ease-out (`--ease-out`), for menus rising 6px, panels sl
 | ≤1080px | legends are hidden and keys are 50px |
 | ≤900px | layouts go to one column and the readout floats over the stage |
 | ≤760px | side panels cover the stage |
-| ≤560px | 46px keys; device chevrons and Share are hidden (device switching is in Settings); menus become sheets; chat notifications become a top banner (2 at most, newest on top, 2-line preview) |
+| ≤560px | 46px keys; device chevrons and Share are hidden (device switching is in Settings); menus become sheets; notifications become a top banner (2 chat/join cards at most, newest on top, 2-line preview; the join request and alone card stay on top) |
