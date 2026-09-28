@@ -5,6 +5,7 @@ the detail. Agents: add a line here with every change that ships (see `AGENTS.md
 
 ## 2026-09-28
 
+- **Escape closes side panels:** Escape closes the open chat, people or settings panel, even while typing a message. An open dock menu or the Leave dialog takes the key first, and focus returns to the panel's dock key.
 - **Chat message notifications:** new messages while chat is closed now show as message cards (avatar, sender, time, up to three lines of text) stacked bottom-right of the call, or as a banner across the top on phones. Click or tap one to open the chat, × to dismiss; hovering holds them.
 
 ## 2026-09-25

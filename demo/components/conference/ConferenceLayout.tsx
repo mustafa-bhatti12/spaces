@@ -108,6 +108,22 @@ export function ConferenceLayout({ roomName, onEndForAll }: { roomName: string; 
   };
   const panel: Panel = widget.showChat ? 'chat' : sidePanel;
 
+  // Escape closes the open side panel, unless a dock menu or the Leave dialog is open above it (those
+  // take the key). Capture phase: LiveKit's chat input stops its key events from bubbling.
+  useEffect(() => {
+    if (!panel) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || document.querySelector('.menu-panel, dialog[open]')) return;
+      const focus = document.activeElement;
+      const focusInPanel = !focus || focus === document.body || !!focus.closest('.lk-chat, .side-panel');
+      if (panel === 'chat') layoutContext.widget.dispatch?.({ msg: 'toggle_chat' });
+      else setSidePanel(null);
+      if (focusInPanel) document.querySelector<HTMLElement>(`.dock [data-panel="${panel}"]`)?.focus();
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [panel, layoutContext.widget]);
+
   const flash = useCallback((message: string) => {
     const id = ++toastId.current;
     setToast({ id, text: message });

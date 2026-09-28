@@ -289,13 +289,14 @@ export function Dock({ roomName, participantCount, panel, onTogglePanel, onReact
               </>
             )}
           </Menu>
-          <ChatToggle className="key" aria-label="Chat" title="Chat">
+          <ChatToggle className="key" aria-label="Chat" title="Chat" data-panel="chat">
             <MessageSquare aria-hidden="true" />
             <span className="legend">Chat</span>
           </ChatToggle>
           <button
             type="button"
             className="key"
+            data-panel="people"
             aria-pressed={panel === 'people'}
             onClick={() => onTogglePanel('people')}
             aria-label={`People (${participantCount})`}
@@ -381,6 +382,7 @@ export function Dock({ roomName, participantCount, panel, onTogglePanel, onReact
         <button
           type="button"
           className="key key-settings"
+          data-panel="settings"
           aria-pressed={panel === 'settings'}
           aria-label="Settings"
           title="Settings"
