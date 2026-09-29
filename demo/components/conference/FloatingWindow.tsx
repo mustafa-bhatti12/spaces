@@ -93,29 +93,35 @@ export function useFloatingWindow(connected: boolean, title: string) {
   return { supported, window: pipWindow, toggle };
 }
 
+/** At most this many faces in the window; more than that and they'd be thumbnails. */
+const FLOATING_TILES = 4;
+
 /**
- * Who the floating window shows when nothing is on the stage: the remote person who spoke last, else
- * the first remote person to join, else you.
+ * Who the floating window shows: what's on the call's stage (a pin or a screen share) alone, else
+ * everyone else's camera, loudest-recent first, capped at four. You are the corner self-view, not a
+ * tile, so a one-to-one call shows the other person full size.
  */
-export function floatingStage(tracks: TrackReferenceOrPlaceholder[]) {
-  const cameras = tracks.filter((t) => t.source === Track.Source.Camera);
-  const remote = cameras
-    .filter((t) => !t.participant.isLocal)
+export function floatingTracks(tracks: TrackReferenceOrPlaceholder[], stage: TrackReferenceOrPlaceholder | undefined) {
+  if (stage) return { shown: [stage], hidden: 0 };
+  const remote = tracks
+    .filter((t) => t.source === Track.Source.Camera && !t.participant.isLocal)
     .sort(
       (a, b) =>
         (b.participant.lastSpokeAt?.getTime() ?? 0) - (a.participant.lastSpokeAt?.getTime() ?? 0) ||
         (a.participant.joinedAt?.getTime() ?? 0) - (b.participant.joinedAt?.getTime() ?? 0),
     );
-  return remote[0] ?? cameras[0];
+  // Alone in the call: your own camera is the only thing to show.
+  if (!remote.length) return { shown: tracks.filter((t) => t.participant.isLocal && t.source === Track.Source.Camera), hidden: 0 };
+  return { shown: remote.slice(0, FLOATING_TILES), hidden: Math.max(0, remote.length - FLOATING_TILES) };
 }
 
 // The controls sleep after this long without the pointer moving, so the face fills the window.
 const CONTROLS_IDLE_MS = 2500;
 
 /**
- * The floating window's content, a pocket version of the call: the stage face edge to edge, a status
- * chip that always shows people, REC and your mute, a self-view while someone else is on the stage,
- * and the dock's mic, camera and Leave keys in a pill that wakes when the pointer moves.
+ * The floating window's content, a pocket version of the call: every other face edge to edge (up to
+ * four, or just the pinned one), a status chip with people, REC and your mute, your self-view in the
+ * corner, and the dock's mic, camera and Leave keys in a pill that wakes when the pointer moves.
  */
 export function FloatingCall({
   stage,
@@ -157,8 +163,9 @@ export function FloatingCall({
   }, [wake]);
   const controls = awake || held || confirmLeave;
 
+  const { shown, hidden } = floatingTracks(tracks, stage);
   const self = tracks.find((t) => t.participant.isLocal && t.source === Track.Source.Camera);
-  const showSelf = isCameraEnabled && isTrackReference(self) && stage?.participant !== localParticipant;
+  const showSelf = isCameraEnabled && isTrackReference(self) && !shown.some((t) => t.participant.isLocal);
 
   return (
     <div
@@ -171,13 +178,14 @@ export function FloatingCall({
         setAwake(false);
       }}
     >
-      <div className="pip-stage">
-        {stage && (
-          // Keyed on who is shown, so a new speaker's face fades in instead of swapping in place.
-          <TrackRefContext.Provider key={`${stage.participant.identity}:${stage.source}`} value={stage}>
+      <div className="pip-stage" data-tiles={shown.length}>
+        {shown.map((track) => (
+          // Keyed on who is shown, so a face fades in instead of swapping in place.
+          <TrackRefContext.Provider key={`${track.participant.identity}:${track.source}`} value={track}>
             <Tile />
           </TrackRefContext.Provider>
-        )}
+        ))}
+        {hidden > 0 && <span className="pip-more">+{hidden}</span>}
       </div>
 
       {/* Not a live region: the REC timer would be read out every second. */}

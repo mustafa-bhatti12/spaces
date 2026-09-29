@@ -546,21 +546,72 @@ code { font: 0.875em var(--mono); background: var(--key); padding: 1px 6px; bord
 .tile-hand svg { width: 20px; height: 20px; stroke-width: 2; }
 @keyframes hand-up { from { transform: translateY(8px) scale(0.85); opacity: 0; } }
 
-/* Floating window (FloatingWindow.tsx): the stage face edge to edge in its own Picture-in-Picture
-   window. A status chip, your self-view and a small version of the dock's key pill float over it; the
-   pill sleeps while nobody touches the window. */
+/* Phone self-view (ConferenceLayout): your own camera as a thumbnail over the others instead of a
+   grid cell, so a one-to-one call gives the other person the whole screen. Tap it to take the stage. */
+.self-view {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  z-index: 12;
+  width: 27vw;
+  max-width: 132px;
+  aspect-ratio: 3 / 4;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 8px 22px rgb(0 0 0 / 0.55), 0 0 0 1px rgb(255 255 255 / 0.12);
+  cursor: pointer;
+  transition: transform 160ms var(--ease-out);
+}
+.self-view:active { transform: scale(0.96); }
+.self-view:focus-visible { outline: 2px solid var(--live); outline-offset: 2px; }
+.self-view .lk-participant-tile { width: 100%; height: 100%; border-radius: 12px; }
+/* The tile's own controls would be unreadable this small; the whole thumbnail is the control. */
+.self-view .lk-focus-toggle-button, .self-view .tile-signal, .self-view .tile-hand { display: none; }
+.self-view .lk-participant-metadata { left: 6px; right: 6px; bottom: 6px; }
+.self-view .lk-participant-metadata-item { min-height: 22px; padding: 0 7px; font-size: 0.6875rem; }
+.self-view .name-plate-you { display: none; }
+@media (prefers-reduced-motion: reduce) {
+  .self-view { transition: none; }
+}
+
+/* Floating window (FloatingWindow.tsx): everyone else's face edge to edge in its own
+   Picture-in-Picture window. A status chip, your self-view and a small version of the dock's key pill
+   float over it; the pill sleeps while nobody touches the window. */
 .pip { position: relative; height: 100vh; background: var(--ground); }
-.pip-stage { position: absolute; inset: 0; display: flex; }
-.pip-stage .lk-participant-tile { flex: 1; min-width: 0; border-radius: 0; transition: opacity 280ms var(--ease-out); }
+.pip-stage { position: absolute; inset: 0; display: grid; gap: 2px; grid-auto-rows: 1fr; }
+.pip-stage[data-tiles='2'] { grid-template-columns: 1fr 1fr; }
+.pip-stage[data-tiles='3'] { grid-template-columns: 1fr 1fr; }
+/* Three faces: the loudest-recent one spans the top row. */
+.pip-stage[data-tiles='3'] > :first-child { grid-column: span 2; }
+.pip-stage[data-tiles='4'] { grid-template-columns: 1fr 1fr; }
+.pip-stage .lk-participant-tile { min-width: 0; min-height: 0; border-radius: 0; transition: opacity 280ms var(--ease-out); }
 .pip-stage .lk-participant-tile::after,
 .pip-stage .lk-participant-tile .lk-participant-placeholder { border-radius: 0; }
 @starting-style {
   .pip-stage .lk-participant-tile { opacity: 0; }
 }
+/* More people than fit: how many faces aren't shown. */
+.pip-more {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  z-index: 2;
+  padding: 3px 8px;
+  border-radius: 9999px;
+  background: rgb(20 20 20 / 0.78);
+  color: var(--ink);
+  font: 600 0.75rem/1 var(--mono);
+}
 .pip .lk-focus-toggle-button { display: none; }
 .pip .lk-participant-metadata { transition: transform 260ms var(--ease-out); }
-/* The name plate rides above the pill while it's awake, so a long name never hides under it. */
-.pip[data-controls='on'] .lk-participant-metadata { transform: translateY(-54px); }
+/* Names ride above the pill while it's awake, so a long one never hides under it. Only the bottom
+   row needs it: with two rows the upper names are already clear. */
+.pip[data-controls='on'] .pip-stage[data-tiles='1'] .lk-participant-metadata,
+.pip[data-controls='on'] .pip-stage[data-tiles='2'] .lk-participant-metadata,
+.pip[data-controls='on'] .pip-stage[data-tiles='3'] > :nth-child(n + 2) .lk-participant-metadata,
+.pip[data-controls='on'] .pip-stage[data-tiles='4'] > :nth-child(n + 3) .lk-participant-metadata {
+  transform: translateY(-54px);
+}
 
 .pip-status {
   position: absolute;

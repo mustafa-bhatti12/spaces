@@ -30,10 +30,11 @@ import { Dock } from './Dock';
 import { ParticipantsPanel } from './ParticipantsPanel';
 import { SettingsPanel } from './SettingsPanel';
 import { Tile } from './Tile';
-import { FloatingCall, floatingStage, useFloatingWindow } from './FloatingWindow';
+import { FloatingCall, useFloatingWindow } from './FloatingWindow';
 import { useWeakConnection } from './useWeakConnection';
 import { useBackgroundEffect } from './useBackgroundEffect';
 import { useNoiseFilter } from './useNoiseFilter';
+import { useIsPhone } from './useIsPhone';
 import { useReactions } from './useReactions';
 import { useRecording } from './useRecording';
 import { useHosts } from './useHosts';
@@ -98,6 +99,12 @@ export function ConferenceLayout({
     .filter((track) => track.publication.source === Track.Source.ScreenShare);
   const focusTrack = usePinnedTracks(layoutContext)?.[0];
   const carouselTracks = tracks.filter((track) => !isEqualTrackRef(track, focusTrack));
+  // On a phone the grid would make two portrait tiles out of a one-to-one call and waste half the
+  // screen; instead your own camera becomes a thumbnail over the others, and tapping it pins you.
+  const phone = useIsPhone();
+  const selfTrack = tracks.find((t) => t.participant.isLocal && t.source === Track.Source.Camera);
+  const selfFloating = phone && !focusTrack && Boolean(selfTrack) && tracks.some((t) => !t.participant.isLocal);
+  const gridTracks = selfFloating ? tracks.filter((t) => t !== selfTrack) : tracks;
   const lastAutoFocused = useRef<TrackReferenceOrPlaceholder | null>(null);
   // A host pinned someone for everyone (room metadata); ignored once they've left.
   const spotlight = hosting.spotlight && participants.some((p) => p.identity === hosting.spotlight) ? hosting.spotlight : null;
@@ -126,6 +133,14 @@ export function ConferenceLayout({
     }
     // Dependencies mirror LiveKit's VideoConference prefab (keyed on track sids, not array identity).
   }, [screenShareKey, focusTrack?.publication?.trackSid, tracks]);
+
+  // Someone pinned leaves: LiveKit only clears the pin when their track unsubscribes, which never
+  // happens for a participant who disconnected, so their tile would hold the stage for good.
+  useEffect(() => {
+    if (!focusTrack || participants.some((p) => p.identity === focusTrack.participant.identity)) return;
+    lastAutoFocused.current = null;
+    layoutContext.pin.dispatch?.({ msg: 'clear_pin' });
+  }, [focusTrack, participants, layoutContext.pin]);
 
   // One side panel at a time. Chat's visibility lives in LiveKit's layout context (ChatToggle drives
   // it); people/settings are ours. Opening chat closes ours, and opening ours closes chat.
@@ -246,7 +261,7 @@ export function ConferenceLayout({
               )}
               {!focusTrack ? (
                 <div className="lk-grid-layout-wrapper">
-                  <GridLayout tracks={tracks}>
+                  <GridLayout tracks={gridTracks}>
                     <Tile />
                   </GridLayout>
                 </div>
@@ -261,6 +276,23 @@ export function ConferenceLayout({
                       <Tile />
                     </TrackRefContext.Provider>
                   </FocusLayoutContainer>
+                </div>
+              )}
+              {selfFloating && selfTrack && (
+                <div
+                  className="self-view"
+                  role="button"
+                  tabIndex={0}
+                  aria-label="Show your camera full size"
+                  onClick={() => layoutContext.pin.dispatch?.({ msg: 'set_pin', trackReference: selfTrack })}
+                  onKeyDown={(event) =>
+                    (event.key === 'Enter' || event.key === ' ') &&
+                    layoutContext.pin.dispatch?.({ msg: 'set_pin', trackReference: selfTrack })
+                  }
+                >
+                  <TrackRefContext.Provider value={selfTrack}>
+                    <Tile />
+                  </TrackRefContext.Provider>
                 </div>
               )}
               <ChatToasts
@@ -329,7 +361,7 @@ export function ConferenceLayout({
           {floating.window &&
             createPortal(
               <FloatingCall
-                stage={focusTrack ?? floatingStage(tracks)}
+                stage={focusTrack}
                 tracks={tracks}
                 recording={rec.recording}
                 participantCount={participants.length}
