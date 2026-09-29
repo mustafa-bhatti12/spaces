@@ -232,8 +232,8 @@ is unreliable, so Bangalore was rejected. 4 GB is the floor with recording on â€
 Chrome with `--shm-size=1g`; don't downsize to 2 GB. Hosts, all in the `hof-global.com` DNS at Wix:
 `api.spaces` and `turn` are A records â†’ the droplet's Caddy (token API + `/rtc`, and TURN);
 `spaces` is a CNAME to Railway (the call app and `/admin`; verified by a `_railway-verify` TXT).
-Until 2026-09-29 the API was `spaces.hofmigration.com` (Bluehost DNS); Caddy still serves that and
-`turn.hofmigration.com` for old links, so drop those blocks once nothing uses them.
+The old `spaces.hofmigration.com` / `turn.hofmigration.com` names were retired on 2026-09-29
+(removed from Caddy; they no longer answer).
 
 **Railway:** one service, `demo` (Root Directory `demo`; Railway runs `npm run build` then
 `npm start`, and sets `PORT`), at `https://spaces.hof-global.com` (custom domain; the old
