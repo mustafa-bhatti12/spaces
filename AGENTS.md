@@ -24,7 +24,9 @@ keep this repo generic so any future consumer can reuse it the same way. Don't e
   `git add -A` / `commit -a`. Their uncommitted files are theirs; leave them alone.
 - **Where a change goes live:** push to `main` → Railway rebuilds `demo` by itself (a few minutes).
   Droplet changes need `ssh space-do 'cd ~/space && git pull -q --ff-only'`. token-service runs
-  under `tsx watch`, so a pull reloads it with no call impact. Anything else (`start-all.sh`,
+  under `tsx watch`, so a pull reloads it with no call impact (check `/tmp/token-service.log` shows a
+  `Restarting...` after the pull: on 2026-09-29 the watcher stopped noticing changes and it took a
+  `systemctl restart spaces`). Anything else (`start-all.sh`,
   `livekit/config.yaml`, `egress/config.yaml`, `.env`) needs `systemctl restart
   spaces`, which drops live calls: check for live rooms first and ask the user if anyone is in one.
 - **Verify on the real surface:** `/root/tools/stack-check.sh` on the droplet (health, every
