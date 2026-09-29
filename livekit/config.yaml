@@ -11,6 +11,16 @@ rtc:
   # audio. allow_pause stays off (the default): video is never paused outright on a weak link.
   congestion_control:
     enabled: true
+# Defaults for every room, including the ones LiveKit creates on first join (token-service's
+# createRoom only runs for hosts, recorded and waiting-room calls). empty_timeout is LiveKit's own
+# default, spelled out here so the three live together: a room nobody ever joins closes after 5
+# minutes; after a real call the room (and its recording) closes 40 s after the last person leaves,
+# which survives a reconnect. max_participants is the per-room cap token-service reports as "This
+# call is full"; the whole-server cap is capacityFor() in token-service/src/livekit.ts.
+room:
+  empty_timeout: 300
+  departure_timeout: 40
+  max_participants: 40
 redis:
   address: localhost:6379
 keys:

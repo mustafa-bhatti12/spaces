@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { requireSharedSecret } from './auth';
-import { hostIdentity, mintToken, notifyRoom, setWaitingRoom } from './livekit';
+import { capacityFor, hostIdentity, mintToken, notifyRoom, setWaitingRoom } from './livekit';
 import { lobby } from './lobby';
 
 /** Data-message topic telling a room's clients the waiting list changed (the host refetches it). */
@@ -54,6 +54,10 @@ export async function lobbyRoutes(app: FastifyInstance): Promise<void> {
     const request = lobby.poll(id);
     if (!request) return { status: 'unknown' };
     if (request.status !== 'admitted') return { status: request.status };
+    // Admitted, but the call may have filled up while they waited.
+    if ((await capacityFor(request.room)) !== 'ok') {
+      return reply.code(503).send({ error: 'This call is full. Ask someone to leave, or start another call.', full: true });
+    }
     const details = await mintToken({ room: request.room, identity: request.identity, name: request.name });
     return { status: 'admitted', ...details };
   });

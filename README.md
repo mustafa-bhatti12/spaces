@@ -187,6 +187,8 @@ A consumer app mints a join token with `POST /token` (consumer secret) and ifram
 
 Add the parent origin to the demo's `EMBED_ALLOWED_ORIGINS` (comma-separated); it controls both `frame-ancestors` and which `?origin=` the bridge talks to. Embedded calls have no invite link or waiting room; only hosts (set by the token) see Record. Tokens last 2 hours.
 
+**Limits:** 40 people per call and 40 across all calls at once (`MAX_PARTICIPANTS_PER_ROOM` / `MAX_PARTICIPANTS_TOTAL` in `token-service/.env`, matched by `room.max_participants` in `livekit/config.yaml`). Past either, `/token` answers `503 {full: true}` and the pre-join says so. A room nobody joins closes after 5 minutes; after a call it closes 40 seconds after the last person leaves.
+
 The page and parent talk over `postMessage`, protocol `spaces-embed/1`:
 
 | Direction | Message | Meaning |

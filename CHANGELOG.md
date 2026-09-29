@@ -5,6 +5,7 @@ the detail. Agents: add a line here with every change that ships (see `AGENTS.md
 
 ## 2026-09-29
 
+- **Limits, so one call can't take the server down:** 40 people per call and 40 across all calls at once (`MAX_PARTICIPANTS_PER_ROOM` / `MAX_PARTICIPANTS_TOTAL`, plus LiveKit's own per-room limit). Past either, the pre-join says the call — or the server — is full instead of failing obscurely. A room that nobody ever joins still closes itself after 5 minutes, and a finished call's room now closes 40 seconds after the last person leaves (was 20), so a reconnect during a blip rejoins the same call.
 - **No more hall of mirrors when you share your screen.** The Spaces tab is kept out of Chrome's picker, your own share is no longer played back to you (a green "You're sharing your screen" notice with a Stop key takes its place, like Meet), and you can switch to another tab or window mid-share without stopping first.
 - **The floating window shows everyone,** not just one person: up to four faces in a grid (`+N` when there are more), or the pinned person alone; you stay the corner self-view.
 - **Phones show the other person full screen.** Your own camera becomes a thumbnail in the corner instead of taking half the grid; tap it and you take the stage, tap the shrink key to go back.

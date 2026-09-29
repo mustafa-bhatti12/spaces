@@ -186,6 +186,17 @@ graph LR
   the Docker bridge, not loopback), so don't "fix" this by rebinding it to `127.0.0.1`.
 - **Never expose `/twirp`** (LiveKit's admin API) publicly. Caddy blocks it; `token-service` reaches
   it on localhost. Browsers only ever need `/rtc`.
+- **Rooms close themselves, and calls are capped.** `livekit/config.yaml`'s `room:` block sets the
+  defaults for every room, including ones LiveKit auto-creates on first join: `empty_timeout: 300`
+  (a room nobody joins), `departure_timeout: 40` (after the last person leaves — long enough to
+  survive a reconnect; the recording and `room_finished` wait that long too) and
+  `max_participants: 40`. On top of that `capacityFor()` (`livekit.ts`, checked in `/token` and when
+  the waiting room admits someone) refuses a join with `503 {full: true}` past
+  `MAX_PARTICIPANTS_PER_ROOM` or `MAX_PARTICIPANTS_TOTAL` (both 40) — the second has no LiveKit
+  setting at all. Its counts come from `listRooms`, which lags real joins by about 3 s, so a
+  simultaneous burst can overshoot the total slightly; the per-room number is exact because LiveKit
+  enforces it too. Keep the two per-room numbers in step. Changing the YAML needs
+  `systemctl restart spaces`; the env vars only need a pull.
 
 ## Embed mode
 

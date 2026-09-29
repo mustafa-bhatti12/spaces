@@ -4,6 +4,7 @@ import path from 'node:path';
 import Fastify from 'fastify';
 import { EgressStatus, WebhookReceiver } from 'livekit-server-sdk';
 import {
+  capacityFor,
   containerPathToHostPath,
   endRoomAsHost,
   getActiveRecordings,
@@ -82,6 +83,17 @@ fastify.post<{ Body: { room?: string; identity?: string; name?: string; host?: b
       if (host !== true && lobby.isRemoved(room, identity)) {
         // A host removed them; they stay out until the room ends.
         reply.code(403).send({ error: 'A host removed you from this call.', removed: true });
+        return;
+      }
+      const capacity = await capacityFor(room);
+      if (capacity !== 'ok') {
+        reply.code(503).send({
+          error:
+            capacity === 'room-full'
+              ? 'This call is full. Ask someone to leave, or start another call.'
+              : 'All calls on this server are full right now. Try again in a few minutes.',
+          full: true,
+        });
         return;
       }
       if (host === true) {
