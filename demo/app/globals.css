@@ -1429,6 +1429,11 @@ code { font: 0.875em var(--mono); background: var(--key); padding: 1px 6px; bord
 .kind-raw { background: var(--warn-soft); color: var(--warn); }
 .file-actions { display: flex; align-items: center; justify-content: flex-end; gap: 6px; }
 .file-actions audio { height: 36px; max-width: 260px; color-scheme: dark; }
+.rec-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin-bottom: 10px; }
+.rec-search { position: relative; flex: 0 1 360px; min-width: 200px; }
+.rec-search svg { position: absolute; top: 50%; left: 12px; width: 16px; height: 16px; color: var(--ink-3); transform: translateY(-50%); pointer-events: none; }
+.rec-search .field { height: 38px; padding-left: 36px; font-size: 0.875rem; }
+.rec-pager { display: flex; align-items: center; justify-content: center; gap: 14px; margin-top: 12px; }
 /* Transcripts (recordings table) */
 .transcript-state { display: inline-flex; align-items: center; gap: 8px; color: var(--ink-3); font-size: 0.8125rem; white-space: nowrap; }
 .transcript-failed { color: var(--alert-ink); font-weight: 600; }

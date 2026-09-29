@@ -1,7 +1,28 @@
 'use client';
 
 import type { LucideIcon } from 'lucide-react';
-import { CircleDot, CircleStop, Download, ExternalLink, LayoutDashboard, Lock, LogOut, Mic, MicOff, MonitorUp, Play, Settings, Trash2, UserX, Video, Volume2, X } from 'lucide-react';
+import {
+  ChevronLeft,
+  ChevronRight,
+  CircleDot,
+  CircleStop,
+  Download,
+  ExternalLink,
+  LayoutDashboard,
+  Lock,
+  LogOut,
+  Mic,
+  MicOff,
+  MonitorUp,
+  Play,
+  Search,
+  Settings,
+  Trash2,
+  UserX,
+  Video,
+  Volume2,
+  X,
+} from 'lucide-react';
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { initials, Led, Readout, ReadoutSegment, Wordmark } from '../ui/Device';
 import { formatBytes, since } from './format';
@@ -65,6 +86,7 @@ interface Overview {
 
 const OVERVIEW_EVERY_MS = 5000;
 const HEALTH_EVERY_MS = 15000;
+const RECORDINGS_PER_PAGE = 20;
 const SOURCES: Record<string, { label: string; icon: LucideIcon }> = {
   MICROPHONE: { label: 'Mic', icon: Mic },
   CAMERA: { label: 'Camera', icon: Video },
@@ -193,6 +215,8 @@ function Dashboard({ onLoggedOut }: { onLoggedOut: () => void }) {
   const [openTranscript, setOpenTranscript] = useState<string | null>(null);
   // #settings in the URL opens the Settings tab, so a reload (or a link) lands back on it.
   const [view, setView] = useState<ConsoleView>(() => (window.location.hash === '#settings' ? 'settings' : 'overview'));
+  const [recQuery, setRecQuery] = useState('');
+  const [recPage, setRecPage] = useState(1);
   const toastTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const flash = useCallback((message: string, error = false) => {
@@ -274,6 +298,15 @@ function Dashboard({ onLoggedOut }: { onLoggedOut: () => void }) {
   };
 
   const recordingByRoom = new Map((overview?.activeRecordings ?? []).map((r) => [r.roomName, r]));
+  // Search and pages are worked out here: /overview already returns every file (newest first).
+  const allFiles = overview?.files ?? [];
+  const recNeedle = recQuery.trim().toLowerCase();
+  const recMatches = recNeedle ? allFiles.filter((f) => f.name.toLowerCase().includes(recNeedle)) : allFiles;
+  const recPages = Math.max(1, Math.ceil(recMatches.length / RECORDINGS_PER_PAGE));
+  // A delete or a narrower search can leave the chosen page past the end: show the last one.
+  const recPageShown = Math.min(recPage, recPages);
+  const recFirst = (recPageShown - 1) * RECORDINGS_PER_PAGE;
+  const recShown = recMatches.slice(recFirst, recFirst + RECORDINGS_PER_PAGE);
   const roomCount = overview?.rooms.length ?? 0;
   const peopleCount = overview?.rooms.reduce((n, r) => n + r.participants.length, 0) ?? 0;
   const usage = overview && {
@@ -550,6 +583,33 @@ function Dashboard({ onLoggedOut }: { onLoggedOut: () => void }) {
           {!overview?.files.length ? (
             <p className="empty">No recordings yet. Recordings and their transcripts show up here once they&apos;re saved.</p>
           ) : (
+            <>
+            <div className="rec-toolbar">
+              <label className="rec-search">
+                <Search aria-hidden="true" />
+                <span className="sr-only">Search recordings</span>
+                <input
+                  className="field"
+                  type="search"
+                  value={recQuery}
+                  onChange={(e) => {
+                    setRecQuery(e.target.value);
+                    setRecPage(1);
+                  }}
+                  placeholder="Search by room or file name"
+                  spellCheck={false}
+                  autoComplete="off"
+                />
+              </label>
+              <span className="section-meta" aria-live="polite">
+                {recMatches.length
+                  ? `${recFirst + 1}–${recFirst + recShown.length} of ${recMatches.length}${recNeedle ? ` matching` : ''}`
+                  : 'No matches'}
+              </span>
+            </div>
+            {!recMatches.length ? (
+              <p className="empty">No recording matches &ldquo;{recQuery.trim()}&rdquo;.</p>
+            ) : (
             <div className="table-wrap">
               <table className="rec-table">
                 <thead>
@@ -567,7 +627,7 @@ function Dashboard({ onLoggedOut }: { onLoggedOut: () => void }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {overview.files.map((f) => {
+                  {recShown.map((f) => {
                     const key = `${f.kind}/${f.name}`;
                     return (
                       <Fragment key={key}>
@@ -645,6 +705,23 @@ function Dashboard({ onLoggedOut }: { onLoggedOut: () => void }) {
                 </tbody>
               </table>
             </div>
+            )}
+            {recPages > 1 && (
+              <nav className="rec-pager" aria-label="Recording pages">
+                <button type="button" className="key" disabled={recPageShown === 1} onClick={() => setRecPage(recPageShown - 1)}>
+                  <ChevronLeft aria-hidden="true" />
+                  Newer
+                </button>
+                <span className="section-meta">
+                  Page {recPageShown} of {recPages}
+                </span>
+                <button type="button" className="key" disabled={recPageShown === recPages} onClick={() => setRecPage(recPageShown + 1)}>
+                  Older
+                  <ChevronRight aria-hidden="true" />
+                </button>
+              </nav>
+            )}
+            </>
           )}
         </section>
         </div>
