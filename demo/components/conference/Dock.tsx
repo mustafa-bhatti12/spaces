@@ -256,7 +256,9 @@ export function Dock({ roomName, participantCount, panel, onTogglePanel, onReact
             <DeviceKey
               source={Track.Source.ScreenShare}
               className="key-share"
-              captureOptions={{ audio: true, selfBrowserSurface: 'include' }}
+              // Keep this tab out of Chrome's picker (Meet does the same), and let the sharer switch
+              // to another tab or window without stopping and starting again.
+              captureOptions={{ audio: true, selfBrowserSurface: 'exclude', surfaceSwitching: 'include' }}
               on={{ icon: MonitorOff, legend: 'Stop', label: 'Stop sharing your screen' }}
               off={{ icon: MonitorUp, legend: 'Share', label: 'Share your screen' }}
             />

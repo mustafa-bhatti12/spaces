@@ -498,6 +498,9 @@ code { font: 0.875em var(--mono); background: var(--key); padding: 1px 6px; bord
   box-shadow: var(--pop);
 }
 .stage-banner svg { width: 16px; height: 16px; }
+/* Sharing your own screen: your share isn't played back to you, this says it's live instead. */
+.share-banner { background: var(--live); color: var(--live-ink); padding-right: 6px; }
+.share-banner-stop { height: 26px; padding: 0 12px; font-size: 0.8125rem; }
 
 /* Tiles */
 .lk-participant-tile { --lk-speaking-indicator-width: 2px; background: var(--shell); border-radius: 14px; }

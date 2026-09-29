@@ -5,6 +5,7 @@ the detail. Agents: add a line here with every change that ships (see `AGENTS.md
 
 ## 2026-09-29
 
+- **No more hall of mirrors when you share your screen.** The Spaces tab is kept out of Chrome's picker, your own share is no longer played back to you (a green "You're sharing your screen" notice with a Stop key takes its place, like Meet), and you can switch to another tab or window mid-share without stopping first.
 - **The floating window shows everyone,** not just one person: up to four faces in a grid (`+N` when there are more), or the pinned person alone; you stay the corner self-view.
 - **Phones show the other person full screen.** Your own camera becomes a thumbnail in the corner instead of taking half the grid; tap it and you take the stage, tap the shrink key to go back.
 - **Fixed:** pinning someone who then left the call left their frozen tile on the stage for good.

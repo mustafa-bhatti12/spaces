@@ -382,6 +382,11 @@ works from the same machine; test multi-device calls on the Railway deployment.
   track's subscription drops (`handleSubscribe`), which doesn't happen on a disconnect, so the
   departed person's last frame held the stage (and the floating window) for good. `ConferenceLayout`
   clears the pin itself when the pinned identity is gone from `useParticipants`; keep that effect.
+- **Never render a participant their own screen share.** `ConferenceLayout` drops the local
+  `ScreenShare` track from `useTracks` before laying out and shows the `.share-banner` notice
+  instead; the share key asks for `selfBrowserSurface: 'exclude'` (Chrome/Edge only, so the drop is
+  what actually prevents the infinite tunnel) plus `surfaceSwitching: 'include'`. Others still get
+  the share, and auto-focus only reacts to remote ones.
 - **Every camera open costs a real camera about a second, so the pre-join must open it once.**
   LiveKit's `PreJoin` reopened it up to 4 extra times: `usePreviewTracks` recreates tracks when its
   `onError` prop changes identity (an inline arrow did that on every render); a first-visit camera

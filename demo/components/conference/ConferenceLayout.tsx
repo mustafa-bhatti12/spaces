@@ -21,7 +21,7 @@ import {
 } from '@livekit/components-react';
 import { ConnectionState, RoomEvent, Track } from 'livekit-client';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Link2, WifiOff, X } from 'lucide-react';
+import { Link2, MonitorUp, WifiOff, X } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { MIRROR_ATTRIBUTE, useMirrorVideo } from '@/lib/client/mirror';
 import type { Panel } from './Dock';
@@ -87,13 +87,20 @@ export function ConferenceLayout({
     localParticipant.setAttributes({ [MIRROR_ATTRIBUTE]: value }).catch(() => {});
   }, [connectionState, localParticipant, mirror]);
 
-  const tracks = useTracks(
+  const publishedTracks = useTracks(
     [
       { source: Track.Source.Camera, withPlaceholder: true },
       { source: Track.Source.ScreenShare, withPlaceholder: false },
     ],
     { updateOnlyOn: [RoomEvent.ActiveSpeakersChanged], onlySubscribed: false },
   );
+  // Your own screen share is never played back to you (Meet does the same): with the call in view of
+  // a shared screen it would be an infinite tunnel, and decoding your own share costs a core for
+  // nothing. A notice on the stage says you're sharing instead.
+  const sharingScreen = publishedTracks.some((t) => t.participant.isLocal && t.source === Track.Source.ScreenShare);
+  const tracks = sharingScreen
+    ? publishedTracks.filter((t) => !(t.participant.isLocal && t.source === Track.Source.ScreenShare))
+    : publishedTracks;
   const screenShareTracks = tracks
     .filter(isTrackReference)
     .filter((track) => track.publication.source === Track.Source.ScreenShare);
@@ -257,6 +264,19 @@ export function ConferenceLayout({
                 <div className="stage-banner" role="status">
                   <WifiOff aria-hidden="true" />
                   Connection lost. Reconnecting…
+                </div>
+              )}
+              {sharingScreen && (
+                <div className="stage-banner share-banner" role="status">
+                  <MonitorUp aria-hidden="true" />
+                  You&apos;re sharing your screen
+                  <button
+                    type="button"
+                    className="key key-destroy share-banner-stop"
+                    onClick={() => void localParticipant.setScreenShareEnabled(false).catch(() => {})}
+                  >
+                    Stop
+                  </button>
                 </div>
               )}
               {!focusTrack ? (
