@@ -1446,6 +1446,47 @@ code { font: 0.875em var(--mono); background: var(--key); padding: 1px 6px; bord
 }
 .console .toast-slot { bottom: 28px; }
 
+/* Console tabs (Overview / Settings): a pill group on a recessed track. */
+.console-tabs { display: inline-flex; align-self: flex-start; gap: 4px; margin-bottom: -8px; padding: 4px; border-radius: 9999px; background: var(--screen); box-shadow: var(--recess); }
+.console-tab { display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 14px; border: 0; border-radius: 9999px; background: transparent; color: var(--ink-3); font: 600 0.8125rem/1 inherit; cursor: pointer; transition: background-color 140ms var(--ease-out), color 140ms var(--ease-out); }
+.console-tab svg { width: 15px; height: 15px; stroke-width: 1.7; }
+.console-tab:hover { color: var(--ink); }
+.console-tab:focus-visible { outline: 2px solid var(--live); outline-offset: 2px; }
+.console-tab[aria-selected='true'] { background: var(--key); color: var(--ink); box-shadow: var(--key-edge), 0 1px 3px rgb(0 0 0 / 0.35); }
+.console-view { display: flex; flex-direction: column; gap: 32px; }
+
+/* Settings tab */
+.settings { display: flex; flex-direction: column; gap: 32px; }
+.settings-card { display: flex; flex-direction: column; gap: 14px; padding: 16px 18px 18px; border-radius: var(--r-face); background: var(--shell); box-shadow: var(--lift); }
+.settings-group { display: flex; flex-direction: column; gap: 12px; }
+.settings-group + .settings-group { padding-top: 16px; border-top: 1px solid var(--seam-soft); }
+.settings-group-title { margin: 0; color: var(--ink-2); font-size: 0.8125rem; font-weight: 650; }
+.settings-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 16px; }
+.settings-field { display: flex; flex-direction: column; gap: 0; min-width: 0; }
+.settings-field .note { margin-top: 6px; }
+.settings-field-wide { grid-column: 1 / -1; }
+.settings-field .field { font-size: 0.9375rem; }
+.settings-textarea { height: auto; padding: 10px 12px; line-height: 1.5; resize: vertical; font-family: var(--mono); }
+.settings-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding-top: 14px; border-top: 1px solid var(--seam-soft); }
+.settings-foot .note { flex: 1 1 260px; }
+.settings-info { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; align-items: start; }
+.info-list { display: flex; flex-direction: column; margin: 0; }
+.info-row { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--seam-soft); font-size: 0.8125rem; }
+.info-row:last-child { border-bottom: 0; }
+.info-row dt { color: var(--ink-3); font-weight: 600; }
+.info-row dd { margin: 0; overflow-wrap: anywhere; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.secret-state { display: inline-flex; align-items: center; gap: 8px; font-family: var(--sans); }
+.settings-restart { flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px 24px; }
+.settings-restart-text { display: flex; flex: 1 1 420px; flex-direction: column; gap: 6px; }
+.settings-restart-text strong { font-size: 0.9375rem; font-weight: 650; }
+.key .spin { animation: spin 0.9s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .key .spin { animation: none; } }
+@media (max-width: 760px) {
+  .settings-fields, .settings-info { grid-template-columns: 1fr; }
+  .info-row { grid-template-columns: 120px minmax(0, 1fr); }
+}
+
 /* ---------- Responsive ---------- */
 @media (max-width: 1240px) {
   .readout-by { display: none; }

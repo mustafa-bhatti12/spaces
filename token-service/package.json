@@ -8,7 +8,7 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test src/**/*.test.ts"
+    "test": "SPACES_SETTINGS_FILE=/nonexistent/settings.json node --import tsx --test src/**/*.test.ts"
   },
   "dependencies": {
     "@soniox/node": "^2.3.0",

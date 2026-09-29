@@ -1,3 +1,4 @@
+import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import type { FastifyInstance, FastifyReply } from 'fastify';
@@ -17,6 +18,12 @@ import { collectSystemSnapshot, egressContainer } from './system';
 import { lobby } from './lobby';
 import * as autoRecord from './autoRecord';
 import { deleteTranscript, readTranscript, transcribeRecording, transcriptStates, transcriptToText } from './transcripts';
+import { defaultSettings, getSettings, hasSavedSettings, LIMITS, resetSettings, saveSettings } from './settings';
+
+// systemd sets INVOCATION_ID for a unit's processes (inherited through start-all.sh), so it tells
+// "running as spaces.service on the droplet" apart from a local or hand-started stack.
+const SYSTEMD_UNIT = 'spaces';
+const underSystemd = () => !!process.env.INVOCATION_ID;
 
 type Check = { ok: boolean; detail: string };
 
@@ -172,6 +179,74 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     if (!file || !fs.existsSync(file)) return reply.code(404).send({ error: 'Recording not found.' });
     void transcribeRecording(req.params.name);
     return { status: 'transcribing' };
+  });
+
+  // Settings tab: the changeable recording/transcription settings, their .env defaults, and
+  // read-only facts about this deployment (secrets only as set / not set).
+  const settingsView = () => ({
+    settings: getSettings(),
+    defaults: defaultSettings(),
+    saved: hasSavedSettings(),
+    limits: LIMITS,
+    info: {
+      publicUrl: process.env.LIVEKIT_PUBLIC_URL || null,
+      livekitUrl: process.env.LIVEKIT_URL || null,
+      turnDomain: process.env.TURN_DOMAIN || null,
+      sonioxRegion: process.env.SONIOX_REGION || 'us',
+      secrets: {
+        livekitApiKey: !!process.env.LIVEKIT_API_KEY && !!process.env.LIVEKIT_API_SECRET,
+        consumerSecret: !!process.env.TOKEN_SERVICE_SHARED_SECRET,
+        adminSecret: !!process.env.ADMIN_SHARED_SECRET,
+        sonioxApiKey: !!process.env.SONIOX_API_KEY,
+      },
+      restart: underSystemd()
+        ? { available: true }
+        : { available: false, reason: 'Only when Spaces runs as spaces.service (the droplet).' },
+    },
+  });
+
+  app.get('/settings', async () => settingsView());
+
+  app.post('/settings', async (req, reply) => {
+    try {
+      saveSettings(req.body);
+    } catch (err) {
+      return reply.code(400).send({ error: (err as Error).message });
+    }
+    return settingsView();
+  });
+
+  app.post('/settings/reset', async () => {
+    resetSettings();
+    return settingsView();
+  });
+
+  // Restarts the whole stack (LiveKit, token-service, Redis, recording worker): what an .env or
+  // config change on the droplet needs. It drops every call, so it refuses while anyone is in a
+  // room or a recording is running. If LiveKit itself can't be reached there's no call to drop,
+  // and a restart is usually the fix, so that doesn't block it.
+  app.post('/restart', async (_req, reply) => {
+    if (!underSystemd()) return reply.code(409).send({ error: 'Restart is only available when Spaces runs as spaces.service (the droplet).' });
+    const [rooms, recordings] = await Promise.allSettled([listRoomsWithParticipants(), listAllActiveRecordings()]);
+    const busy = rooms.status === 'fulfilled' ? rooms.value.filter((r) => r.participants.length > 0) : [];
+    if (busy.length) {
+      const people = busy.reduce((n, r) => n + r.participants.length, 0);
+      return reply.code(409).send({
+        error: `${people} ${people === 1 ? 'person is' : 'people are'} in ${busy.map((r) => r.name).join(', ')}. Restart once the rooms are empty.`,
+      });
+    }
+    if (recordings.status === 'fulfilled' && recordings.value.length) {
+      return reply.code(409).send({ error: 'A recording is still running. Restart once it has finished.' });
+    }
+    // --no-block hands the job to systemd and returns, so this reply goes out before systemd stops
+    // this process along with the rest of the unit.
+    setTimeout(() => {
+      console.log('Restart requested from /admin.');
+      execFile('systemctl', ['--no-block', 'restart', SYSTEMD_UNIT], (err) => {
+        if (err) console.error('systemctl restart failed:', err);
+      });
+    }, 500);
+    return { ok: true };
   });
 }
 

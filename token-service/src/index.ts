@@ -21,7 +21,7 @@ import {
 } from './livekit';
 import { requireSharedSecret } from './auth';
 import { finishRecording, listRecordingFiles, resolveRecordingFile } from './recordings';
-import { parseRecordingName, readTranscript, transcribeMissing, transcribeRecording, transcriptStates } from './transcripts';
+import { autoTranscribe, parseRecordingName, readTranscript, transcribeMissing, transcribeRecording, transcriptStates } from './transcripts';
 import * as autoRecord from './autoRecord';
 import { adminRoutes } from './admin';
 import { lobby } from './lobby';
@@ -284,7 +284,7 @@ fastify.register(async (scoped) => {
 
     const info = event.egressInfo;
     if (event.event === 'participant_joined' && event.room?.name) {
-      // Records the call when RECORD_ALL_CALLS=1 or the room was marked on /token (autoRecord.ts).
+      // Records the call when "record every call" is on or the room was marked on /token (autoRecord.ts).
       autoRecord.onParticipantJoined(event.room.name, event.participant?.kind, event.room.metadata);
       return;
     }
@@ -310,8 +310,9 @@ fastify.register(async (scoped) => {
         console.error(`Failed to move finished recording ${file.filename}:`, err);
         continue;
       }
-      // Every finished recording gets a transcript; this runs in the background (minutes for a long call).
-      void transcribeRecording(path.basename(finished));
+      // Every finished recording gets a transcript unless it's switched off; this runs in the
+      // background (minutes for a long call).
+      if (autoTranscribe()) void transcribeRecording(path.basename(finished));
     }
   });
 });

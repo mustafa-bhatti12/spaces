@@ -5,6 +5,7 @@ the detail. Agents: add a line here with every change that ships (see `AGENTS.md
 
 ## 2026-09-29
 
+- **`/admin` Settings tab:** Overview and Settings pill tabs. Settings changes transcription (on/off, language hints, terms, translate-to) and recording (bitrate, record every call) live with no restart, overriding `.env` until "Reset to .env"; shows the droplet's and the call app's deployment values read-only (secrets only as set / not set); and has a Restart Spaces key that token-service refuses while anyone is in a call or a recording runs. The admin password stays a Railway variable.
 - **Transcripts can include an English translation:** with `TRANSCRIPTION_TRANSLATE_TO=en` (now on), each line spoken in another language (e.g. Urdu) carries its English translation, in the transcript JSON, `/admin`'s text view and download, and `/recording/transcripts`.
 - **Consumers can download call audio:** `GET /recording/file/<file>` (consumer secret) streams a finished recording listed by `/recording/transcripts`.
 - **Consumers can record a call automatically:** `POST /token` takes `record: true`, and that room's recording then starts when the first person joins, like `RECORD_ALL_CALLS=1` for just that call. Other calls still record only when someone presses Record.

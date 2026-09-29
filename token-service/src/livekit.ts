@@ -14,6 +14,7 @@ import {
   TrackType,
   TokenVerifier,
 } from 'livekit-server-sdk';
+import { getSettings } from './settings';
 
 export interface CallConnectionDetails {
   serverUrl: string;
@@ -377,10 +378,10 @@ export function containerPathToHostPath(containerPath: string): string {
   return path.join(EGRESS_HOST_RAW_DIR, relative);
 }
 
-// Speech for listening and transcription, not music: 24 kbps Opus is a fifth of egress's 128 kbps
-// default. Egress encodes the mix anyway, so asking it for the final bitrate costs nothing extra
-// (measured: same egress CPU at 24 as at 128) and leaves no second transcode to run afterwards.
-const RECORDING_AUDIO_KBPS = Number(process.env.RECORDING_AUDIO_KBPS ?? 24);
+// Speech for listening and transcription, not music: 24 kbps Opus (the default, settings.ts) is a
+// fifth of egress's 128 kbps default. Egress encodes the mix anyway, so asking it for the final
+// bitrate costs nothing extra (measured: same egress CPU at 24 as at 128) and leaves no second
+// transcode to run afterwards.
 
 // Serializes concurrent start requests for the same room onto one in-flight attempt, so two
 // participants clicking "record" within the same tick can't each mint a separate egress session
@@ -424,7 +425,7 @@ export async function startRoomAudioRecording(room: string, startedByName?: stri
       {
         // Leaving layout/customBaseUrl unset keeps this on egress's Chrome-free audio pipeline.
         audioOnly: true,
-        encodingOptions: new EncodingOptions({ audioCodec: AudioCodec.OPUS, audioBitrate: RECORDING_AUDIO_KBPS }),
+        encodingOptions: new EncodingOptions({ audioCodec: AudioCodec.OPUS, audioBitrate: getSettings().recording.audioKbps }),
       },
     );
     if (startedByName) recordingStartedBy.set(info.egressId, startedByName);

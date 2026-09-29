@@ -29,6 +29,8 @@ keep this repo generic so any future consumer can reuse it the same way. Don't e
   `systemctl restart spaces`). Anything else (`start-all.sh`,
   `livekit/config.yaml`, `egress/config.yaml`, `.env`) needs `systemctl restart
   spaces`, which drops live calls: check for live rooms first and ask the user if anyone is in one.
+  `/admin` → Settings → Restart Spaces does the same (`POST /admin/restart`: refused while anyone
+  is in a room or a recording runs, then `systemctl --no-block restart spaces` after the reply).
 - **Verify on the real surface:** `/root/tools/stack-check.sh` on the droplet (health, every
   service, a join over the public URL, a recording started on it through to its finished file and Soniox transcript); `puppeteer-core`
   scripts in `/tmp` for UI and calls (see "Testing"). `npm test` in `token-service`, `npm run build`
@@ -154,12 +156,22 @@ graph LR
   (paired per utterance with the SDK's `translateFromTranscript`; segments are then finer, and
   translated text is billed as output text). `SONIOX_API_KEY` lives only in the droplet's `token-service/.env`. Unset, nothing
   is transcribed and `/admin` says "Off". At start token-service transcribes any saved recording
-  without a transcript or saved failure (backfill, and jobs a restart cut short). Deleting a
+  without a transcript or saved failure (backfill, and jobs a restart cut short; skipped while
+  transcription is switched off in Settings). Deleting a
   recording in `/admin` deletes its transcript. Consumers read them with
   `GET /recording/transcripts?room=` and download a listed recording's audio with
   `GET /recording/file/<file>` (consumer secret; no filename header, the consumer names it).
   Processing is in Soniox's US region; `SONIOX_REGION=in|eu|jp`
   needs a regional project and key from Soniox support.
+- **Recording/transcription settings can be changed from `/admin` → Settings, live**
+  (`token-service/src/settings.ts`): transcription on/off, language hints, terms, translate-to,
+  audio bitrate and record-every-call. `.env` (`TRANSCRIPTION_*`, `RECORDING_AUDIO_KBPS`,
+  `RECORD_ALL_CALLS`) holds the defaults; a save writes `token-service/settings.json` (gitignored,
+  mode 600), which wins over `.env` until "Reset to .env" deletes it. Readers call `getSettings()`
+  each time, so a change applies to the next recording/transcript with no restart. So on the
+  droplet, check that file before trusting `.env` for these values. Everything else in Settings is
+  read-only (secrets only as set / not set; the call app's own values come from `demo`'s
+  `/admin/config`), and `ADMIN_PASSWORD` stays a Railway variable by the user's choice.
 - **Real credentials live only on the droplet and in Railway variables.** The repo is public and its
   committed `devkey`/`secret` + `local-dev-secret-not-for-production` are LiveKit's/our published dev
   values. On Linux (not macOS) `start-all.sh`'s `ensure_real_credentials` replaces
@@ -468,11 +480,12 @@ works from the same machine; test multi-device calls on the Railway deployment.
 
 - `token-service/src/livekit.ts` — all LiveKit SDK calls (tokens, rooms, participants, egress, path mapping).
 - `token-service/src/index.ts` — consumer routes, including the `/recording/webhook` receiver (LiveKit's events: auto-record, finish + transcribe, room cleanup) and `/recording/transcripts`.
-- `token-service/src/autoRecord.ts` — records every call from its first join; remembers rooms someone stopped by hand.
+- `token-service/src/autoRecord.ts` — records a call from its first join (every call, or rooms marked on `/token`); remembers rooms someone stopped by hand.
+- `token-service/src/settings.ts` — recording/transcription settings: `.env` defaults, `/admin` overrides in `token-service/settings.json`, validation (unit-tested).
 - `token-service/src/transcripts.ts` — Soniox transcription of finished recordings, transcript files/status, plain-text rendering, startup backfill.
 - `token-service/src/lobby.ts` + `lobbyRoutes.ts` — the waiting room: in-memory join requests (unit-tested) and the `/lobby/*` routes; a data message on topic `space.lobby` tells the host's client to refetch. `lobby.ts` also remembers who a host removed.
 - `token-service/src/moderationRoutes.ts` — `/room/mute`, `/room/remove`, `/room/spotlight` (host moderation); demo relay `demo/app/api/moderate/[action]`.
-- `token-service/src/admin.ts` — the operator `/admin/*` routes (overview, health, system metrics, moderation, recording files with Range support).
+- `token-service/src/admin.ts` — the operator `/admin/*` routes (overview, health, system metrics, moderation, recording files with Range support, settings, restart).
 - `token-service/src/system.ts` — `GET /admin/system`: host CPU/memory/network, per-service process rows, versions, TLS expiry, deployed commit. Linux-only parts return null on macOS; rates are deltas between calls (first call after a restart has nulls). It runs on every console poll, so keep it cheap; the comments explain why it reads cgroup files instead of `docker stats`.
 - `token-service/src/recordings.ts` — recording directories, safe filename resolution, file listing, `finishRecording` (webhook: raw/ → compressed/).
 - `token-service/src/embedRoutes.ts` — `POST /embed/session`: verifies a join token for `/embed`.
@@ -487,7 +500,7 @@ works from the same machine; test multi-device calls on the Railway deployment.
 - `demo/app/embed/page.tsx` + `demo/app/api/embed/session/route.ts` — the `/embed` page and its token-check relay to token-service `/embed/session`.
 - `demo/components/embed/*` — `EmbedContext` (`EmbedContext.Provider`, supplied by `EmbedClient`, / `useEmbed()`, non-null when embedded), `EmbedClient` (fragment token → session → pre-join → call → end), `EmbedBridge` (room events → parent; parent `send` → LiveKit data).
 - `demo/components/ui/*` — `Menu` (dock popover), `Device` (wordmark, LED, readout, initials), `SwitchRow`.
-- `demo/components/admin/AdminDashboard.tsx` — the control center UI; `ServerPanel.tsx` (Server section: metric strips + processes table); `format.ts` (bytes, rates, durations).
+- `demo/components/admin/AdminDashboard.tsx` — the control center UI (Overview / Settings pill tabs; `#settings` opens Settings); `ServerPanel.tsx` (Server section: metric strips + processes table); `SettingsPanel.tsx` (Settings tab); `api.ts` (the `/admin/api` fetch helper); `format.ts` (bytes, rates, durations). `demo/app/admin/config` — the call app's own deployment values for Settings (read-only).
 - `demo/public/backgrounds/*.webp` — virtual-background images (1920×1080, WebP q80); `thumbs/*.webp` are the 320 px settings-tile previews. Add a background as both.
 - `demo/public/mediapipe/` — `selfie_segmenter.tflite` (committed, pinned float16 v1) and `wasm/` (gitignored, copied from node_modules by `demo/next.config.ts`): background effects load these from our origin, not jsdelivr/googleapis. `demo/public/rnnoise/` (gitignored, same copy step) holds the noise-cancellation worklet and wasm.
 - `livekit/config.yaml`, `egress/config.yaml` — real (non-`--dev`) server config templates with the dev key pair; read the comments in each before editing.

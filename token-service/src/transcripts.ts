@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { SonioxNodeClient, translateFromTranscript } from '@soniox/node';
 import { RECORDING_DIRS, resolveRecordingFile } from './recordings';
+import { getSettings } from './settings';
 
 // Every finished recording is transcribed with Soniox's async API (stt-async-v5): the whole file at
 // once gives the best speaker separation, and it's the cheapest mode. The mixed recording carries no
@@ -24,7 +25,7 @@ export interface TranscriptSegment {
   endMs: number | null;
   text: string;
   /**
-   * The segment in TRANSCRIPTION_TRANSLATE_TO's language, when that's set and the segment was spoken
+   * The segment in the translate-to language (settings.ts), when that's set and the segment was spoken
    * in another language. Absent otherwise.
    */
   translation?: string;
@@ -71,13 +72,11 @@ function soniox(): SonioxNodeClient | null {
   return client;
 }
 
-function envList(name: string): string[] | undefined {
-  const items = (process.env[name] ?? '')
-    .split(',')
-    .map((h) => h.trim())
-    .filter(Boolean);
-  return items.length ? items : undefined;
+/** Whether finished recordings are transcribed by themselves: a key, and not switched off in /admin. */
+export function autoTranscribe(): boolean {
+  return !!process.env.SONIOX_API_KEY && getSettings().transcription.enabled;
 }
+
 async function writeJson(target: string, value: unknown): Promise<void> {
   await fs.mkdir(TRANSCRIPTS_DIR, { recursive: true });
   const tmp = `${target}.tmp`;
@@ -98,15 +97,16 @@ export async function transcribeRecording(file: string): Promise<void> {
   try {
     const audio = await fs.readFile(audioPath);
     const parsed = parseRecordingName(file);
-    const translateTo = process.env.TRANSCRIPTION_TRANSLATE_TO?.trim() || undefined;
+    const { languageHints, terms, translateTo: target } = getSettings().transcription;
+    const translateTo = target || undefined;
     const result = await api.stt.transcribe({
       model: MODEL,
       file: audio,
       filename: file,
       // Languages the calls are likely in, and words Soniox should expect (names, acronyms like
-      // "USCIS" that it otherwise hears as ordinary words). Both are optional deployment settings.
-      language_hints: envList('TRANSCRIPTION_LANGUAGE_HINTS'),
-      context: envList('TRANSCRIPTION_TERMS') ? { terms: envList('TRANSCRIPTION_TERMS') } : undefined,
+      // "USCIS" that it otherwise hears as ordinary words). Both optional; see settings.ts.
+      language_hints: languageHints.length ? languageHints : undefined,
+      context: terms.length ? { terms } : undefined,
       enable_language_identification: true,
       enable_speaker_diarization: true,
       // Also translate speech in other languages into this one (one Soniox job; its extra output
@@ -249,7 +249,7 @@ function translatedSegments(
  * One at a time, so a backlog doesn't upload everything at once.
  */
 export async function transcribeMissing(): Promise<void> {
-  if (!soniox()) return;
+  if (!autoTranscribe()) return;
   let files: string[];
   try {
     files = (await fs.readdir(RECORDING_DIRS.compressed)).filter((f) => RECORDING_NAME.test(f));

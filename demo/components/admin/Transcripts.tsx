@@ -83,7 +83,7 @@ export function TranscriptCell({
     case 'none':
       return (
         <span className="transcript-state">
-          Queued
+          Not transcribed
           <button type="button" className="key" disabled={busy} onClick={onRetry}>
             Transcribe now
           </button>

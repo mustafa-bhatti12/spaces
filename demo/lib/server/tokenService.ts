@@ -4,7 +4,7 @@ import 'server-only';
 // TOKEN_SERVICE_SHARED_SECRET for the consumer routes the call page needs (/token, /rooms,
 // /participant, /recording/*) — the same routes and secret Petition Studio's API will use — and
 // ADMIN_SHARED_SECRET only for the /admin control center's proxy.
-const TOKEN_SERVICE_URL = (process.env.TOKEN_SERVICE_URL ?? 'http://localhost:8880').replace(/\/$/, '');
+export const TOKEN_SERVICE_URL = (process.env.TOKEN_SERVICE_URL ?? 'http://localhost:8880').replace(/\/$/, '');
 
 export type SecretKind = 'consumer' | 'admin';
 
