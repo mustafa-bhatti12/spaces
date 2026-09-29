@@ -8,25 +8,28 @@ import { SwitchRow } from '../ui/SwitchRow';
 import { api, SessionExpired } from './api';
 import type { SystemSnapshot } from './ServerPanel';
 
-// Settings tab. Recording and transcription settings are saved on the droplet by token-service
-// (settings.ts) and apply to the next recording, no restart. Everything else is read-only here:
+// Settings tab. Recording, transcription and capacity settings are saved on the droplet by
+// token-service (settings.ts) and apply to the next recording or join, no restart. Everything else is read-only here:
 // droplet .env and Railway variables are changed where they live. The restart key restarts the
 // droplet stack, which token-service refuses while anyone is in a call.
 
 interface RuntimeSettings {
   transcription: { enabled: boolean; languageHints: string[]; terms: string[]; translateTo: string };
   recording: { audioKbps: number; recordAllCalls: boolean };
+  limits: { maxPerRoom: number; maxTotal: number };
 }
 interface SettingsView {
   settings: RuntimeSettings;
   defaults: RuntimeSettings;
   saved: boolean;
-  limits: { kbpsMin: number; kbpsMax: number };
+  limits: { kbpsMin: number; kbpsMax: number; peopleMin: number; peopleMax: number };
   info: {
     publicUrl: string | null;
     livekitUrl: string | null;
     turnDomain: string | null;
     sonioxRegion: string;
+    /** What livekit/config.yaml runs with; only a restart changes these. */
+    room: { emptyTimeout: number; departureTimeout: number; maxParticipants: number } | null;
     secrets: { livekitApiKey: boolean; consumerSecret: boolean; adminSecret: boolean; sonioxApiKey: boolean };
     restart: { available: boolean; reason?: string };
   };
@@ -46,6 +49,8 @@ interface Draft {
   translateTo: string;
   kbps: string;
   recordAll: boolean;
+  maxPerRoom: string;
+  maxTotal: string;
 }
 
 const toDraft = (s: RuntimeSettings): Draft => ({
@@ -55,6 +60,8 @@ const toDraft = (s: RuntimeSettings): Draft => ({
   translateTo: s.transcription.translateTo,
   kbps: String(s.recording.audioKbps),
   recordAll: s.recording.recordAllCalls,
+  maxPerRoom: String(s.limits.maxPerRoom),
+  maxTotal: String(s.limits.maxTotal),
 });
 const split = (value: string, by: RegExp) =>
   value
@@ -69,6 +76,7 @@ const fromDraft = (d: Draft): RuntimeSettings => ({
     translateTo: d.translateTo.trim(),
   },
   recording: { audioKbps: Number(d.kbps), recordAllCalls: d.recordAll },
+  limits: { maxPerRoom: Number(d.maxPerRoom), maxTotal: Number(d.maxTotal) },
 });
 const list = (items: string[]) => (items.length ? items.join(', ') : 'none');
 
@@ -146,7 +154,7 @@ export function SettingsPanel({
     setBusy('save');
     try {
       apply(await api<SettingsView>('POST', '/settings', next));
-      flash('Settings saved. They apply to the next recording.');
+      flash('Settings saved. They apply to the next recording or join.');
     } catch (err) {
       flash(onError(err), true);
     } finally {
@@ -326,8 +334,51 @@ export function SettingsPanel({
             </div>
           </div>
 
+          <div className="settings-group">
+            <h3 className="settings-group-title">Limits</h3>
+            <div className="settings-fields">
+              <label className="settings-field">
+                <span className="field-label">People per call</span>
+                <input
+                  className="field mono"
+                  type="number"
+                  inputMode="numeric"
+                  min={limits.peopleMin}
+                  max={limits.peopleMax}
+                  step={1}
+                  value={draft.maxPerRoom}
+                  onChange={(e) => set({ maxPerRoom: e.target.value })}
+                />
+                <span className="note">
+                  {limits.peopleMin}–{limits.peopleMax}.
+                  {info.room?.maxParticipants
+                    ? ` LiveKit refuses more than ${info.room.maxParticipants} in one room whatever this says; going above that means room.max_participants in livekit/config.yaml and a restart.`
+                    : ''}{' '}
+                  .env: {defaults.limits.maxPerRoom}
+                </span>
+              </label>
+              <label className="settings-field">
+                <span className="field-label">People across all calls</span>
+                <input
+                  className="field mono"
+                  type="number"
+                  inputMode="numeric"
+                  min={limits.peopleMin}
+                  max={limits.peopleMax}
+                  step={1}
+                  value={draft.maxTotal}
+                  onChange={(e) => set({ maxTotal: e.target.value })}
+                />
+                <span className="note">
+                  Everyone on this server at once. Past it a new call is refused with &ldquo;All calls on this server are full&rdquo;;
+                  people already in a call are never turned away. .env: {defaults.limits.maxTotal}
+                </span>
+              </label>
+            </div>
+          </div>
+
           <div className="settings-foot">
-            <span className="note">Changes apply to the next recording and transcript. No restart, no dropped calls.</span>
+            <span className="note">Recording and transcription changes apply to the next recording; limits apply to the next join. No restart, no dropped calls.</span>
             {view.saved && (
               <button type="button" className="key key-quiet" disabled={busy !== null} onClick={reset}>
                 <RotateCcw aria-hidden="true" />
@@ -357,6 +408,16 @@ export function SettingsPanel({
               <Row label="Public URL">{info.publicUrl ?? `not set (browsers get ${info.livekitUrl ?? '?'})`}</Row>
               <Row label="TURN">{info.turnDomain ? `turns:${info.turnDomain}:443` : 'off'}</Row>
               <Row label="Soniox region">{info.sonioxRegion}</Row>
+              {info.room && (
+                <>
+                  <Row label="Room closes">
+                    {info.room.departureTimeout}s after the last person leaves · {info.room.emptyTimeout / 60} min if nobody ever joins
+                  </Row>
+                  <Row label="LiveKit call limit">
+                    {info.room.maxParticipants ? `${info.room.maxParticipants} people per room` : 'none'}
+                  </Row>
+                </>
+              )}
               <Row label="LiveKit key pair">
                 <SecretState set={info.secrets.livekitApiKey} />
               </Row>

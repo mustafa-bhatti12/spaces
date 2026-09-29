@@ -163,10 +163,11 @@ graph LR
   `GET /recording/file/<file>` (consumer secret; no filename header, the consumer names it).
   Processing is in Soniox's US region; `SONIOX_REGION=in|eu|jp`
   needs a regional project and key from Soniox support.
-- **Recording/transcription settings can be changed from `/admin` → Settings, live**
+- **Recording, transcription and capacity settings can be changed from `/admin` → Settings, live**
   (`token-service/src/settings.ts`): transcription on/off, language hints, terms, translate-to,
-  audio bitrate and record-every-call. `.env` (`TRANSCRIPTION_*`, `RECORDING_AUDIO_KBPS`,
-  `RECORD_ALL_CALLS`) holds the defaults; a save writes `token-service/settings.json` (gitignored,
+  audio bitrate, record-every-call, and the two people limits. `.env` (`TRANSCRIPTION_*`,
+  `RECORDING_AUDIO_KBPS`, `RECORD_ALL_CALLS`, `MAX_PARTICIPANTS_*`) holds the defaults; a save
+  writes `token-service/settings.json` (gitignored,
   mode 600), which wins over `.env` until "Reset to .env" deletes it. Readers call `getSettings()`
   each time, so a change applies to the next recording/transcript with no restart. So on the
   droplet, check that file before trusting `.env` for these values. Everything else in Settings is
@@ -192,11 +193,15 @@ graph LR
   survive a reconnect; the recording and `room_finished` wait that long too) and
   `max_participants: 40`. On top of that `capacityFor()` (`livekit.ts`, checked in `/token` and when
   the waiting room admits someone) refuses a join with `503 {full: true}` past
-  `MAX_PARTICIPANTS_PER_ROOM` or `MAX_PARTICIPANTS_TOTAL` (both 40) — the second has no LiveKit
-  setting at all. Its counts come from `listRooms`, which lags real joins by about 3 s, so a
+  `limits.maxPerRoom` or `limits.maxTotal` (both 40) — the second has no LiveKit setting at all.
+  Those two are live settings (`settings.ts`: `MAX_PARTICIPANTS_PER_ROOM` /
+  `MAX_PARTICIPANTS_TOTAL` are only the defaults; `/admin` → Settings → Limits changes them with no
+  restart). Their counts come from `listRooms`, which lags real joins by about 3 s, so a
   simultaneous burst can overshoot the total slightly; the per-room number is exact because LiveKit
-  enforces it too. Keep the two per-room numbers in step. Changing the YAML needs
-  `systemctl restart spaces`; the env vars only need a pull.
+  enforces it too — which also means raising the setting past the YAML's `max_participants` does
+  nothing until a restart. `/admin` says so, reading the real numbers with
+  `livekitRoomDefaults()` (it parses `.runtime/livekit.yaml`, else the template, so nothing is
+  duplicated as a constant). Changing the YAML needs `systemctl restart spaces`.
 
 ## Embed mode
 
@@ -511,7 +516,7 @@ works from the same machine; test multi-device calls on the Railway deployment.
 - `token-service/src/livekit.ts` — all LiveKit SDK calls (tokens, rooms, participants, egress, path mapping).
 - `token-service/src/index.ts` — consumer routes, including the `/recording/webhook` receiver (LiveKit's events: auto-record, finish + transcribe, room cleanup) and `/recording/transcripts`.
 - `token-service/src/autoRecord.ts` — records a call from its first join (every call, or rooms marked on `/token`); remembers rooms someone stopped by hand.
-- `token-service/src/settings.ts` — recording/transcription settings: `.env` defaults, `/admin` overrides in `token-service/settings.json`, validation (unit-tested).
+- `token-service/src/settings.ts` — recording/transcription/limit settings: `.env` defaults, `/admin` overrides in `token-service/settings.json`, validation (unit-tested), and `livekitRoomDefaults()` (the `room:` block LiveKit runs with, for `/admin` to show).
 - `token-service/src/transcripts.ts` — Soniox transcription of finished recordings, transcript files/status, plain-text rendering, startup backfill.
 - `token-service/src/lobby.ts` + `lobbyRoutes.ts` — the waiting room: in-memory join requests (unit-tested) and the `/lobby/*` routes; a data message on topic `space.lobby` tells the host's client to refetch. `lobby.ts` also remembers who a host removed.
 - `token-service/src/moderationRoutes.ts` — `/room/mute`, `/room/remove`, `/room/spotlight` (host moderation); demo relay `demo/app/api/moderate/[action]`.

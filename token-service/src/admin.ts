@@ -18,7 +18,7 @@ import { collectSystemSnapshot, egressContainer } from './system';
 import { lobby } from './lobby';
 import * as autoRecord from './autoRecord';
 import { deleteTranscript, readTranscript, transcribeRecording, transcriptStates, transcriptToText } from './transcripts';
-import { defaultSettings, getSettings, hasSavedSettings, LIMITS, resetSettings, saveSettings } from './settings';
+import { defaultSettings, getSettings, hasSavedSettings, LIMITS, livekitRoomDefaults, resetSettings, saveSettings } from './settings';
 
 // systemd sets INVOCATION_ID for a unit's processes (inherited through start-all.sh), so it tells
 // "running as spaces.service on the droplet" apart from a local or hand-started stack.
@@ -193,6 +193,7 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       livekitUrl: process.env.LIVEKIT_URL || null,
       turnDomain: process.env.TURN_DOMAIN || null,
       sonioxRegion: process.env.SONIOX_REGION || 'us',
+      room: livekitRoomDefaults(),
       secrets: {
         livekitApiKey: !!process.env.LIVEKIT_API_KEY && !!process.env.LIVEKIT_API_SECRET,
         consumerSecret: !!process.env.TOKEN_SERVICE_SHARED_SECRET,

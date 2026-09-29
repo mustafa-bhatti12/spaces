@@ -14,8 +14,19 @@ process.env.TRANSCRIPTION_LANGUAGE_HINTS = 'en, ur';
 const valid = {
   transcription: { enabled: true, languageHints: ['en'], terms: ['USCIS'], translateTo: 'en' },
   recording: { audioKbps: 24, recordAllCalls: false },
+  limits: { maxPerRoom: 40, maxTotal: 40 },
 };
 const withKbps = (audioKbps: unknown) => ({ ...valid, recording: { ...valid.recording, audioKbps } });
+const withLimits = (limits: unknown) => ({ ...valid, limits });
+
+test('people limits are whole numbers, and the total is never below one call', () => {
+  assert.deepEqual(validateSettings(withLimits({ maxPerRoom: 8, maxTotal: 30 })).limits, { maxPerRoom: 8, maxTotal: 30 });
+  for (const bad of [1, 201, 12.5, '12', undefined]) {
+    assert.throws(() => validateSettings(withLimits({ maxPerRoom: bad, maxTotal: 40 })), /People per call/);
+    assert.throws(() => validateSettings(withLimits({ maxPerRoom: 40, maxTotal: bad })), /People across all calls/);
+  }
+  assert.throws(() => validateSettings(withLimits({ maxPerRoom: 40, maxTotal: 20 })), /fewer than people per call/);
+});
 
 test('bitrate must be a whole number within 12-128 kbps', () => {
   assert.equal(validateSettings(withKbps(12)).recording.audioKbps, 12);

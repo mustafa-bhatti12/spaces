@@ -242,20 +242,21 @@ export async function listActiveRooms(): Promise<ActiveRoom[]> {
  * Caps for this droplet (2 vCPU / 4 GB). The SFU forwards a stream per subscriber, so one runaway
  * room or a burst of them would spoil every other call on the box, and nothing else stops that:
  * LiveKit's own `room.max_participants` (livekit/config.yaml) covers a single room, and there is no
- * setting at all for the whole server. Hidden participants (the egress recorder) aren't counted.
- * Override per deployment with MAX_PARTICIPANTS_PER_ROOM / MAX_PARTICIPANTS_TOTAL.
+ * setting at all for the whole server. The numbers are live settings (.env defaults, changeable in
+ * /admin without a restart). Hidden participants (the egress recorder) aren't counted, and
+ * `listRooms` lags a join by a couple of seconds, so a simultaneous burst can overshoot the total
+ * slightly — the per-room number is exact because LiveKit enforces it too.
  */
-const cap = (name: string) => Math.max(1, Number(process.env[name]) || 40);
-
 export type Capacity = 'ok' | 'room-full' | 'server-full';
 
 /** Whether one more person can join `room` right now. Checked before minting a join token. */
 export async function capacityFor(room: string): Promise<Capacity> {
+  const { maxPerRoom, maxTotal } = getSettings().limits;
   const rooms = await roomService().listRooms();
   const total = rooms.reduce((sum, r) => sum + r.numParticipants, 0);
   const here = rooms.find((r) => r.name === room)?.numParticipants ?? 0;
-  if (here >= cap('MAX_PARTICIPANTS_PER_ROOM')) return 'room-full';
-  return total >= cap('MAX_PARTICIPANTS_TOTAL') ? 'server-full' : 'ok';
+  if (here >= maxPerRoom) return 'room-full';
+  return total >= maxTotal ? 'server-full' : 'ok';
 }
 
 export interface AdminTrack {

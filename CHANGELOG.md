@@ -5,6 +5,7 @@ the detail. Agents: add a line here with every change that ships (see `AGENTS.md
 
 ## 2026-09-29
 
+- **The call limits are in `/admin` → Settings.** A Limits group changes people per call and people across all calls live (no restart, applies to the next join, "Reset to .env" to go back), and the Droplet card now reports when a room closes (40 s after the last person leaves, 5 minutes if nobody ever joins) and LiveKit's own per-room limit, which only a restart changes.
 - **Limits, so one call can't take the server down:** 40 people per call and 40 across all calls at once (`MAX_PARTICIPANTS_PER_ROOM` / `MAX_PARTICIPANTS_TOTAL`, plus LiveKit's own per-room limit). Past either, the pre-join says the call — or the server — is full instead of failing obscurely. A room that nobody ever joins still closes itself after 5 minutes, and a finished call's room now closes 40 seconds after the last person leaves (was 20), so a reconnect during a blip rejoins the same call.
 - **No more hall of mirrors when you share your screen.** The Spaces tab is kept out of Chrome's picker, your own share is no longer played back to you (a green "You're sharing your screen" notice with a Stop key takes its place, like Meet), and you can switch to another tab or window mid-share without stopping first.
 - **The floating window shows everyone,** not just one person: up to four faces in a grid (`+N` when there are more), or the pinned person alone; you stay the corner self-view.

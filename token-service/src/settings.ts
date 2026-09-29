@@ -2,10 +2,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 /**
- * Recording and transcription settings an operator can change in /admin (Settings) without a
- * restart. token-service/.env holds the defaults; values saved from /admin go to a gitignored JSON
+ * Recording, transcription and capacity settings an operator can change in /admin (Settings) without
+ * a restart. token-service/.env holds the defaults; values saved from /admin go to a gitignored JSON
  * file next to it and win over .env until reset. Readers call getSettings() each time, so a change
- * applies to the next recording or transcript.
+ * applies to the next recording, transcript or join.
  */
 export interface RuntimeSettings {
   transcription: {
@@ -24,12 +24,50 @@ export interface RuntimeSettings {
     /** Record every call from its first join, not only rooms marked on /token. */
     recordAllCalls: boolean;
   };
+  limits: {
+    /** Most people in one call. LiveKit's room.max_participants caps it too (livekit/config.yaml). */
+    maxPerRoom: number;
+    /** Most people across every call on this server at once; nothing but token-service knows this. */
+    maxTotal: number;
+  };
 }
 
 // Read when first needed (not at import), after dotenv has loaded .env.
 const settingsFile = () => process.env.SPACES_SETTINGS_FILE ?? path.join(__dirname, '..', 'settings.json');
 
-export const LIMITS = { kbpsMin: 12, kbpsMax: 128, maxHints: 10, maxTerms: 100, maxTermLength: 100 } as const;
+export const LIMITS = { kbpsMin: 12, kbpsMax: 128, maxHints: 10, maxTerms: 100, maxTermLength: 100, peopleMin: 2, peopleMax: 200 } as const;
+
+export interface LivekitRoomDefaults {
+  /** Seconds a room nobody ever joined stays open. */
+  emptyTimeout: number;
+  /** Seconds a room stays open after the last person leaves. */
+  departureTimeout: number;
+  /** LiveKit's own per-room cap; 0 = none. */
+  maxParticipants: number;
+}
+
+/**
+ * The `room:` block LiveKit is actually running with — `.runtime/livekit.yaml` on a VPS (rendered by
+ * start-all.sh), else the committed template. /admin shows these next to the live limits so an
+ * operator can see the numbers only a restart can change. Read from the file rather than repeated as
+ * constants, so the two can't drift. null when neither file is readable.
+ */
+export function livekitRoomDefaults(): LivekitRoomDefaults | null {
+  const root = path.join(__dirname, '..', '..');
+  for (const file of [path.join(root, '.runtime', 'livekit.yaml'), path.join(root, 'livekit', 'config.yaml')]) {
+    let block: string;
+    try {
+      // The room: block runs until the next top-level key.
+      block = /^room:\n((?:[ \t]+.*\n?)*)/m.exec(fs.readFileSync(file, 'utf8'))?.[1] ?? '';
+    } catch {
+      continue;
+    }
+    const seconds = (key: string) => Number(new RegExp(`^\\s+${key}:\\s*(\\d+)`, 'm').exec(block)?.[1]);
+    const room = { emptyTimeout: seconds('empty_timeout'), departureTimeout: seconds('departure_timeout'), maxParticipants: seconds('max_participants') };
+    if (Object.values(room).every(Number.isFinite)) return room;
+  }
+  return null;
+}
 const LANGUAGE = /^[a-z]{2,3}$/;
 
 function envList(name: string): string[] {
@@ -53,7 +91,17 @@ export function defaultSettings(): RuntimeSettings {
       audioKbps: Number.isInteger(kbps) && kbps > 0 ? kbps : 24,
       recordAllCalls: process.env.RECORD_ALL_CALLS === '1',
     },
+    limits: {
+      maxPerRoom: envCount('MAX_PARTICIPANTS_PER_ROOM'),
+      maxTotal: envCount('MAX_PARTICIPANTS_TOTAL'),
+    },
   };
+}
+
+/** A people count from .env, falling back to 40. */
+function envCount(name: string): number {
+  const value = Number(process.env[name]);
+  return Number.isInteger(value) && value >= LIMITS.peopleMin && value <= LIMITS.peopleMax ? value : 40;
 }
 
 function cleanList(value: unknown, field: string): string[] {
@@ -63,9 +111,14 @@ function cleanList(value: unknown, field: string): string[] {
 
 /** Checks a full settings object from /admin; throws an Error whose message is shown to the operator. */
 export function validateSettings(input: unknown): RuntimeSettings {
-  const body = (input ?? {}) as { transcription?: Record<string, unknown>; recording?: Record<string, unknown> };
+  const body = (input ?? {}) as {
+    transcription?: Record<string, unknown>;
+    recording?: Record<string, unknown>;
+    limits?: Record<string, unknown>;
+  };
   const t = body.transcription ?? {};
   const r = body.recording ?? {};
+  const l = body.limits ?? {};
   if (typeof t.enabled !== 'boolean') throw new Error('transcription.enabled must be true or false.');
   if (typeof r.recordAllCalls !== 'boolean') throw new Error('recording.recordAllCalls must be true or false.');
 
@@ -88,9 +141,20 @@ export function validateSettings(input: unknown): RuntimeSettings {
     throw new Error(`Audio bitrate must be a whole number from ${LIMITS.kbpsMin} to ${LIMITS.kbpsMax} kbps.`);
   }
 
+  const people = (value: unknown, field: string): number => {
+    if (typeof value !== 'number' || !Number.isInteger(value) || value < LIMITS.peopleMin || value > LIMITS.peopleMax) {
+      throw new Error(`${field} must be a whole number from ${LIMITS.peopleMin} to ${LIMITS.peopleMax}.`);
+    }
+    return value;
+  };
+  const maxPerRoom = people(l.maxPerRoom, 'People per call');
+  const maxTotal = people(l.maxTotal, 'People across all calls');
+  if (maxTotal < maxPerRoom) throw new Error('People across all calls can\u2019t be fewer than people per call.');
+
   return {
     transcription: { enabled: t.enabled, languageHints, terms, translateTo },
     recording: { audioKbps, recordAllCalls: r.recordAllCalls },
+    limits: { maxPerRoom, maxTotal },
   };
 }
 
