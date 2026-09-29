@@ -9,6 +9,8 @@ interface MenuProps {
   trigger: ReactNode;
   /** Extra classes on the trigger key. */
   triggerClassName?: string;
+  /** Base class of the trigger: a dock `key` unless a smaller control (e.g. a row action) needs its own. */
+  triggerBase?: string;
   /** Panel content; call `close` after an item acts. */
   children: (close: () => void) => ReactNode;
   panelClassName?: string;
@@ -18,7 +20,7 @@ interface MenuProps {
  * A dock key that opens a panel above it. Closes on outside pointer, Escape (returning focus to the
  * key), or when an item calls `close`.
  */
-export function Menu({ label, trigger, triggerClassName = '', children, panelClassName = '' }: MenuProps) {
+export function Menu({ label, trigger, triggerClassName = '', triggerBase = 'key', children, panelClassName = '' }: MenuProps) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -47,7 +49,7 @@ export function Menu({ label, trigger, triggerClassName = '', children, panelCla
       <button
         ref={triggerRef}
         type="button"
-        className={`key ${triggerClassName}`}
+        className={`${triggerBase} ${triggerClassName}`}
         aria-haspopup="true"
         aria-expanded={open}
         aria-controls={open ? panelId : undefined}

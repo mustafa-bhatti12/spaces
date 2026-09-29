@@ -41,6 +41,7 @@ export async function lobbyRoutes(app: FastifyInstance): Promise<void> {
     if (typeof room !== 'string' || !room || typeof identity !== 'string' || !identity || typeof name !== 'string' || !name) {
       return reply.code(400).send({ error: 'room, identity and name are required strings.' });
     }
+    if (lobby.isRemoved(room, identity)) return reply.code(403).send({ error: 'A host removed you from this call.', removed: true });
     const request = lobby.ask(room, identity, name);
     tellRoom(room);
     return { requestId: request.id };

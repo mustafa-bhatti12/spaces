@@ -13,6 +13,7 @@ import {
   RoomAudioRenderer,
   useConnectionState,
   useCreateLayoutContext,
+  useDataChannel,
   useLocalParticipant,
   useParticipants,
   usePinnedTracks,
@@ -95,12 +96,14 @@ export function ConferenceLayout({
   const focusTrack = usePinnedTracks(layoutContext)?.[0];
   const carouselTracks = tracks.filter((track) => !isEqualTrackRef(track, focusTrack));
   const lastAutoFocused = useRef<TrackReferenceOrPlaceholder | null>(null);
+  // A host pinned someone for everyone (room metadata); ignored once they've left.
+  const spotlight = hosting.spotlight && participants.some((p) => p.identity === hosting.spotlight) ? hosting.spotlight : null;
 
   // Same auto-focus rules as LiveKit's VideoConference: a new screen share takes the stage until it
   // ends, unless the user pinned something else.
   const screenShareKey = screenShareTracks.map((ref) => `${ref.publication.trackSid}_${ref.publication.isSubscribed}`).join();
   useEffect(() => {
-    if (screenShareTracks.some((track) => track.publication.isSubscribed) && lastAutoFocused.current === null) {
+    if (!spotlight && screenShareTracks.some((track) => track.publication.isSubscribed) && lastAutoFocused.current === null) {
       layoutContext.pin.dispatch?.({ msg: 'set_pin', trackReference: screenShareTracks[0] });
       lastAutoFocused.current = screenShareTracks[0];
     } else if (
@@ -168,6 +171,42 @@ export function ConferenceLayout({
     }
     wasHost.current = hosting.isHost;
   }, [connectionState, hosting.isHost, flash]);
+
+  // The tile a pin puts on the stage: the person's screen share while they share, else their camera.
+  const stageTrackOf = (identity: string) =>
+    tracks.find((t) => t.participant.identity === identity && t.source === Track.Source.ScreenShare) ??
+    tracks.find((t) => t.participant.identity === identity && t.source === Track.Source.Camera);
+
+  // Pin for me: our own stage only, same as clicking a tile's focus toggle.
+  const pinForMe = (identity: string | null) => {
+    const target = identity ? stageTrackOf(identity) : undefined;
+    lastAutoFocused.current = null;
+    if (target) layoutContext.pin.dispatch?.({ msg: 'set_pin', trackReference: target });
+    else layoutContext.pin.dispatch?.({ msg: 'clear_pin' });
+  };
+
+  // Follow a host's pin for everyone. Applied only when it changes, so anyone can still pin
+  // something else for themselves afterwards.
+  const spotlightTrack = spotlight ? stageTrackOf(spotlight) : undefined;
+  const spotlightSource = spotlightTrack?.source ?? null;
+  const applied = useRef<{ identity: string | null; source: Track.Source | null }>({ identity: null, source: null });
+  useEffect(() => {
+    const previous = applied.current;
+    if ((previous.identity === spotlight && previous.source === spotlightSource) || (spotlight && !spotlightTrack)) return;
+    applied.current = { identity: spotlight, source: spotlightSource };
+    lastAutoFocused.current = null; // a screen share ending must not clear the host's pin
+    if (spotlightTrack) layoutContext.pin.dispatch?.({ msg: 'set_pin', trackReference: spotlightTrack });
+    else layoutContext.pin.dispatch?.({ msg: 'clear_pin' });
+    if (previous.identity === spotlight) return; // same person, only the source changed
+    if (spotlight) {
+      const who = participants.find((p) => p.identity === spotlight);
+      flash(who?.isLocal ? "You're pinned for everyone" : `${who?.name || 'Someone'} is pinned for everyone`);
+    } else flash('Unpinned for everyone');
+    // Keyed on identity and source; the track object itself changes on every update.
+  }, [spotlight, spotlightSource]);
+
+  // token-service tells only the person a host muted (moderationRoutes MUTED_TOPIC).
+  useDataChannel('space.muted', () => flash('A host muted your mic'));
 
   const openChat = useCallback(() => {
     if (!widget.showChat) layoutContext.widget.dispatch?.({ msg: 'toggle_chat' });
@@ -270,7 +309,15 @@ export function ConferenceLayout({
             />
           </div>
           <Chat style={{ display: widget.showChat ? undefined : 'none' }} />
-          {sidePanel === 'people' && <ParticipantsPanel hosting={hosting} lobby={lobby} onClose={() => setSidePanel(null)} />}
+          {sidePanel === 'people' && (
+            <ParticipantsPanel
+              hosting={hosting}
+              lobby={lobby}
+              pinnedForMe={focusTrack?.participant.identity ?? null}
+              onPinForMe={pinForMe}
+              onClose={() => setSidePanel(null)}
+            />
+          )}
           {sidePanel === 'settings' && <SettingsPanel background={background} noiseFilter={noiseFilter} onClose={() => setSidePanel(null)} />}
         </LayoutContextProvider>
       </div>

@@ -65,15 +65,19 @@ export interface RoomSettings {
   hosts: string[];
   /** New joiners who aren't a host wait for a host to admit them (see lobby.ts). */
   waitingRoom: boolean;
+  /** A host pinned this participant for everyone (setSpotlight); null when nobody is. */
+  spotlight: string | null;
 }
+
+const NO_SETTINGS: RoomSettings = { hosts: [], waitingRoom: false, spotlight: null };
 
 function parseRoomSettings(metadata: string | undefined): RoomSettings {
   try {
     const m = JSON.parse(metadata || '{}');
     const hosts = Array.isArray(m.hosts) ? m.hosts.filter((h: unknown): h is string => typeof h === 'string' && h !== '') : [];
-    return { hosts, waitingRoom: m.waitingRoom === true };
+    return { hosts, waitingRoom: m.waitingRoom === true, spotlight: typeof m.spotlight === 'string' && m.spotlight ? m.spotlight : null };
   } catch {
-    return { hosts: [], waitingRoom: false };
+    return NO_SETTINGS;
   }
 }
 
@@ -92,8 +96,9 @@ export async function getRoomSettings(room: string): Promise<RoomSettings | null
 export async function recordRoomHost(room: string, identity: string, waitingRoom?: boolean): Promise<void> {
   const svc = roomService();
   const [existing] = await svc.listRooms([room]);
-  const current = existing ? parseRoomSettings(existing.metadata) : { hosts: [], waitingRoom: false };
+  const current = existing ? parseRoomSettings(existing.metadata) : NO_SETTINGS;
   const next: RoomSettings = {
+    ...current,
     hosts: current.hosts.includes(identity) ? current.hosts : [...current.hosts, identity],
     waitingRoom: waitingRoom ?? current.waitingRoom,
   };
@@ -125,9 +130,19 @@ export async function setWaitingRoom(room: string, enabled: boolean): Promise<vo
   await roomService().updateRoomMetadata(room, JSON.stringify({ ...settings, waitingRoom: enabled }));
 }
 
-/** Tells every client in the room something changed on `topic` (a hint to refetch; the byte is a placeholder). */
-export async function notifyRoom(room: string, topic: string): Promise<void> {
-  await roomService().sendData(room, new Uint8Array([1]), DataPacket_Kind.RELIABLE, { topic });
+/** Pins `identity` for everyone in the room (null unpins). Clients follow it from room metadata. */
+export async function setSpotlight(room: string, identity: string | null): Promise<void> {
+  const settings = await getRoomSettings(room);
+  if (!settings || settings.spotlight === identity) return;
+  await roomService().updateRoomMetadata(room, JSON.stringify({ ...settings, spotlight: identity }));
+}
+
+/**
+ * Tells clients something changed on `topic` (a hint to refetch or react; the byte is a
+ * placeholder). Everyone in the room, or only `to` when given.
+ */
+export async function notifyRoom(room: string, topic: string, to?: string[]): Promise<void> {
+  await roomService().sendData(room, new Uint8Array([1]), DataPacket_Kind.RELIABLE, { topic, destinationIdentities: to });
 }
 
 /**
@@ -249,6 +264,19 @@ export async function listRoomsWithParticipants(): Promise<AdminRoom[]> {
 
 export async function removeParticipant(room: string, identity: string): Promise<void> {
   await roomService().removeParticipant(room, identity);
+}
+
+/**
+ * Mutes `identity`'s microphone from the server. They can unmute themselves again (as in Meet);
+ * nobody can unmute someone else. False when they aren't in the room or have no live mic.
+ */
+export async function muteMicrophone(room: string, identity: string): Promise<boolean> {
+  const svc = roomService();
+  const participant = await svc.getParticipant(room, identity).catch(() => null);
+  const mic = participant?.tracks.find((t) => t.source === TrackSource.MICROPHONE && !t.muted);
+  if (!mic) return false;
+  await svc.mutePublishedTrack(room, identity, mic.sid, true);
+  return true;
 }
 
 export async function setTrackMuted(room: string, identity: string, trackSid: string, muted: boolean): Promise<void> {

@@ -86,7 +86,7 @@ graph LR
 - `token-service` is the **only** thing in this repo (or any consumer) that ever holds real LiveKit
   credentials. Everything else gets a short-lived, room-scoped join token.
 - **Two bearer secrets, checked in `token-service/src/auth.ts`:** `TOKEN_SERVICE_SHARED_SECRET` for
-  consumer routes (`/token`, `/embed/session`, `/rooms`, `/participant`, `/recording/*`, `/room/end`, `/room/host`, `/lobby/*`) — held by `demo` and later
+  consumer routes (`/token`, `/embed/session`, `/rooms`, `/participant`, `/recording/*`, `/room/end`, `/room/host`, `/room/mute|remove|spotlight`, `/lobby/*`) — held by `demo` and later
   Petition Studio's API; `ADMIN_SHARED_SECRET` for the operator-only `/admin/*` routes (remove people,
   close rooms, delete recordings) — held only by `demo`'s `/admin` server routes
   (`demo/lib/server/tokenService.ts`, `kind: 'admin'`). Never give a consumer the admin secret; a
@@ -98,13 +98,22 @@ graph LR
   reports `hosts`). `/room/host` lets a host make someone in the call a host or stop them hosting
   (never themselves, so a room can't lose its last host that way; someone demoted is admitted so
   they can rejoin past the waiting room). Every host action (`/room/end`, `/room/host`,
-  `/lobby/pending|answer|settings`) takes the caller's own join token, verifies it (`tokenIdentity`;
+  `/room/mute|remove|spotlight`, `/lobby/pending|answer|settings`) takes the caller's own join token, verifies it (`tokenIdentity`;
   expired tokens accepted for 24 h, since calls outlive the 2 h TTL) and checks that identity is in
   `hosts` right now (`hostIdentity`), so a promotion or demotion takes effect with no new token.
   Clients read the same metadata to show who hosts (tamper-proof, unlike participant attributes).
   The demo's rule (`demo/app/api/connect/route.ts`): no recorded host, or you are in `hosts` → you
   host. Since demo identities are unauthenticated device ids, that's only as strong as the demo's
   join itself; a real consumer passes `host` from its own auth.
+- **Host moderation** (`token-service/src/moderationRoutes.ts`, the row menu in People): pin someone
+  for everyone (`spotlight` in the same room metadata; every client puts that person's screen share,
+  else camera, on its stage when it changes, and anyone can still pin someone else for themselves),
+  mute someone's mic (server-side `mutePublishedTrack`; they can unmute themselves; a `space.muted`
+  data message to them alone shows "A host muted your mic"), and remove someone. A host removal
+  blocks that identity from `/token` and `/lobby/ask` (403) until the room ends (`lobby.remove`, in
+  memory); an admin removal still only revokes admission. Nobody moderates themselves, and a host
+  can't remove another host (stop them hosting first). Every participant also gets "Pin for me" in
+  that menu (local only, same as the tile's focus toggle).
 - **The waiting room is enforced in token-service, not left to the consumer.** It's a
   `waitingRoom` flag in the same room metadata as `hosts` (set by a host on `/token` or
   `/lobby/settings`). With it on, `/token` for a non-host answers `409` unless a host already
@@ -175,6 +184,7 @@ token-service `POST /token` (consumer secret, `host: true|false`; tokens live 2 
   talks when `?origin=` is in the same list.
 - **What's different when embedded:** no invite/copy-link keys, no waiting room, only hosts see
   Record/Stop, and nobody can make or remove hosts — the consumer decides hosts through the token.
+  Hosts can still pin for everyone, mute and remove.
 - **Bridge `spaces-embed/1`** (postMessage, `demo/lib/embed.ts`, `EmbedBridge.tsx`). Spaces → parent:
   `ready`, `joined {room, identity}`, `left {reason}`, `recording {active}`,
   `screenshare {active, surface}`, `data {topic, payload, from, fromHost}`, and `expired` (the token
@@ -450,7 +460,8 @@ works from the same machine; test multi-device calls on the Railway deployment.
 - `token-service/src/index.ts` — consumer routes, including the `/recording/webhook` receiver (LiveKit's events: auto-record, finish + transcribe, room cleanup) and `/recording/transcripts`.
 - `token-service/src/autoRecord.ts` — records every call from its first join; remembers rooms someone stopped by hand.
 - `token-service/src/transcripts.ts` — Soniox transcription of finished recordings, transcript files/status, plain-text rendering, startup backfill.
-- `token-service/src/lobby.ts` + `lobbyRoutes.ts` — the waiting room: in-memory join requests (unit-tested) and the `/lobby/*` routes; a data message on topic `space.lobby` tells the host's client to refetch.
+- `token-service/src/lobby.ts` + `lobbyRoutes.ts` — the waiting room: in-memory join requests (unit-tested) and the `/lobby/*` routes; a data message on topic `space.lobby` tells the host's client to refetch. `lobby.ts` also remembers who a host removed.
+- `token-service/src/moderationRoutes.ts` — `/room/mute`, `/room/remove`, `/room/spotlight` (host moderation); demo relay `demo/app/api/moderate/[action]`.
 - `token-service/src/admin.ts` — the operator `/admin/*` routes (overview, health, system metrics, moderation, recording files with Range support).
 - `token-service/src/system.ts` — `GET /admin/system`: host CPU/memory/network, per-service process rows, versions, TLS expiry, deployed commit. Linux-only parts return null on macOS; rates are deltas between calls (first call after a restart has nulls). It runs on every console poll, so keep it cheap; the comments explain why it reads cgroup files instead of `docker stats`.
 - `token-service/src/recordings.ts` — recording directories, safe filename resolution, file listing, `finishRecording` (webhook: raw/ → compressed/).

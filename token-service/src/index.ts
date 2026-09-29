@@ -24,6 +24,7 @@ import * as autoRecord from './autoRecord';
 import { adminRoutes } from './admin';
 import { lobby } from './lobby';
 import { lobbyRoutes } from './lobbyRoutes';
+import { moderationRoutes } from './moderationRoutes';
 import { embedRoutes } from './embedRoutes';
 
 const fastify = Fastify();
@@ -76,6 +77,11 @@ fastify.post<{ Body: { room?: string; identity?: string; name?: string; host?: b
     }
 
     try {
+      if (host !== true && lobby.isRemoved(room, identity)) {
+        // A host removed them; they stay out until the room ends.
+        reply.code(403).send({ error: 'A host removed you from this call.', removed: true });
+        return;
+      }
       if (host === true) {
         // The caller decides who hosts; recording it lets GET /rooms report it on the next join.
         // A host may also set the waiting room as they join.
@@ -295,6 +301,7 @@ fastify.register(async (scoped) => {
 fastify.register(adminRoutes, { prefix: '/admin' });
 fastify.register(lobbyRoutes, { prefix: '/lobby' });
 fastify.register(embedRoutes, { prefix: '/embed' });
+fastify.register(moderationRoutes, { prefix: '/room' });
 
 const port = Number(process.env.PORT ?? 8880);
 fastify

@@ -41,7 +41,7 @@ const END_SCREENS: Record<LeaveReason['kind'], { title: string; body: string; ic
   },
   removed: {
     title: 'You were removed from the call',
-    body: 'The host removed you. You can rejoin with the room link.',
+    body: "A host removed you. You can't rejoin this call.",
     icon: UserX,
     signal: 'alert',
   },

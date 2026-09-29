@@ -33,7 +33,7 @@ Space is a neutral, unbranded video tool that any future app can embed through t
 - Call features:
   - pre-join with device preview and your last name filled in; the host can turn on a waiting room there
   - waiting room: guests ask to join, the host admits or denies (one by one or all), requests end after 10 minutes unanswered
-  - grid and focus layouts (auto-focus on screen share, click to pin)
+  - grid and focus layouts (auto-focus on screen share; anyone can pin someone for themselves, from a tile or the People menu)
   - chat
   - participants panel
   - device settings
@@ -46,7 +46,7 @@ Space is a neutral, unbranded video tool that any future app can embed through t
   - fullscreen
   - reconnect banner and a weak-connection readout
   - notifications: chat messages, people joining, join requests (host), "you're the only one here"
-  - host (whoever started the room) can end the call for everyone and make others hosts too; everyone confirms Leave
+  - host (whoever started the room) can end the call for everyone, make others hosts, pin someone for everyone, mute someone's mic, and remove someone (they can't rejoin that call); everyone confirms Leave
   - audio first on weak connections: the camera is sent at lower priority than the mic; video is never paused
   - relay over HTTPS (TURN on 443) for networks that block direct media
   - end screens: left, you ended the call, call ended (by the host or an admin), removed, duplicate tab, error, request declined, no response; with how long you were in and how many joined

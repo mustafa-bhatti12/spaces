@@ -60,3 +60,16 @@ test('an asker that stops polling disappears from the pending list', () => {
   assert.deepEqual([...lobby.sweep()], ['r']);
   assert.equal(lobby.poll(a.id), null);
 });
+
+test('a host removal keeps that identity out of that room until the room ends', () => {
+  const lobby = new Lobby(clock().now);
+  const ask = lobby.ask('r', 'alice', 'Alice');
+  lobby.admit('r', 'alice');
+  lobby.remove('r', 'alice');
+  assert.equal(lobby.isRemoved('r', 'alice'), true);
+  assert.equal(lobby.isAdmitted('r', 'alice'), false);
+  assert.equal(lobby.poll(ask.id)?.status, 'denied');
+  assert.equal(lobby.isRemoved('other', 'alice'), false);
+  lobby.forgetRoom('r');
+  assert.equal(lobby.isRemoved('r', 'alice'), false);
+});

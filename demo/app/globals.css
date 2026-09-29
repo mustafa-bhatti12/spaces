@@ -984,7 +984,7 @@ code { font: 0.875em var(--mono); background: var(--key); padding: 1px 6px; bord
 .icon-off { color: var(--alert-ink); }
 .icon-hand { color: var(--warn); }
 .person-status-error { color: var(--alert-ink); }
-/* Host only: make someone a host / stop them hosting. Shown on row hover or focus; always on touch. */
+/* Host only: the row's host menu (pin, mute, host, remove). Shown on row hover or focus; always on touch. */
 .person-action {
   display: grid;
   place-items: center;
@@ -1000,7 +1000,20 @@ code { font: 0.875em var(--mono); background: var(--key); padding: 1px 6px; bord
   opacity: 0;
   transition: opacity 150ms var(--ease-out), background-color 150ms var(--ease-out), color 150ms var(--ease-out);
 }
-.person:hover .person-action, .person:focus-within .person-action { opacity: 1; }
+.person:hover .person-action, .person:focus-within .person-action, .person-action[aria-expanded='true'] { opacity: 1; }
+/* The row menu opens below its trigger, right-aligned, instead of above the dock. */
+.person-menu {
+  top: calc(100% + 6px);
+  right: 0;
+  bottom: auto;
+  left: auto;
+  transform: none;
+  transform-origin: top right;
+  animation-name: person-menu-in;
+}
+@keyframes person-menu-in { from { opacity: 0; transform: translateY(-4px) scale(0.98); } }
+.person-menu { color: var(--ink); }
+.menu-item-danger, .menu-item-danger svg { color: var(--alert-ink); }
 .person-action:hover { background: var(--key); color: var(--ink); }
 .person-action:disabled { cursor: progress; opacity: 0.5; }
 @media (hover: none) {
@@ -1646,6 +1659,7 @@ code { font: 0.875em var(--mono); background: var(--key); padding: 1px 6px; bord
   .dock-readout .readout-seg svg { width: 11px; height: 11px; }
   .dock-readout .led { width: 6px; height: 6px; }
   .menu-panel { position: fixed; left: 8px; right: 8px; bottom: 72px; transform: none; animation-name: sheet-in; }
+  .person-menu { top: auto; }
   .toast-slot { bottom: 84px; }
   /* Phones: a notification banner across the top (over the room readout), newest first, two chat or
      join cards at most. The host's join request and the alone card stay on top and are never cut. */

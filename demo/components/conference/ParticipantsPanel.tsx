@@ -10,8 +10,9 @@ import {
 } from '@livekit/components-react';
 import type { Participant } from 'livekit-client';
 import { Track } from 'livekit-client';
-import { Hand, Mic, MicOff, ShieldMinus, ShieldPlus, Video, VideoOff } from 'lucide-react';
+import { Hand, Mic, MicOff, MoreVertical, Pin, PinOff, ShieldMinus, ShieldPlus, UserX, Video, VideoOff } from 'lucide-react';
 import { useState } from 'react';
+import { Menu } from '../ui/Menu';
 import { SidePanel } from './SidePanel';
 import { initials } from '../ui/Device';
 import { SwitchRow } from '../ui/SwitchRow';
@@ -20,38 +21,59 @@ import type { Hosting } from './useHosts';
 import type { WaitingRoomControls } from './useWaitingRoom';
 import { useEmbed } from '../embed/EmbedContext';
 
+/** What a host can do to someone from their row. Absent when we don't host. */
+interface HostActions {
+  setPinned: (pinned: boolean) => Promise<void>;
+  /** Absent for ourselves. */
+  mute?: () => Promise<void>;
+  /** Absent for ourselves, and inside an embed (the consumer decides hosts through the token). */
+  setHost?: (host: boolean) => Promise<void>;
+  /** Absent for ourselves. */
+  remove?: () => Promise<void>;
+}
+
 function ParticipantRow({
   participant,
   host,
-  onSetHost,
+  pinned,
+  pinnedForMe,
+  onPinForMe,
+  actions,
 }: {
   participant: Participant;
   host: boolean;
-  /** Present when we host and this is someone else: make them a host, or stop them hosting. */
-  onSetHost?: (host: boolean) => Promise<void>;
+  /** A host pinned this person for everyone. */
+  pinned: boolean;
+  /** On our own screen only: this person is on the stage. */
+  pinnedForMe: boolean;
+  onPinForMe: (pin: boolean) => void;
+  actions?: HostActions;
 }) {
   const speaking = useIsSpeaking(participant);
   const hand = useParticipantAttribute(HAND_ATTRIBUTE, { participant });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [confirmRemove, setConfirmRemove] = useState(false);
   const { name: infoName, identity } = useParticipantInfo({ participant });
   const { isMuted: micMuted } = useTrackMutedIndicator({ participant, source: Track.Source.Microphone });
   const { isMuted: camMuted } = useTrackMutedIndicator({ participant, source: Track.Source.Camera });
   const name = infoName || identity || 'Guest';
-  const status = error || (hand ? 'Hand raised' : speaking ? 'Speaking' : participant.isScreenShareEnabled ? 'Sharing screen' : '');
-  const setHost = async () => {
-    if (!onSetHost) return;
+  const status =
+    error ||
+    (hand ? 'Hand raised' : speaking ? 'Speaking' : participant.isScreenShareEnabled ? 'Sharing screen' : pinned ? 'Pinned for everyone' : '');
+  const run = async (action: () => Promise<void>, close: () => void) => {
+    close();
+    setConfirmRemove(false);
     setBusy(true);
     setError('');
     try {
-      await onSetHost(!host);
+      await action();
     } catch (err) {
       setError((err as Error).message);
     } finally {
       setBusy(false);
     }
   };
-  const hostAction = host ? `Remove ${name} as host` : `Make ${name} a host`;
 
   return (
     <li className={`person${speaking ? ' person-speaking' : ''}`}>
@@ -67,15 +89,70 @@ function ParticipantRow({
         {status && <span className={`person-status${error ? ' person-status-error' : hand ? ' person-status-hand' : ''}`}>{status}</span>}
       </span>
       <span className="person-icons">
+        {pinned && <Pin aria-label="Pinned for everyone" />}
         {hand && <Hand className="icon-hand" aria-label="Hand raised" />}
         {micMuted ? <MicOff className="icon-off" aria-label="Mic off" /> : <Mic aria-label="Mic on" />}
         {camMuted ? <VideoOff className="icon-off" aria-label="Camera off" /> : <Video aria-label="Camera on" />}
         <ConnectionQualityIndicator participant={participant} />
-        {onSetHost && (
-          <button type="button" className="person-action" disabled={busy} onClick={setHost} aria-label={hostAction} title={hostAction}>
-            {host ? <ShieldMinus aria-hidden="true" /> : <ShieldPlus aria-hidden="true" />}
-          </button>
-        )}
+        <Menu
+          label={`Options for ${name}`}
+          triggerBase="person-action"
+          panelClassName="person-menu"
+          trigger={<MoreVertical aria-hidden="true" />}
+        >
+          {(close) => (
+            <>
+              <button
+                type="button"
+                className="menu-item"
+                onClick={() => {
+                  close();
+                  onPinForMe(!pinnedForMe);
+                }}
+              >
+                {pinnedForMe ? <PinOff aria-hidden="true" /> : <Pin aria-hidden="true" />}
+                <span className="menu-item-text">{pinnedForMe ? 'Unpin for me' : 'Pin for me'}</span>
+                <span className="menu-item-hint">Only you</span>
+              </button>
+              {actions && (
+                <>
+                <span className="menu-sep" role="separator" />
+                <button type="button" className="menu-item" disabled={busy} onClick={() => run(() => actions.setPinned(!pinned), close)}>
+                  {pinned ? <PinOff aria-hidden="true" /> : <Pin aria-hidden="true" />}
+                  <span className="menu-item-text">{pinned ? 'Unpin for everyone' : 'Pin for everyone'}</span>
+                </button>
+                {actions.mute && !micMuted && (
+                  <button type="button" className="menu-item" disabled={busy} onClick={() => run(actions.mute!, close)}>
+                    <MicOff aria-hidden="true" />
+                    <span className="menu-item-text">Mute mic</span>
+                  </button>
+                )}
+                {actions.setHost && (
+                  <button type="button" className="menu-item" disabled={busy} onClick={() => run(() => actions.setHost!(!host), close)}>
+                    {host ? <ShieldMinus aria-hidden="true" /> : <ShieldPlus aria-hidden="true" />}
+                    <span className="menu-item-text">{host ? 'Stop hosting' : 'Make a host'}</span>
+                  </button>
+                )}
+                {actions.remove && !host && (
+                  <>
+                    <span className="menu-sep" role="separator" />
+                    <button
+                      type="button"
+                      className="menu-item menu-item-danger"
+                      disabled={busy}
+                      onClick={() => (confirmRemove ? run(actions.remove!, close) : setConfirmRemove(true))}
+                    >
+                      <UserX aria-hidden="true" />
+                      <span className="menu-item-text">{confirmRemove ? `Remove ${name}?` : 'Remove from call'}</span>
+                      {confirmRemove && <span className="menu-item-hint">Can&apos;t rejoin</span>}
+                    </button>
+                  </>
+                )}
+                </>
+              )}
+            </>
+          )}
+        </Menu>
       </span>
     </li>
   );
@@ -145,16 +222,23 @@ function WaitingRoomSection({ lobby }: { lobby: WaitingRoomControls }) {
 }
 
 /**
- * Everyone in the room, raised hands first, then speakers, then by name. Hosts also see the waiting
- * room, and can make anyone else a host (or stop them hosting).
+ * Everyone in the room, raised hands first, then speakers, then by name. Each row's menu pins that
+ * person on our own screen; hosts also get pin for everyone, mute, make or stop hosting, and remove,
+ * plus the waiting room.
  */
 export function ParticipantsPanel({
   hosting,
   lobby,
+  pinnedForMe,
+  onPinForMe,
   onClose,
 }: {
   hosting: Hosting;
   lobby: WaitingRoomControls | null;
+  /** Whose tile is on our own stage right now (ours only), or null. */
+  pinnedForMe: string | null;
+  /** Puts that person on our own stage (null clears it). */
+  onPinForMe: (identity: string | null) => void;
   onClose: () => void;
 }) {
   const participants = useParticipants();
@@ -175,7 +259,19 @@ export function ParticipantsPanel({
             key={p.identity}
             participant={p}
             host={hosting.hosts.includes(p.identity)}
-            onSetHost={!embed && hosting.isHost && !p.isLocal ? (host) => hosting.setHost(p.identity, host) : undefined}
+            pinned={hosting.spotlight === p.identity}
+            pinnedForMe={pinnedForMe === p.identity}
+            onPinForMe={(pin) => onPinForMe(pin ? p.identity : null)}
+            actions={
+              hosting.isHost
+                ? {
+                    setPinned: (pinned) => hosting.setSpotlight(pinned ? p.identity : null),
+                    mute: p.isLocal ? undefined : () => hosting.mute(p.identity),
+                    setHost: !embed && !p.isLocal ? (host) => hosting.setHost(p.identity, host) : undefined,
+                    remove: p.isLocal ? undefined : () => hosting.remove(p.identity),
+                  }
+                : undefined
+            }
           />
         ))}
       </ul>

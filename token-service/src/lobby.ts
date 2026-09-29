@@ -38,6 +38,8 @@ export class Lobby {
   private requests = new Map<string, JoinRequest>();
   /** Per room: identities the host let in. They rejoin (refresh, reconnect) without asking again. */
   private admitted = new Map<string, Set<string>>();
+  /** Per room: identities a host removed. They can't rejoin (or ask to) until the room ends. */
+  private removed = new Map<string, Set<string>>();
 
   constructor(private now: () => number = Date.now) {}
 
@@ -105,9 +107,26 @@ export class Lobby {
     this.admitted.get(room)?.delete(identity);
   }
 
-  /** The room is gone: forget its requests and who was let in. */
+  /** A host removed them: no rejoining or asking until the room ends. Pending asks are denied. */
+  remove(room: string, identity: string): void {
+    this.revoke(room, identity);
+    let set = this.removed.get(room);
+    if (!set) this.removed.set(room, (set = new Set()));
+    set.add(identity);
+    const now = this.now();
+    for (const r of this.requests.values()) {
+      if (r.room === room && r.identity === identity && r.status === 'waiting') (r.status = 'denied'), (r.answeredAt = now);
+    }
+  }
+
+  isRemoved(room: string, identity: string): boolean {
+    return this.removed.get(room)?.has(identity) ?? false;
+  }
+
+  /** The room is gone: forget its requests, who was let in and who was removed. */
   forgetRoom(room: string): void {
     this.admitted.delete(room);
+    this.removed.delete(room);
     for (const [id, r] of this.requests) if (r.room === room) this.requests.delete(id);
   }
 
