@@ -149,7 +149,10 @@ graph LR
   finished recording goes to Soniox's async API (`transcripts.ts`, `stt-async-v5`, speakers
   separated as "1", "2", …: the mix has no names) and the transcript is saved as
   `egress/transcripts/<recording>.json`; the upload and Soniox's copy are deleted as soon as it's
-  done (`cleanup`). `SONIOX_API_KEY` lives only in the droplet's `token-service/.env`. Unset, nothing
+  done (`cleanup`). `TRANSCRIPTION_TRANSLATE_TO=en` (on on the droplet since 2026-09-29) adds
+  Soniox's one-way translation: each segment spoken in another language gets a `translation`
+  (paired per utterance with the SDK's `translateFromTranscript`; segments are then finer, and
+  translated text is billed as output text). `SONIOX_API_KEY` lives only in the droplet's `token-service/.env`. Unset, nothing
   is transcribed and `/admin` says "Off". At start token-service transcribes any saved recording
   without a transcript or saved failure (backfill, and jobs a restart cut short). Deleting a
   recording in `/admin` deletes its transcript. Consumers read them with

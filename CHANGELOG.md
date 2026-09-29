@@ -5,6 +5,7 @@ the detail. Agents: add a line here with every change that ships (see `AGENTS.md
 
 ## 2026-09-29
 
+- **Transcripts can include an English translation:** with `TRANSCRIPTION_TRANSLATE_TO=en` (now on), each line spoken in another language (e.g. Urdu) carries its English translation, in the transcript JSON, `/admin`'s text view and download, and `/recording/transcripts`.
 - **Consumers can download call audio:** `GET /recording/file/<file>` (consumer secret) streams a finished recording listed by `/recording/transcripts`.
 - **Consumers can record a call automatically:** `POST /token` takes `record: true`, and that room's recording then starts when the first person joins, like `RECORD_ALL_CALLS=1` for just that call. Other calls still record only when someone presses Record.
 - **Host moderation:** each person's menu in People lets a host pin them for everyone (everyone's stage follows; anyone can still pin someone else for themselves), mute their mic (they're told, and can unmute themselves), or remove them (two-step confirm; they can't rejoin that call). Hosts can't remove another host without stopping them hosting first.
