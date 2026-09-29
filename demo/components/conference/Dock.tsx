@@ -37,13 +37,14 @@ import {
   VideoOff,
 } from 'lucide-react';
 import type { ReactNode } from 'react';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Led, Readout, ReadoutSegment } from '../ui/Device';
 import { Menu } from '../ui/Menu';
 import { HAND_ATTRIBUTE } from './Tile';
 import type { ActiveRecording } from './useRecording';
 import { LeaveDialog } from './LeaveDialog';
 import { REACTION_EMOJIS } from './useReactions';
+import { useLeaveGuard } from './useLeaveGuard';
 
 export type Panel = 'chat' | 'people' | 'settings' | null;
 
@@ -189,6 +190,8 @@ export function Dock({ roomName, participantCount, panel, onTogglePanel, onReact
   const [leaveOpen, setLeaveOpen] = useState(false);
   const rec = recording.current;
   useSecondTick(Boolean(rec));
+  // Back, a tab close or a reload asks before it drops the call (the Back half lands here).
+  useLeaveGuard(useCallback(() => setLeaveOpen(true), []));
 
   // The key reflects the attribute LiveKit confirms, so a failed update just leaves it unchanged.
   const toggleHand = () =>
