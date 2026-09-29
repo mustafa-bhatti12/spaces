@@ -44,6 +44,7 @@ Space is a neutral, unbranded video tool that any future app can embed through t
   - audio recording on request (Record key or `/admin`), with a REC badge showing who started it
   - invite link
   - fullscreen
+  - floating window when you switch tabs (Chrome/Edge desktop), or from More
   - reconnect banner and a weak-connection readout
   - notifications: chat messages, people joining, join requests (host), "you're the only one here"
   - host (whoever started the room) can end the call for everyone, make others hosts, pin someone for everyone, mute someone's mic, and remove someone (they can't rejoin that call); everyone confirms Leave

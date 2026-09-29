@@ -22,6 +22,7 @@ import {
 import { ConnectionState, RoomEvent, Track } from 'livekit-client';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link2, WifiOff, X } from 'lucide-react';
+import { createPortal } from 'react-dom';
 import { MIRROR_ATTRIBUTE, useMirrorVideo } from '@/lib/client/mirror';
 import type { Panel } from './Dock';
 import { ChatToasts } from './ChatToasts';
@@ -29,6 +30,7 @@ import { Dock } from './Dock';
 import { ParticipantsPanel } from './ParticipantsPanel';
 import { SettingsPanel } from './SettingsPanel';
 import { Tile } from './Tile';
+import { FloatingCall, floatingStage, useFloatingWindow } from './FloatingWindow';
 import { useWeakConnection } from './useWeakConnection';
 import { useBackgroundEffect } from './useBackgroundEffect';
 import { useNoiseFilter } from './useNoiseFilter';
@@ -72,6 +74,7 @@ export function ConferenceLayout({
   const embed = useEmbed();
   const lobby = useWaitingRoom(roomName, hosting.isHost && !embed ? joinToken : undefined);
   const [aloneDismissed, setAloneDismissed] = useState(false);
+  const floating = useFloatingWindow(connectionState === ConnectionState.Connected, `${roomName} · Spaces`);
 
   // Participant attributes are synchronized through LiveKit, so every client renders this
   // participant's camera with the same orientation. Only send once connected: an update sent while
@@ -309,6 +312,7 @@ export function ConferenceLayout({
               }}
               weakConnection={weakConnection}
               canRecord={!embed || hosting.isHost}
+              floatingWindow={floating.supported ? { open: Boolean(floating.window), onToggle: floating.toggle } : undefined}
             />
           </div>
           <Chat style={{ display: widget.showChat ? undefined : 'none' }} />
@@ -322,6 +326,11 @@ export function ConferenceLayout({
             />
           )}
           {sidePanel === 'settings' && <SettingsPanel background={background} noiseFilter={noiseFilter} onClose={() => setSidePanel(null)} />}
+          {floating.window &&
+            createPortal(
+              <FloatingCall stage={focusTrack ?? floatingStage(tracks)} recording={Boolean(rec.recording)} />,
+              floating.window.document.body,
+            )}
         </LayoutContextProvider>
       </div>
       <div className="reactions-layer" aria-hidden="true">

@@ -205,8 +205,9 @@ the call from its first join; tokens live 2 h) and loads
   $EMBED_ALLOWED_ORIGINS` (comma-separated) on `/embed` only, read at request time. The bridge only
   talks when `?origin=` is in the same list.
 - **What's different when embedded:** no invite/copy-link keys, no waiting room, only hosts see
-  Record/Stop, and nobody can make or remove hosts — the consumer decides hosts through the token.
-  Hosts can still pin for everyone, mute and remove.
+  Record/Stop, no floating window (Document Picture-in-Picture is refused in iframes), and nobody
+  can make or remove hosts — the consumer decides hosts through the token. Hosts can still pin for
+  everyone, mute and remove.
 - **Bridge `spaces-embed/1`** (postMessage, `demo/lib/embed.ts`, `EmbedBridge.tsx`). Spaces → parent:
   `ready`, `joined {room, identity}`, `left {reason}`, `recording {active}`,
   `screenshare {active, surface}`, `data {topic, payload, from, fromHost}`, and `expired` (the token
@@ -437,6 +438,11 @@ works from the same machine; test multi-device calls on the Railway deployment.
   `evaluateOnNewDocument` to get the peer connections).
 - LiveKit's Chat panel stays mounted while hidden (`display: none`): wait for
   `.lk-chat-form-input` to be **visible** before typing, or keystrokes are silently lost.
+- The floating window (`FloatingWindow.tsx`) can be driven from puppeteer: click More → Floating
+  window for a real user gesture, then reach its DOM through `window.documentPictureInPicture.window`.
+  The automatic open on tab switch can't: Chrome never fires `enterpictureinpicture` for a CDP
+  `bringToFront` tab switch (Google's own video-conferencing sample doesn't open either), so check
+  that path by hand in a real Chrome (camera or mic on, then switch tabs).
 - Verify the server/egress layers with the `lk` CLI (`lk room join --url ws://localhost:7880
   --api-key devkey --api-secret secret --publish-demo <room>`, or `--publish <file>.ogg` for real
   audio content egress can record). On the droplet the CLI needs the generated pair:
@@ -495,6 +501,7 @@ works from the same machine; test multi-device calls on the Railway deployment.
 - `demo/lib/server/tokenService.ts` — the only token-service client (both secrets); `demo/lib/server/adminSession.ts` — admin cookie + rate limit.
 - `demo/components/RoomClient.tsx` — pre-join (`PreJoin.tsx`, LiveKit's `PreJoin` markup with one camera open; the name field is controlled, prefilled with the last-used name, and Join is never disabled for an empty-looking field: submit reads the field itself, because autofill or restored form state can show a value React never heard about; the would-be host gets the waiting-room switch) → `WaitingScreen` if the room has a waiting room → join → end screen (with a duration/people summary).
 - `demo/components/conference/*` — `Conference` (Room lifecycle, audio-first publish defaults, duplicate-identity heartbeat, end-for-everyone, the end-screen summary), `ConferenceLayout` (VideoConference prefab expanded; one side panel at a time; tells you when you become or stop being a host), `useHosts` (room settings from metadata: who hosts, make/remove host), `Dock` (status readout · media · talk · more · Leave), `LeaveDialog` (leave confirmation for everyone; hosts also get end-for-everyone), `Tile`, `SidePanel`, `ParticipantsPanel` (hosts: waiting-room switch + requests, make/remove host per row), `SettingsPanel` + `useBackgroundEffect` + `useNoiseFilter`, `useWeakConnection` (reports a weak link to the dock), `ChatToasts` (the notification stack: chat, joins, plus the host's `WaitingNotice` and the alone card), `useWaitingRoom` (host side), `useReactions`, `useRecording`.
+- `demo/components/conference/FloatingWindow.tsx` — the floating window: `useFloatingWindow` (Document Picture-in-Picture, opened by Chrome's `enterpictureinpicture` media-session action on tab switch or by More → Floating window; copies our stylesheets into the new window), `floatingStage` (who it shows without a pin: the remote person who spoke last) and `FloatingCall` (tile, REC, mic/camera/two-step Leave), portaled into that window from `ConferenceLayout` so it shares the call's React tree and Room.
 - `demo/proxy.ts` — `frame-ancestors` CSP on `/embed` from `EMBED_ALLOWED_ORIGINS`.
 - `demo/lib/embed.ts` — `spaces-embed/1` protocol types, allowed-origin parsing, message validators.
 - `demo/app/embed/page.tsx` + `demo/app/api/embed/session/route.ts` — the `/embed` page and its token-check relay to token-service `/embed/session`.

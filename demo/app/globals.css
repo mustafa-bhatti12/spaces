@@ -546,6 +546,30 @@ code { font: 0.875em var(--mono); background: var(--key); padding: 1px 6px; bord
 .tile-hand svg { width: 20px; height: 20px; stroke-width: 2; }
 @keyframes hand-up { from { transform: translateY(8px) scale(0.85); opacity: 0; } }
 
+/* Floating window (FloatingWindow.tsx): one tile over a row of keys, in its own Picture-in-Picture window. */
+.pip { height: 100vh; }
+.pip-stage { position: relative; flex: 1; min-height: 0; display: flex; padding: 8px 8px 0; }
+.pip-stage .lk-participant-tile { flex: 1; min-width: 0; }
+.pip .lk-focus-toggle-button { display: none; }
+.pip-rec {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  background: oklch(0.15 0.005 70 / 0.8);
+  color: var(--alert-ink);
+  font: 600 0.75rem/1 var(--mono);
+}
+.pip-keys { display: flex; justify-content: center; gap: 8px; padding: 8px; }
+.pip-keys .key { width: 42px; padding: 0; }
+.pip-keys .key .legend { display: none; }
+.pip-keys .key[data-state='off'] { background: var(--alert); color: #fff; }
+.pip-keys .pip-leave:has(span) { width: auto; padding: 0 14px; }
+
 /* Dock */
 /* Dock: Google Meet Style Floating Pill Architecture */
 .dock {

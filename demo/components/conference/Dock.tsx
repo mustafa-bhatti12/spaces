@@ -29,6 +29,7 @@ import {
   MonitorOff,
   MonitorUp,
   PhoneOff,
+  PictureInPicture2,
   Settings2,
   SmilePlus,
   Users,
@@ -88,7 +89,7 @@ interface DeviceKeyProps<T extends ToggleSource> {
 }
 
 /** A track toggle key built on LiveKit's useTrackToggle, so the icon and legend follow the real state. */
-function DeviceKey<T extends ToggleSource>({ source, on, off, onChange, captureOptions, className = '' }: DeviceKeyProps<T>) {
+export function DeviceKey<T extends ToggleSource>({ source, on, off, onChange, captureOptions, className = '' }: DeviceKeyProps<T>) {
   const { buttonProps, enabled, pending } = useTrackToggle({ source, onChange, captureOptions });
   const face = enabled ? on : off;
   const Icon = face.icon;
@@ -169,6 +170,8 @@ interface DockProps {
   weakConnection: boolean;
   /** Show the Record / Stop recording item. The REC readout shows regardless. */
   canRecord?: boolean;
+  /** The call's floating window (FloatingWindow.tsx); absent where the browser can't open one. */
+  floatingWindow?: { open: boolean; onToggle: () => void };
 }
 
 /**
@@ -177,7 +180,7 @@ interface DockProps {
  * (always confirmed in LeaveDialog). Built from LiveKit's hooks and controls (useTrackToggle,
  * MediaDeviceMenu, ChatToggle) so behavior stays LiveKit's.
  */
-export function Dock({ roomName, participantCount, panel, onTogglePanel, onReact, onInvite, onEndForAll, recording, weakConnection, canRecord = true }: DockProps) {
+export function Dock({ roomName, participantCount, panel, onTogglePanel, onReact, onInvite, onEndForAll, recording, weakConnection, canRecord = true, floatingWindow }: DockProps) {
   const { localParticipant } = useLocalParticipant();
   const hand = useParticipantAttribute(HAND_ATTRIBUTE, { participant: localParticipant });
   const { saveAudioInputEnabled, saveVideoInputEnabled, saveAudioInputDeviceId, saveVideoInputDeviceId } =
@@ -379,6 +382,18 @@ export function Dock({ roomName, participantCount, panel, onTogglePanel, onReact
                 >
                   {fullscreen ? 'Exit full screen' : 'Full screen'}
                 </MenuItem>
+                {floatingWindow && (
+                  <MenuItem
+                    icon={PictureInPicture2}
+                    checked={floatingWindow.open}
+                    onSelect={() => {
+                      floatingWindow.onToggle();
+                      close();
+                    }}
+                  >
+                    Floating window
+                  </MenuItem>
+                )}
               </>
             )}
           </Menu>

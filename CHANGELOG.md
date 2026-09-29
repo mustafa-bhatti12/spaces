@@ -5,6 +5,7 @@ the detail. Agents: add a line here with every change that ships (see `AGENTS.md
 
 ## 2026-09-29
 
+- **Floating window (Picture-in-Picture), like Meet's:** in Chrome and Edge on desktop, switching to another tab during a call opens a small always-on-top window with whoever is on stage (pin or screen share, else the person who spoke last), `REC` while recording, and mic, camera and Leave keys (Leave asks once more). Coming back to the tab closes it. More → Floating window opens or closes it by hand. Not offered in other browsers, on phones, or inside `/embed`.
 - **`/admin` recordings: search and pages.** A search box filters recordings by room or file name, and the list shows 20 per page (newest first) with Newer / Older.
 - **`/admin` Settings tab:** Overview and Settings pill tabs. Settings changes transcription (on/off, language hints, terms, translate-to) and recording (bitrate, record every call) live with no restart, overriding `.env` until "Reset to .env"; shows the droplet's and the call app's deployment values read-only (secrets only as set / not set); and has a Restart Spaces key that token-service refuses while anyone is in a call or a recording runs. The admin password stays a Railway variable.
 - **Transcripts can include an English translation:** with `TRANSCRIPTION_TRANSLATE_TO=en` (now on), each line spoken in another language (e.g. Urdu) carries its English translation, in the transcript JSON, `/admin`'s text view and download, and `/recording/transcripts`.
