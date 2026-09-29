@@ -138,8 +138,10 @@ graph LR
   the LiveKit API secret) — see gotchas below for the header-name trap. LiveKit posts them to
   `localhost:8880`; Caddy answers `404` for `/recording/webhook` from outside.
 - **Calls are recorded only on request; every recording is transcribed.** Someone presses Record
-  (or `/admin` starts it). `RECORD_ALL_CALLS=1` records every call instead: the first participant to
-  join starts the room's recording (`autoRecord.ts`, on LiveKit's `participant_joined` webhook; the
+  (or `/admin` starts it). `RECORD_ALL_CALLS=1` records every call instead, and a consumer can ask
+  for one call with `record: true` on `/token` (`markRoomRecorded`, a `record` flag in the room's
+  metadata next to `hosts`): the first participant to join starts the room's recording
+  (`autoRecord.ts`, on LiveKit's `participant_joined` webhook, which carries the room metadata; the
   egress participant itself is ignored), and once stopped by hand it stays off for that room until it
   closes (in memory). Each
   finished recording goes to Soniox's async API (`transcripts.ts`, `stt-async-v5`, speakers
@@ -169,7 +171,8 @@ graph LR
 ## Embed mode
 
 A consumer app iframes `/embed` instead of building its own call UI. It mints a join token with
-token-service `POST /token` (consumer secret, `host: true|false`; tokens live 2 h) and loads
+token-service `POST /token` (consumer secret, `host: true|false`, optional `record: true` to record
+the call from its first join; tokens live 2 h) and loads
 `https://<demo>/embed?origin=<parent origin>#t=<token>` with
 `allow="camera; microphone; display-capture; fullscreen; autoplay; clipboard-write"`.
 

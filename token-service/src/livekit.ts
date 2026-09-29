@@ -67,15 +67,22 @@ export interface RoomSettings {
   waitingRoom: boolean;
   /** A host pinned this participant for everyone (setSpotlight); null when nobody is. */
   spotlight: string | null;
+  /** The consumer asked for this room to be recorded from its first join (markRoomRecorded). */
+  record: boolean;
 }
 
-const NO_SETTINGS: RoomSettings = { hosts: [], waitingRoom: false, spotlight: null };
+const NO_SETTINGS: RoomSettings = { hosts: [], waitingRoom: false, spotlight: null, record: false };
 
-function parseRoomSettings(metadata: string | undefined): RoomSettings {
+export function parseRoomSettings(metadata: string | undefined): RoomSettings {
   try {
     const m = JSON.parse(metadata || '{}');
     const hosts = Array.isArray(m.hosts) ? m.hosts.filter((h: unknown): h is string => typeof h === 'string' && h !== '') : [];
-    return { hosts, waitingRoom: m.waitingRoom === true, spotlight: typeof m.spotlight === 'string' && m.spotlight ? m.spotlight : null };
+    return {
+      hosts,
+      waitingRoom: m.waitingRoom === true,
+      spotlight: typeof m.spotlight === 'string' && m.spotlight ? m.spotlight : null,
+      record: m.record === true,
+    };
   } catch {
     return NO_SETTINGS;
   }
@@ -108,6 +115,22 @@ export async function recordRoomHost(room: string, identity: string, waitingRoom
   } else if (next.hosts !== current.hosts || current.waitingRoom !== next.waitingRoom) {
     await svc.updateRoomMetadata(room, metadata);
   }
+}
+
+/**
+ * Marks the room to be recorded from its first join (autoRecord.ts reads it on participant_joined),
+ * creating the room if nobody has joined yet. Sticky for the room's life; a consumer's per-call
+ * version of RECORD_ALL_CALLS.
+ */
+export async function markRoomRecorded(room: string): Promise<void> {
+  const svc = roomService();
+  const [existing] = await svc.listRooms([room]);
+  if (!existing) {
+    await svc.createRoom({ name: room, metadata: JSON.stringify({ ...NO_SETTINGS, record: true }) });
+    return;
+  }
+  const current = parseRoomSettings(existing.metadata);
+  if (!current.record) await svc.updateRoomMetadata(room, JSON.stringify({ ...current, record: true }));
 }
 
 /**

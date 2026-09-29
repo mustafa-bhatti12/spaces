@@ -10,6 +10,7 @@ import {
   getRoomSettings,
   listActiveRooms,
   mintToken,
+  markRoomRecorded,
   recordRoomHost,
   setRoomHost,
   hostIdentity,
@@ -59,11 +60,11 @@ fastify.get<{ Querystring: { room?: string; identity?: string } }>(
   },
 );
 
-fastify.post<{ Body: { room?: string; identity?: string; name?: string; host?: boolean; waitingRoom?: boolean } }>(
+fastify.post<{ Body: { room?: string; identity?: string; name?: string; host?: boolean; waitingRoom?: boolean; record?: boolean } }>(
   '/token',
   { preHandler: requireSharedSecret },
   async (req, reply) => {
-    const { room, identity, name, host, waitingRoom } = req.body ?? {};
+    const { room, identity, name, host, waitingRoom, record } = req.body ?? {};
     if (
       typeof room !== 'string' ||
       !room ||
@@ -91,6 +92,8 @@ fastify.post<{ Body: { room?: string; identity?: string; name?: string; host?: b
         reply.code(409).send({ error: 'This call has a waiting room. Ask to join.', waitingRoom: true });
         return;
       }
+      // The consumer wants this call recorded from its first join (autoRecord.ts).
+      if (record === true) await markRoomRecorded(room);
       reply.send(await mintToken({ room, identity, name }));
     } catch (err) {
       console.error('Failed to mint LiveKit token:', err);
@@ -266,8 +269,8 @@ fastify.register(async (scoped) => {
 
     const info = event.egressInfo;
     if (event.event === 'participant_joined' && event.room?.name) {
-      // Records the call when RECORD_ALL_CALLS=1 (autoRecord.ts); off by default.
-      autoRecord.onParticipantJoined(event.room.name, event.participant?.kind);
+      // Records the call when RECORD_ALL_CALLS=1 or the room was marked on /token (autoRecord.ts).
+      autoRecord.onParticipantJoined(event.room.name, event.participant?.kind, event.room.metadata);
       return;
     }
     if (event.event === 'room_finished' && event.room?.name) {
