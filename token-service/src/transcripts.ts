@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { SonioxNodeClient } from '@soniox/node';
+import { SonioxNodeClient, translateFromTranscript } from '@soniox/node';
 import { RECORDING_DIRS, resolveRecordingFile } from './recordings';
 
 // Every finished recording is transcribed with Soniox's async API (stt-async-v5): the whole file at
@@ -23,6 +23,11 @@ export interface TranscriptSegment {
   startMs: number | null;
   endMs: number | null;
   text: string;
+  /**
+   * The segment in TRANSCRIPTION_TRANSLATE_TO's language, when that's set and the segment was spoken
+   * in another language. Absent otherwise.
+   */
+  translation?: string;
 }
 
 export interface Transcript {
@@ -93,6 +98,7 @@ export async function transcribeRecording(file: string): Promise<void> {
   try {
     const audio = await fs.readFile(audioPath);
     const parsed = parseRecordingName(file);
+    const translateTo = process.env.TRANSCRIPTION_TRANSLATE_TO?.trim() || undefined;
     const result = await api.stt.transcribe({
       model: MODEL,
       file: audio,
@@ -103,6 +109,9 @@ export async function transcribeRecording(file: string): Promise<void> {
       context: envList('TRANSCRIPTION_TERMS') ? { terms: envList('TRANSCRIPTION_TERMS') } : undefined,
       enable_language_identification: true,
       enable_speaker_diarization: true,
+      // Also translate speech in other languages into this one (one Soniox job; its extra output
+      // text is billed like the transcript's).
+      translation: translateTo ? { type: 'one_way', target_language: translateTo } : undefined,
       // Shows up in Soniox's usage logs, so cost can be traced back to a call.
       client_reference_id: (parsed?.room ?? file).slice(0, 256),
       wait: true,
@@ -113,13 +122,18 @@ export async function transcribeRecording(file: string): Promise<void> {
     if (result.status !== 'completed' || !result.transcript) {
       throw new Error(result.error_message || `Transcription ended with status ${result.status}.`);
     }
-    const segments: TranscriptSegment[] = result.transcript.segments().map((s) => ({
-      speaker: s.speaker ?? null,
-      language: s.language ?? null,
-      startMs: s.start_ms ?? null,
-      endMs: s.end_ms ?? null,
-      text: s.text.trim(),
-    }));
+    const { segments, text } = translateTo
+      ? translatedSegments(result.transcript, translateTo)
+      : {
+          segments: result.transcript.segments().map((s) => ({
+            speaker: s.speaker ?? null,
+            language: s.language ?? null,
+            startMs: s.start_ms ?? null,
+            endMs: s.end_ms ?? null,
+            text: s.text.trim(),
+          })),
+          text: result.transcript.text.trim(),
+        };
     const transcript: Transcript = {
       file,
       room: parsed?.room ?? null,
@@ -128,7 +142,7 @@ export async function transcribeRecording(file: string): Promise<void> {
       transcribedAt: new Date().toISOString(),
       durationMs: result.audio_duration_ms ?? null,
       languages: [...new Set(segments.map((s) => s.language).filter((l): l is string => !!l))],
-      text: result.transcript.text.trim(),
+      text,
       segments: segments.filter((s) => s.text),
     };
     await writeJson(transcriptPath(file), transcript);
@@ -193,7 +207,40 @@ function clock(ms: number | null): string {
 /** Plain-text transcript: one `[hh:mm:ss] Speaker N: text` line per segment. */
 export function transcriptToText(t: Transcript): string {
   const head = `${t.room ?? t.file}${t.recordedAt ? `, recorded ${t.recordedAt}` : ''}\n\n`;
-  return head + t.segments.map((s) => `[${clock(s.startMs)}] ${s.speaker ? `Speaker ${s.speaker}` : 'Speaker'}: ${s.text}`).join('\n') + '\n';
+  return (
+    head +
+    t.segments
+      .map((s) => {
+        const line = `[${clock(s.startMs)}] ${s.speaker ? `Speaker ${s.speaker}` : 'Speaker'}: ${s.text}`;
+        return s.translation ? `${line}\n           (${s.translation})` : line;
+      })
+      .join('\n') +
+    '\n'
+  );
+}
+
+/**
+ * Segments of a transcript that also carries a one-way translation: Soniox mixes translation tokens
+ * in after their spoken ones, so pair them per utterance and keep the spoken text as `text`.
+ * Speech already in the target language has no translation.
+ */
+function translatedSegments(
+  transcript: Parameters<typeof translateFromTranscript>[0],
+  to: string,
+): { segments: TranscriptSegment[]; text: string } {
+  const result = translateFromTranscript(transcript, { type: 'one_way', to });
+  const segments = result.segments.map((s): TranscriptSegment => {
+    const translation = s.translation_text?.trim();
+    return {
+      speaker: s.speaker ?? null,
+      language: s.from || null,
+      startMs: s.start_ms ?? null,
+      endMs: s.end_ms ?? null,
+      text: s.original_text.trim(),
+      ...(translation && s.from !== to ? { translation } : {}),
+    };
+  });
+  return { segments, text: result.mode === 'one_way' ? result.original_text.trim() : '' };
 }
 
 /**
