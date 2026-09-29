@@ -168,7 +168,7 @@ Set `ADMIN_PASSWORD` and `ADMIN_SHARED_SECRET` in `demo/.env`; the secret must m
 4. **Transcription (Soniox):**
    - With `SONIOX_API_KEY` set in `token-service/.env`, every finished recording is sent to Soniox's async speech-to-text (`stt-async-v5`, speakers separated, language detected) and the transcript is saved as `./egress/transcripts/<recording>.ogg.json`. Soniox's copies are deleted as soon as it's done. A 1-hour call costs about $0.10.
    - `TRANSCRIPTION_LANGUAGE_HINTS` (e.g. `en,ur`) and `TRANSCRIPTION_TERMS` (e.g. `USCIS,NIW`) improve accuracy for the languages and words your calls use.
-   - `/admin` shows each recording's transcript (view, download as `.txt`, retry a failed one). Consumers read them with `GET /recording/transcripts?room=<room>` (consumer secret).
+   - `/admin` shows each recording's transcript (view, download as `.txt`, retry a failed one). Consumers read them with `GET /recording/transcripts?room=<room>` and download a recording's audio with `GET /recording/file/<file>` (both consumer secret).
    - Speakers are numbered ("Speaker 1", "Speaker 2"): the recording is one mixed track, so it carries no names.
 
 ---

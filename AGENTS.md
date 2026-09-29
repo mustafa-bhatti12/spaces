@@ -153,7 +153,9 @@ graph LR
   is transcribed and `/admin` says "Off". At start token-service transcribes any saved recording
   without a transcript or saved failure (backfill, and jobs a restart cut short). Deleting a
   recording in `/admin` deletes its transcript. Consumers read them with
-  `GET /recording/transcripts?room=`. Processing is in Soniox's US region; `SONIOX_REGION=in|eu|jp`
+  `GET /recording/transcripts?room=` and download a listed recording's audio with
+  `GET /recording/file/<file>` (consumer secret; no filename header, the consumer names it).
+  Processing is in Soniox's US region; `SONIOX_REGION=in|eu|jp`
   needs a regional project and key from Soniox support.
 - **Real credentials live only on the droplet and in Railway variables.** The repo is public and its
   committed `devkey`/`secret` + `local-dev-secret-not-for-production` are LiveKit's/our published dev

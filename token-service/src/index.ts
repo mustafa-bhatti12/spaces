@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import fs from 'node:fs';
 import path from 'node:path';
 import Fastify from 'fastify';
 import { EgressStatus, WebhookReceiver } from 'livekit-server-sdk';
@@ -19,7 +20,7 @@ import {
   stopRecording,
 } from './livekit';
 import { requireSharedSecret } from './auth';
-import { finishRecording, listRecordingFiles } from './recordings';
+import { finishRecording, listRecordingFiles, resolveRecordingFile } from './recordings';
 import { parseRecordingName, readTranscript, transcribeMissing, transcribeRecording, transcriptStates } from './transcripts';
 import * as autoRecord from './autoRecord';
 import { adminRoutes } from './admin';
@@ -236,6 +237,20 @@ fastify.get<{ Querystring: { room?: string } }>('/recording/transcripts', { preH
     console.error('Failed to list transcripts:', err);
     reply.code(500).send({ error: 'Could not list transcripts.' });
   }
+});
+
+// One finished recording's audio (Opus in Ogg), by the `file` name /recording/transcripts lists.
+// The consumer names the download itself; this sends no Content-Disposition.
+fastify.get<{ Params: { name: string } }>('/recording/file/:name', { preHandler: requireSharedSecret }, async (req, reply) => {
+  const file = parseRecordingName(req.params.name) ? resolveRecordingFile('compressed', req.params.name) : null;
+  if (!file) return reply.code(400).send({ error: 'Unknown recording.' });
+  let size: number;
+  try {
+    size = (await fs.promises.stat(file)).size;
+  } catch {
+    return reply.code(404).send({ error: 'Recording not found.' });
+  }
+  return reply.type('audio/ogg').header('Content-Length', size).send(fs.createReadStream(file));
 });
 
 // LiveKit itself calls this -- not the browser, not the demo -- so it's authenticated by
