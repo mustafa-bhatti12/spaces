@@ -260,7 +260,7 @@ fastify.register(async (scoped) => {
 
     const info = event.egressInfo;
     if (event.event === 'participant_joined' && event.room?.name) {
-      // Every call is recorded by default (autoRecord.ts).
+      // Records the call when RECORD_ALL_CALLS=1 (autoRecord.ts); off by default.
       autoRecord.onParticipantJoined(event.room.name, event.participant?.kind);
       return;
     }

@@ -28,7 +28,7 @@ keep this repo generic so any future consumer can reuse it the same way. Don't e
   `livekit/config.yaml`, `egress/config.yaml`, `.env`) needs `systemctl restart
   spaces`, which drops live calls: check for live rooms first and ask the user if anyone is in one.
 - **Verify on the real surface:** `/root/tools/stack-check.sh` on the droplet (health, every
-  service, a join over the public URL, the recording that starts by itself through to its finished file and Soniox transcript); `puppeteer-core`
+  service, a join over the public URL, a recording started on it through to its finished file and Soniox transcript); `puppeteer-core`
   scripts in `/tmp` for UI and calls (see "Testing"). `npm test` in `token-service`, `npm run build`
   in `demo`.
 - **Record what shipped** in `CHANGELOG.md` (newest first, one line per user-visible change), and
@@ -128,10 +128,11 @@ graph LR
 - LiveKit webhooks are verified via `WebhookReceiver` (JWT in the `Authorization` header, signed with
   the LiveKit API secret) — see gotchas below for the header-name trap. LiveKit posts them to
   `localhost:8880`; Caddy answers `404` for `/recording/webhook` from outside.
-- **Every call is recorded and every recording transcribed.** The first participant to join starts
-  the room's recording (`autoRecord.ts`, on LiveKit's `participant_joined` webhook; the egress
-  participant itself is ignored). Anyone in the call can still stop it, and then it stays off for
-  that room until it closes (in memory; `RECORD_ALL_CALLS=0` turns auto-recording off). Each
+- **Calls are recorded only on request; every recording is transcribed.** Someone presses Record
+  (or `/admin` starts it). `RECORD_ALL_CALLS=1` records every call instead: the first participant to
+  join starts the room's recording (`autoRecord.ts`, on LiveKit's `participant_joined` webhook; the
+  egress participant itself is ignored), and once stopped by hand it stays off for that room until it
+  closes (in memory). Each
   finished recording goes to Soniox's async API (`transcripts.ts`, `stt-async-v5`, speakers
   separated as "1", "2", …: the mix has no names) and the transcript is saved as
   `egress/transcripts/<recording>.json`; the upload and Soniox's copy are deleted as soon as it's

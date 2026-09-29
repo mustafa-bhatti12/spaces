@@ -5,6 +5,7 @@ the detail. Agents: add a line here with every change that ships (see `AGENTS.md
 
 ## 2026-09-28
 
+- **Calls are no longer recorded by default:** a call is recorded only when someone presses Record (or from `/admin`). `RECORD_ALL_CALLS=1` brings back recording every call. Recordings are still transcribed.
 - **Dropped DeepFilterNet3:** the Settings noise-cancellation switch no longer runs a wasm filter on the mic (it added delay and chewed speech). It only turns on Chrome's Voice isolation. Echo cancellation and ordinary noise suppression stay on either way.
 - **Voice isolation is off by default:** Chrome's Voice isolation (LiveKit turns it on) stays off until someone switches on Noise cancellation in Settings. Echo cancellation and ordinary noise suppression stay on.
 - **Noise cancellation is off by default:** the Settings switch still turns it on, and the choice is remembered per browser.

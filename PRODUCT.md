@@ -41,7 +41,7 @@ Space is a neutral, unbranded video tool that any future app can embed through t
   - noise cancellation on the mic (Chrome Voice isolation; off until you turn it on in Settings)
   - emoji reactions
   - raise hand
-  - audio recording, on by default in every call (anyone can stop it), with a REC badge showing who started it when someone did
+  - audio recording on request (Record key or `/admin`), with a REC badge showing who started it
   - invite link
   - fullscreen
   - reconnect banner and a weak-connection readout

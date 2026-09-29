@@ -520,7 +520,7 @@ function Dashboard({ onLoggedOut }: { onLoggedOut: () => void }) {
             )}
           </h2>
           {!overview?.files.length ? (
-            <p className="empty">No recordings yet. Every call is recorded, and its recording and transcript show up here once it&apos;s saved.</p>
+            <p className="empty">No recordings yet. Recordings and their transcripts show up here once they&apos;re saved.</p>
           ) : (
             <div className="table-wrap">
               <table className="rec-table">

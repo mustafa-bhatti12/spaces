@@ -1,12 +1,12 @@
 import { startRoomAudioRecording } from './livekit';
 
 /**
- * Every call is recorded by default: the first participant to join a room starts its recording
- * (LiveKit's participant_joined webhook). Someone can still stop it; after that it stays off for the
- * rest of that room's life instead of restarting on the next join. RECORD_ALL_CALLS=0 turns this off.
+ * Off by default; RECORD_ALL_CALLS=1 records every call: the first participant to join a room starts
+ * its recording (LiveKit's participant_joined webhook). Someone can still stop it; after that it
+ * stays off for the rest of that room's life instead of restarting on the next join.
  * In memory: a restart forgets which rooms were stopped by hand.
  */
-const enabled = process.env.RECORD_ALL_CALLS !== '0';
+const enabled = process.env.RECORD_ALL_CALLS === '1';
 const stoppedByHand = new Set<string>();
 
 // livekit.ParticipantInfo.Kind.EGRESS (livekit-server-sdk doesn't re-export the enum). The recorder

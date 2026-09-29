@@ -155,7 +155,7 @@ Set `ADMIN_PASSWORD` and `ADMIN_SHARED_SECRET` in `demo/.env`; the secret must m
 ## 🎙️ Audio Recording & Transcription Pipeline
 
 1. **Recording Initiation:**
-   - Every call is recorded by default: when the first person joins, LiveKit's `participant_joined` webhook tells token-service, which starts a LiveKit **RoomCompositeEgress** (audio-only, 24 kbps Opus). Everyone in the room sees the `REC` badge with a timer. `RECORD_ALL_CALLS=0` in `token-service/.env` turns this off.
+   - A call is recorded when someone presses **Record** (or the operator starts it from `/admin`): token-service starts a LiveKit **RoomCompositeEgress** (audio-only, 24 kbps Opus). Everyone in the room sees the `REC` badge with a timer. `RECORD_ALL_CALLS=1` in `token-service/.env` records every call instead, starting when the first person joins (LiveKit's `participant_joined` webhook).
    - Anyone in the call can press **Stop** (or **Record** again), and the operator can do the same from `/admin`. Once stopped by hand, a call isn't re-recorded when more people join.
 
 2. **Storage & Auto-Stop:**
