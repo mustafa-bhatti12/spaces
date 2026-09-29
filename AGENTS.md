@@ -349,13 +349,17 @@ works from the same machine; test multi-device calls on the Railway deployment.
   the device (the track holds `{exact: id}`, never equal to the plain id). `components/PreJoin.tsx`
   is `PreJoin`'s markup without those; keep its callbacks stable and its menus selection-free.
   Measure with a `getUserMedia` counter in the page (one call per visit is the target).
-- **Noise cancellation is Chrome Voice isolation, not DeepFilterNet3 and not Krisp.** LiveKit's Krisp
-  filter only works on LiveKit Cloud. We tried DeepFilterNet3 (`deepfilternet3-noise-filter` as a
-  LiveKit AudioWorklet processor, wasm + model under `demo/public/deepfilternet3/`) and dropped it:
-  it added delay and chewed speech. Do not bring it back. LiveKit's `audioDefaults` set Chrome's
-  `voiceIsolation` constraint to true; we override it to false in `Conference` / `PreJoin`.
-  `useNoiseFilter.ts` applies it only when Settings → Microphone → Noise cancellation is on.
-  Echo cancellation and ordinary `noiseSuppression` stay on either way.
+- **Noise cancellation is RNNoise, not DeepFilterNet3, not Krisp, not Voice isolation.** The mic
+  always runs the browser's own echo cancellation, noise suppression and auto gain
+  (`demo/lib/client/mic.ts`, used by `Conference` and `PreJoin`); LiveKit's `audioDefaults` turn on
+  Chrome's `voiceIsolation`, which we force off. Settings → Microphone → Noise cancellation (off by
+  default) only adds RNNoise (`@sapphi-red/web-noise-suppressor`, pinned 0.4.1) as the mic track's
+  processor (`useNoiseFilter.ts`), in its own 48 kHz AudioContext because RNNoise assumes 48 kHz and
+  LiveKit's context follows the device rate. Worklet + wasm (~150 KB) are copied into
+  `demo/public/rnnoise/` (gitignored) by `demo/next.config.ts`. Measured locally (two browsers, speech
+  plus pink noise): noise floor at the listener −48 → −66 dB, speech level unchanged, ~21 ms added
+  delay over a plain Web Audio pass-through (itself ~21 ms), about +6% of one core. We dropped
+  DeepFilterNet3 (lagged and chewed speech) and Krisp is LiveKit Cloud only; don't bring either back.
 - **`supportsBackgroundProcessors()` creates a WebGL context per call.** Calling it on every render
   hit Chrome's context limit ("Too many active WebGL contexts") — check once (`useState`
   initializer in `useBackgroundEffect.ts`).
@@ -464,7 +468,7 @@ works from the same machine; test multi-device calls on the Railway deployment.
 - `demo/components/ui/*` — `Menu` (dock popover), `Device` (wordmark, LED, readout, initials), `SwitchRow`.
 - `demo/components/admin/AdminDashboard.tsx` — the control center UI; `ServerPanel.tsx` (Server section: metric strips + processes table); `format.ts` (bytes, rates, durations).
 - `demo/public/backgrounds/*.webp` — virtual-background images (1920×1080, WebP q80); `thumbs/*.webp` are the 320 px settings-tile previews. Add a background as both.
-- `demo/public/mediapipe/` — `selfie_segmenter.tflite` (committed, pinned float16 v1) and `wasm/` (gitignored, copied from node_modules by `demo/next.config.ts`): background effects load these from our origin, not jsdelivr/googleapis.
+- `demo/public/mediapipe/` — `selfie_segmenter.tflite` (committed, pinned float16 v1) and `wasm/` (gitignored, copied from node_modules by `demo/next.config.ts`): background effects load these from our origin, not jsdelivr/googleapis. `demo/public/rnnoise/` (gitignored, same copy step) holds the noise-cancellation worklet and wasm.
 - `livekit/config.yaml`, `egress/config.yaml` — real (non-`--dev`) server config templates with the dev key pair; read the comments in each before editing.
 - `deploy/spaces.service` (systemd unit running `start-all.sh`), `deploy/Caddyfile` (site + TURN SNI route, example hosts).
 - `start-all.sh` — local (macOS) / VPS orchestration for the droplet side, plus `next dev` for

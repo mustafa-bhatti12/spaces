@@ -11,6 +11,7 @@ import {
 import { facingModeFromLocalTrack, LocalVideoTrack, Track, type LocalAudioTrack } from 'livekit-client';
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { getSavedDisplayName, saveDisplayName } from '@/lib/client/identity';
+import { MIC_PROCESSING } from '@/lib/client/mic';
 import { useMirrorVideo } from '@/lib/client/mirror';
 
 // LiveKit's own placeholder for "no camera chosen yet". Cameras have no device with this id
@@ -90,7 +91,7 @@ export function PreJoin({ defaults, joinLabel, userLabel, busy, onSubmit, onErro
   }));
   const tracks = usePreviewTracks(
     {
-      audio: audioEnabled ? { deviceId: loaded.mic, voiceIsolation: false } : false,
+      audio: audioEnabled ? { deviceId: loaded.mic, ...MIC_PROCESSING } : false,
       video: videoEnabled ? (loaded.camera ? { deviceId: loaded.camera } : true) : false,
     },
     onError,

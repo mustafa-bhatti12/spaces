@@ -5,6 +5,7 @@ import { RoomContext, useSequentialRoomConnectDisconnect } from '@livekit/compon
 import type { RemoteParticipant } from 'livekit-client';
 import { DisconnectReason, Room, RoomEvent, VideoPreset, VideoPresets } from 'livekit-client';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { MIC_PROCESSING } from '@/lib/client/mic';
 import { ConferenceLayout } from './ConferenceLayout';
 import type { ConnectionDetails, LeaveReason } from './types';
 
@@ -58,12 +59,9 @@ export function Conference({ roomName, details, choices, identity, onLeave, chil
           deviceId: choices.videoDeviceId || undefined,
           resolution: CAMERA_TOP.resolution,
         },
-        // LiveKit's audioDefaults set voiceIsolation: true (Chrome's "Voice isolation"). Off
-        // until Settings → Microphone → Noise cancellation; useNoiseFilter then applies it.
-        // Do not attach a mic AudioWorklet (DeepFilterNet3 added delay and chewed speech).
         audioCaptureDefaults: {
           deviceId: choices.audioDeviceId || undefined,
-          voiceIsolation: false,
+          ...MIC_PROCESSING,
         },
         publishDefaults: {
           simulcast: true,

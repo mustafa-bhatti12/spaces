@@ -38,7 +38,7 @@ Space is a neutral, unbranded video tool that any future app can embed through t
   - participants panel
   - device settings
   - background blur and virtual backgrounds
-  - noise cancellation on the mic (Chrome Voice isolation; off until you turn it on in Settings)
+  - noise cancellation on the mic (RNNoise in the browser; off until you turn it on in Settings); echo cancellation, noise suppression and auto gain always on
   - emoji reactions
   - raise hand
   - audio recording on request (Record key or `/admin`), with a REC badge showing who started it

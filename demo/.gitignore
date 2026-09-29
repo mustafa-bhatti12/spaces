@@ -44,3 +44,5 @@ next-env.d.ts
 
 # MediaPipe wasm, copied from node_modules by next.config.ts
 /public/mediapipe/wasm/
+# RNNoise worklet + wasm, copied from node_modules by next.config.ts
+/public/rnnoise/

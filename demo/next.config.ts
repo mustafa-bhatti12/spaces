@@ -15,6 +15,15 @@ const tasksVision = path.dirname(
 );
 cpSync(path.join(tasksVision, 'wasm'), path.join(root, 'public/mediapipe/wasm'), { recursive: true });
 
+// Noise cancellation (`useNoiseFilter.ts`) loads the RNNoise worklet and wasm from our origin. Copied
+// from the installed @sapphi-red/web-noise-suppressor so they match its JS; public/rnnoise is gitignored.
+const noiseSuppressor = path.dirname(require.resolve('@sapphi-red/web-noise-suppressor/rnnoiseWorklet.js'));
+const rnnoiseDir = path.join(root, 'public/rnnoise');
+cpSync(path.join(noiseSuppressor, 'workletProcessor.js'), path.join(rnnoiseDir, 'workletProcessor.js'));
+for (const f of ['rnnoise.wasm', 'rnnoise_simd.wasm']) {
+  cpSync(path.join(noiseSuppressor, '..', f), path.join(rnnoiseDir, f));
+}
+
 const nextConfig: NextConfig = {
   turbopack: { root },
   outputFileTracingRoot: root,
