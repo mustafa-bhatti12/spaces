@@ -50,7 +50,7 @@ graph LR
     AD["demo /admin\noperator control center"]
   end
   subgraph Droplet
-    CA["Caddy :443\nspaces.hofmigration.com"]
+    CA["Caddy :443\napi.spaces.hof-global.com"]
     TS["token-service :8880"]
     LK["livekit-server\n:7880 / 7881 tcp / 7882 udp"]
     RD[(Redis :6379)]
@@ -82,8 +82,8 @@ graph LR
 | `token-service` | TypeScript, Fastify | droplet | 8880 | LiveKit key pair, both bearer secrets, `SONIOX_API_KEY` | **Only** thing that mints tokens or talks to LiveKit's admin/egress API. Consumer routes + operator `/admin/*` routes. Starts every call's recording and has Soniox transcribe every finished one. |
 | Redis | — | droplet | 6379 | — | Job queue LiveKit server ↔ Egress worker use to coordinate. Recording-only; calling works without it. |
 | Egress worker | Docker (`livekit/egress:v1.14.1`, pinned) | droplet | — | LiveKit key pair (runtime config) | Joins a room as a hidden participant, mixes everyone's audio and writes 24 kbps Opus to `egress/raw/`; token-service moves it to `egress/compressed/` when egress reports it finished. |
-| Caddy | — | droplet | 80/443 | Let's Encrypt certs | TLS for `spaces.hofmigration.com`: `/rtc` → LiveKit, `/twirp` + `/recording/webhook` blocked, everything else → token-service. Also, via the `layer4` plugin (custom build, see README), TURN/TLS for `turn.hofmigration.com` → LiveKit's TURN on `127.0.0.1:5349`. Config: `deploy/Caddyfile`. |
-| `demo` | TypeScript, Next.js 16, React 19, Node ≥ 22.22 (`livekit-client`'s `machina` requires it), `@livekit/components-react` | Railway `https://spaces-demo.up.railway.app` (also local via `start-all.sh`) | `$PORT` (8888 locally) | `TOKEN_SERVICE_SHARED_SECRET`; plus `ADMIN_SHARED_SECRET` + `ADMIN_PASSWORD` for `/admin` | `/` + `/rooms/[room]`: full call UI (pre-join, grid/focus, chat, people, devices, background blur/virtual backgrounds, noise cancellation, reactions, raise hand, record, invite, reconnect banner). `/embed`: the same call UI, token-only, for consumer apps to iframe (see "Embed mode"). `/admin`: the permanent operator control center. Server routes under `app/api/*` and `app/admin/*` hold the secrets; the browser never sees them. |
+| Caddy | — | droplet | 80/443 | Let's Encrypt certs | TLS for `api.spaces.hof-global.com`: `/rtc` → LiveKit, `/twirp` + `/recording/webhook` blocked, everything else → token-service. Also, via the `layer4` plugin (custom build, see README), TURN/TLS for `turn.hof-global.com` → LiveKit's TURN on `127.0.0.1:5349`. Config: `deploy/Caddyfile`. |
+| `demo` | TypeScript, Next.js 16, React 19, Node ≥ 22.22 (`livekit-client`'s `machina` requires it), `@livekit/components-react` | Railway `https://spaces.hof-global.com` (also local via `start-all.sh`) | `$PORT` (8888 locally) | `TOKEN_SERVICE_SHARED_SECRET`; plus `ADMIN_SHARED_SECRET` + `ADMIN_PASSWORD` for `/admin` | `/` + `/rooms/[room]`: full call UI (pre-join, grid/focus, chat, people, devices, background blur/virtual backgrounds, noise cancellation, reactions, raise hand, record, invite, reconnect banner). `/embed`: the same call UI, token-only, for consumer apps to iframe (see "Embed mode"). `/admin`: the permanent operator control center. Server routes under `app/api/*` and `app/admin/*` hold the secrets; the browser never sees them. |
 
 ## Security model
 
@@ -229,12 +229,16 @@ image (no native binary like `livekit-server --dev`).
 **Droplet:** DigitalOcean, Singapore (SGP1), 2 vCPU / 4 GB RAM, Ubuntu 24.04 x64, IPv4 only, SSH
 alias `space-do`. Singapore was picked for the client base (Pakistan + UAE); Pakistan→India routing
 is unreliable, so Bangalore was rejected. 4 GB is the floor with recording on — Egress runs headless
-Chrome with `--shm-size=1g`; don't downsize to 2 GB. Public host: `spaces.hofmigration.com` (A record
-at Bluehost, which hosts `hofmigration.com` DNS) → Caddy on the droplet.
+Chrome with `--shm-size=1g`; don't downsize to 2 GB. Hosts, all in the `hof-global.com` DNS at Wix:
+`api.spaces` and `turn` are A records → the droplet's Caddy (token API + `/rtc`, and TURN);
+`spaces` is a CNAME to Railway (the call app and `/admin`; verified by a `_railway-verify` TXT).
+Until 2026-09-29 the API was `spaces.hofmigration.com` (Bluehost DNS); Caddy still serves that and
+`turn.hofmigration.com` for old links, so drop those blocks once nothing uses them.
 
 **Railway:** one service, `demo` (Root Directory `demo`; Railway runs `npm run build` then
-`npm start`, and sets `PORT`), at `https://spaces-demo.up.railway.app`. Variables:
-`TOKEN_SERVICE_URL=https://spaces.hofmigration.com`, `TOKEN_SERVICE_SHARED_SECRET`,
+`npm start`, and sets `PORT`), at `https://spaces.hof-global.com` (custom domain; the old
+`https://spaces-demo.up.railway.app` still works). Variables:
+`TOKEN_SERVICE_URL=https://api.spaces.hof-global.com`, `TOKEN_SERVICE_SHARED_SECRET`,
 `ADMIN_SHARED_SECRET`, `ADMIN_PASSWORD`, `TRUST_PROXY=1`, `EMBED_ALLOWED_ORIGINS` (the consumer's
 origin(s); unset = nothing but Spaces itself may frame `/embed`). It reaches token-service over the same
 HTTPS path Petition Studio's API (also on Railway) will use.
@@ -253,9 +257,9 @@ random high UDP/TCP port, so any outbound port allowlist silently breaks calls (
 get no audio or video). `start-all.sh` also needs outbound 443 for apt, npm, Docker Hub, GitHub,
 `get.livekit.io` and `api.ipify.org` (public-IP discovery), plus 53 for DNS.
 
-Droplet-only settings in `token-service/.env` (gitignored): `LIVEKIT_PUBLIC_URL=wss://spaces.hofmigration.com`
+Droplet-only settings in `token-service/.env` (gitignored): `LIVEKIT_PUBLIC_URL=wss://api.spaces.hof-global.com`
 (what `/token` returns as `serverUrl`; the demo hands it straight to the browser),
-`TURN_DOMAIN=turn.hofmigration.com` (see TURN below), `SONIOX_API_KEY` (transcripts), plus the
+`TURN_DOMAIN=turn.hof-global.com` (see TURN below), `SONIOX_API_KEY` (transcripts), plus the
 generated key pair and secrets.
 Caddy config is `deploy/Caddyfile` with the real hosts, installed as `/etc/caddy/Caddyfile`.
 
@@ -264,7 +268,7 @@ Caddy config is `deploy/Caddyfile` with the real hosts, installed as `/etc/caddy
 livekit-server 1.13.7+ for `proxy_protocol`, older versions get a warning and no TURN). LiveKit
 always advertises `turns:<domain>:443` (hardcoded) but listens on `tls_port` 5349, so Caddy owns
 443: its `layer4` listener wrapper matches the TURN host's SNI, terminates TLS with its own
-Let's Encrypt cert (the `turn.hofmigration.com { respond 404 }` site block exists only to get
+Let's Encrypt cert (the `turn.hof-global.com { respond 404 }` site block exists only to get
 that cert) and forwards plain TCP with a PROXY v2 header (`external_tls` + `proxy_protocol`).
 Without the header TURN reports Caddy's `127.0.0.1` as the caller's address, which Firefox
 rejects; with `proxy_protocol` on, connections without a header are refused. No UDP TURN: UDP 443
@@ -274,7 +278,7 @@ doesn't overwrite it; update it with `caddy upgrade`, which keeps the plugin.
 To prove TURN works, connect a real browser with `rtcConfig: { iceTransportPolicy: 'relay' }` (Chrome
 needs a secure origin for the fake mic) and read `getStats()`: the transport's selected candidate
 pair should have a `relay` local candidate with `relayProtocol: 'tls'` and url
-`turns:turn.hofmigration.com:443`, and audio `bytesSent` should grow. Callers don't need a separate
+`turns:turn.hof-global.com:443`, and audio `bytesSent` should grow. Callers don't need a separate
 STUN server: with no UDP TURN port and no `rtc.stun_servers`, LiveKit hands browsers its default
 public STUN list, and the SFU is reached on its own public `node_ip` anyway.
 
@@ -431,7 +435,7 @@ works from the same machine; test multi-device calls on the Railway deployment.
   per participant (separate localStorage → separate identities). Keep such scripts throwaway (e.g.
   `/tmp`), not in the repo. The omp browser tool's screenshots hung here once (Sept 2026); use
   puppeteer for scripted runs and `bsk` when you need the user's logged-in Chrome (Railway,
-  Bluehost, GitHub settings).
+  Wix DNS, GitHub settings).
 - Chrome's `--use-file-for-fake-audio-capture=<wav>` delivers silence on macOS unless the audio service
   sandbox is off: add `--disable-features=AudioServiceSandbox,AudioServiceOutOfProcess`. To compare
   audio, read the listener's `inbound-rtp` `audioLevel` from `getStats()` (wrap `RTCPeerConnection` in
@@ -447,7 +451,7 @@ works from the same machine; test multi-device calls on the Railway deployment.
   --api-key devkey --api-secret secret --publish-demo <room>`, or `--publish <file>.ogg` for real
   audio content egress can record). On the droplet the CLI needs the generated pair:
   `--api-key "$(grep ^LIVEKIT_API_KEY= token-service/.env | cut -d= -f2)"` (same for the secret).
-- A raw WebSocket handshake against `https://spaces.hofmigration.com/rtc?access_token=<token>` returning
+- A raw WebSocket handshake against `https://api.spaces.hof-global.com/rtc?access_token=<token>` returning
   `101 Switching Protocols` proves Caddy → LiveKit signaling end-to-end.
 - `token-service` has real unit tests (`npm test`, Node's built-in test runner) for `mintToken` /
   `listActiveRooms` and `resolveRecordingFile` (the only gate between an admin-supplied filename and

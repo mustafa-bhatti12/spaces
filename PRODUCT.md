@@ -24,7 +24,7 @@ Space is a neutral, unbranded video tool that any future app can embed through t
 ## Operating Context
 
 - Call UI: desktop browsers and phones; camera and mic permissions; unstable networks (a reconnect banner is shown).
-- Deployed on Railway (`https://spaces-demo.up.railway.app`); media and API run at `https://spaces.hofmigration.com`.
+- Deployed on Railway (`https://spaces.hof-global.com`); media and API run at `https://api.spaces.hof-global.com`.
 - Admin: a single shared password, used occasionally by one or two operators.
 
 ## Capabilities and Constraints

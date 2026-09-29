@@ -180,7 +180,7 @@ A consumer app mints a join token with `POST /token` (consumer secret) and ifram
 
 ```html
 <iframe
-  src="https://spaces-demo.up.railway.app/embed?origin=https://your-app.example#t=JOIN_TOKEN"
+  src="https://spaces.hof-global.com/embed?origin=https://your-app.example#t=JOIN_TOKEN"
   allow="camera; microphone; display-capture; fullscreen; autoplay; clipboard-write"
 ></iframe>
 ```
