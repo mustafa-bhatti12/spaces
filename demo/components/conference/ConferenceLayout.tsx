@@ -328,7 +328,12 @@ export function ConferenceLayout({
           {sidePanel === 'settings' && <SettingsPanel background={background} noiseFilter={noiseFilter} onClose={() => setSidePanel(null)} />}
           {floating.window &&
             createPortal(
-              <FloatingCall stage={focusTrack ?? floatingStage(tracks)} recording={Boolean(rec.recording)} />,
+              <FloatingCall
+                stage={focusTrack ?? floatingStage(tracks)}
+                tracks={tracks}
+                recording={rec.recording}
+                participantCount={participants.length}
+              />,
               floating.window.document.body,
             )}
         </LayoutContextProvider>

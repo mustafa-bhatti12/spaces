@@ -546,29 +546,125 @@ code { font: 0.875em var(--mono); background: var(--key); padding: 1px 6px; bord
 .tile-hand svg { width: 20px; height: 20px; stroke-width: 2; }
 @keyframes hand-up { from { transform: translateY(8px) scale(0.85); opacity: 0; } }
 
-/* Floating window (FloatingWindow.tsx): one tile over a row of keys, in its own Picture-in-Picture window. */
-.pip { height: 100vh; }
-.pip-stage { position: relative; flex: 1; min-height: 0; display: flex; padding: 8px 8px 0; }
-.pip-stage .lk-participant-tile { flex: 1; min-width: 0; }
+/* Floating window (FloatingWindow.tsx): the stage face edge to edge in its own Picture-in-Picture
+   window. A status chip, your self-view and a small version of the dock's key pill float over it; the
+   pill sleeps while nobody touches the window. */
+.pip { position: relative; height: 100vh; background: var(--ground); }
+.pip-stage { position: absolute; inset: 0; display: flex; }
+.pip-stage .lk-participant-tile { flex: 1; min-width: 0; border-radius: 0; transition: opacity 280ms var(--ease-out); }
+.pip-stage .lk-participant-tile::after,
+.pip-stage .lk-participant-tile .lk-participant-placeholder { border-radius: 0; }
+@starting-style {
+  .pip-stage .lk-participant-tile { opacity: 0; }
+}
 .pip .lk-focus-toggle-button { display: none; }
-.pip-rec {
+.pip .lk-participant-metadata { transition: transform 260ms var(--ease-out); }
+/* The name plate rides above the pill while it's awake, so a long name never hides under it. */
+.pip[data-controls='on'] .lk-participant-metadata { transform: translateY(-54px); }
+
+.pip-status {
   position: absolute;
-  top: 16px;
-  right: 16px;
-  display: inline-flex;
+  top: 8px;
+  left: 8px;
+  z-index: 2;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 9999px;
+  background: rgb(20 20 20 / 0.78);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.35);
+  color: var(--ink);
+  font-size: 0.75rem;
+}
+.pip-status .readout-seg + .readout-seg { margin-left: 8px; padding-left: 8px; border-left-color: rgb(255 255 255 / 0.14); }
+.pip-status .readout-seg svg { width: 12px; height: 12px; }
+.pip-status .readout-rec { gap: 5px; }
+.pip-status .led { width: 6px; height: 6px; }
+
+.pip-self {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+  width: 26%;
+  min-width: 76px;
+  max-width: 168px;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border-radius: 8px;
+  background: var(--shell);
+  box-shadow: 0 4px 14px rgb(0 0 0 / 0.5), 0 0 0 1px rgb(255 255 255 / 0.1);
+}
+.pip-self video { display: block; width: 100%; height: 100%; object-fit: cover; }
+.pip-self[data-mirror='on'] video { transform: rotateY(180deg); }
+
+.pip-controls {
+  position: absolute;
+  left: 50%;
+  bottom: 10px;
+  z-index: 3;
+  display: flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 8px;
-  border-radius: 8px;
-  background: oklch(0.15 0.005 70 / 0.8);
-  color: var(--alert-ink);
-  font: 600 0.75rem/1 var(--mono);
+  padding: 5px;
+  border: 1px solid rgb(255 255 255 / 0.08);
+  border-radius: 9999px;
+  background: #1e1f20;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.6), 0 2px 6px rgb(0 0 0 / 0.4);
+  transform: translateX(-50%);
+  transition: opacity 200ms var(--ease-out), transform 260ms var(--ease-out);
 }
-.pip-keys { display: flex; justify-content: center; gap: 8px; padding: 8px; }
-.pip-keys .key { width: 42px; padding: 0; }
-.pip-keys .key .legend { display: none; }
-.pip-keys .key[data-state='off'] { background: var(--alert); color: #fff; }
-.pip-keys .pip-leave:has(span) { width: auto; padding: 0 14px; }
+/* Asleep it only fades: it stays in the tab order, and focusing a key wakes it. */
+.pip[data-controls='off'] .pip-controls { opacity: 0; transform: translate(-50%, 10px); pointer-events: none; }
+.pip-controls .key {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border-radius: 50%;
+  background: #303030;
+  box-shadow: none;
+  color: #e3e3e3;
+}
+.pip-controls .key svg { width: 19px; height: 19px; stroke-width: 2; }
+.pip-controls .legend { display: none; }
+.pip-controls .key:not(:disabled):active { transform: scale(0.93); }
+.pip-controls .key-mic[data-state='on'] { background: rgb(7 213 135 / 0.15); color: var(--live); }
+.pip-controls .key[data-state='off'] { background: var(--alert); color: #fff; }
+@media (hover: hover) and (pointer: fine) {
+  .pip-controls .key:not(:disabled):hover { background: #3d3d3d; color: #fff; }
+  .pip-controls .key-mic[data-state='on']:not(:disabled):hover { background: rgb(7 213 135 / 0.25); color: var(--live); }
+  .pip-controls .key[data-state='off']:not(:disabled):hover,
+  .pip-controls .pip-leave:not(:disabled):hover { background: var(--alert-hover); color: #fff; }
+}
+/* The mic ring: brighter while you speak, as on the dock. */
+.pip-mic { display: inline-flex; border-radius: 50%; transition: box-shadow 160ms var(--ease-out); }
+.pip-mic-speaking { box-shadow: 0 0 0 3px rgb(7 213 135 / 0.4); }
+.pip-controls .pip-leave {
+  width: auto;
+  min-width: 52px;
+  padding: 0 16px;
+  gap: 0;
+  border-radius: 9999px;
+  background: var(--alert);
+  color: #fff;
+}
+.pip-leave-text {
+  max-width: 0;
+  overflow: hidden;
+  opacity: 0;
+  font-size: 0.8125rem;
+  transition: max-width 260ms var(--ease-out), margin 260ms var(--ease-out), opacity 160ms var(--ease-out);
+}
+/* First click: the key grows to say what the second one does. */
+.pip-leave[data-confirm] { box-shadow: inset 0 0 0 2px rgb(255 255 255 / 0.85); }
+.pip-leave[data-confirm] .pip-leave-text { max-width: 12ch; margin-left: 8px; opacity: 1; }
+/* A window shrunk to a sliver keeps only the face, the status chip and the keys. */
+@media (max-width: 299px) {
+  .pip-self { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pip-controls, .pip .lk-participant-metadata, .pip-leave-text { transition-property: opacity; }
+  .pip[data-controls='off'] .pip-controls { transform: translateX(-50%); }
+}
 
 /* Dock */
 /* Dock: Google Meet Style Floating Pill Architecture */

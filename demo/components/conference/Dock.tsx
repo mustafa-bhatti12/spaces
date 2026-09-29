@@ -49,7 +49,7 @@ export type Panel = 'chat' | 'people' | 'settings' | null;
 
 // token-service passes LiveKit's EgressInfo.startedAt through: nanoseconds since epoch, 0 until the
 // egress is actually running.
-function elapsed(startedAtNs: string): string {
+export function elapsed(startedAtNs: string): string {
   const startedAtMs = Number(startedAtNs) / 1e6;
   if (!startedAtMs) return 'starting';
   const seconds = Math.max(0, Math.floor((Date.now() - startedAtMs) / 1000));
@@ -70,7 +70,7 @@ function useFullscreen() {
 }
 
 /** Ticks once a second while `active`, so elapsed timers stay current. */
-function useSecondTick(active: boolean) {
+export function useSecondTick(active: boolean) {
   const [, tick] = useState(0);
   useEffect(() => {
     if (!active) return;

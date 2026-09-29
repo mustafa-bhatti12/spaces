@@ -1,13 +1,23 @@
 'use client';
 
 import type { TrackReferenceOrPlaceholder } from '@livekit/components-core';
-import { TrackRefContext, usePersistentUserChoices, useRoomContext } from '@livekit/components-react';
+import {
+  isTrackReference,
+  TrackRefContext,
+  useIsSpeaking,
+  useLocalParticipant,
+  usePersistentUserChoices,
+  useRoomContext,
+  VideoTrack,
+} from '@livekit/components-react';
 import { Track } from 'livekit-client';
-import { Mic, MicOff, PhoneOff, Video, VideoOff } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
-import { Led } from '../ui/Device';
-import { DeviceKey } from './Dock';
+import { Mic, MicOff, PhoneOff, Users, Video, VideoOff } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useMirrorVideo } from '@/lib/client/mirror';
+import { Led, Readout, ReadoutSegment } from '../ui/Device';
+import { DeviceKey, elapsed, useSecondTick } from './Dock';
 import { Tile } from './Tile';
+import type { ActiveRecording } from './useRecording';
 
 // Document Picture-in-Picture (Chrome/Edge 116+ desktop); not in TypeScript's DOM types yet.
 interface DocumentPictureInPicture {
@@ -54,7 +64,8 @@ export function useFloatingWindow(connected: boolean, title: string) {
     const api = pipApi();
     if (!api || api.window) return;
     // Called straight from the click (or Chrome's tab-switch action): the browser requires that.
-    const win = await api.requestWindow({ width: 360, height: 280 });
+    // 16:9, so the face fills it edge to edge; people resize it from there.
+    const win = await api.requestWindow({ width: 400, height: 225 });
     copyStyles(win.document);
     win.document.title = title;
     win.addEventListener('pagehide', () => setPipWindow((current) => (current === win ? null : current)), { once: true });
@@ -98,10 +109,32 @@ export function floatingStage(tracks: TrackReferenceOrPlaceholder[]) {
   return remote[0] ?? cameras[0];
 }
 
-/** The floating window's content: one tile, REC while recording, and mic, camera and Leave keys. */
-export function FloatingCall({ stage, recording }: { stage: TrackReferenceOrPlaceholder | undefined; recording: boolean }) {
+// The controls sleep after this long without the pointer moving, so the face fills the window.
+const CONTROLS_IDLE_MS = 2500;
+
+/**
+ * The floating window's content, a pocket version of the call: the stage face edge to edge, a status
+ * chip that always shows people, REC and your mute, a self-view while someone else is on the stage,
+ * and the dock's mic, camera and Leave keys in a pill that wakes when the pointer moves.
+ */
+export function FloatingCall({
+  stage,
+  tracks,
+  recording,
+  participantCount,
+}: {
+  stage: TrackReferenceOrPlaceholder | undefined;
+  tracks: TrackReferenceOrPlaceholder[];
+  recording: ActiveRecording | null;
+  participantCount: number;
+}) {
   const room = useRoomContext();
+  const { localParticipant, isCameraEnabled, isMicrophoneEnabled } = useLocalParticipant();
+  const speaking = useIsSpeaking(localParticipant);
+  const [mirror] = useMirrorVideo();
   const { saveAudioInputEnabled, saveVideoInputEnabled } = usePersistentUserChoices();
+  useSecondTick(Boolean(recording));
+
   // Leave takes two clicks here: the window is small and there is no room for the Leave dialog.
   const [confirmLeave, setConfirmLeave] = useState(false);
   useEffect(() => {
@@ -110,28 +143,92 @@ export function FloatingCall({ stage, recording }: { stage: TrackReferenceOrPlac
     return () => clearTimeout(timer);
   }, [confirmLeave]);
 
+  const [awake, setAwake] = useState(true);
+  const [held, setHeld] = useState(false); // pointer over the pill, or keyboard focus in it
+  const idle = useRef<number | undefined>(undefined);
+  const wake = useCallback(() => {
+    setAwake(true);
+    window.clearTimeout(idle.current);
+    idle.current = window.setTimeout(() => setAwake(false), CONTROLS_IDLE_MS);
+  }, []);
+  useEffect(() => {
+    wake();
+    return () => clearTimeout(idle.current);
+  }, [wake]);
+  const controls = awake || held || confirmLeave;
+
+  const self = tracks.find((t) => t.participant.isLocal && t.source === Track.Source.Camera);
+  const showSelf = isCameraEnabled && isTrackReference(self) && stage?.participant !== localParticipant;
+
   return (
-    <div className="conference pip">
+    <div
+      className="conference pip"
+      data-controls={controls ? 'on' : 'off'}
+      onPointerMove={wake}
+      onPointerDown={wake}
+      onPointerLeave={() => {
+        clearTimeout(idle.current);
+        setAwake(false);
+      }}
+    >
       <div className="pip-stage">
         {stage && (
-          <TrackRefContext.Provider value={stage}>
+          // Keyed on who is shown, so a new speaker's face fades in instead of swapping in place.
+          <TrackRefContext.Provider key={`${stage.participant.identity}:${stage.source}`} value={stage}>
             <Tile />
           </TrackRefContext.Provider>
         )}
-        {recording && (
-          <span className="pip-rec">
-            <Led signal="alert" pulse label="Recording" />
-            REC
-          </span>
-        )}
       </div>
-      <div className="pip-keys" role="toolbar" aria-label="Call controls">
-        <DeviceKey
-          source={Track.Source.Microphone}
-          on={{ icon: Mic, legend: 'Mic', label: 'Mute microphone' }}
-          off={{ icon: MicOff, legend: 'Muted', label: 'Unmute microphone' }}
-          onChange={(enabled, userInitiated) => userInitiated && saveAudioInputEnabled(enabled)}
-        />
+
+      {/* Not a live region: the REC timer would be read out every second. */}
+      <Readout className="pip-status">
+        <ReadoutSegment>
+          <Users aria-hidden="true" />
+          <span aria-label={`${participantCount} in the call`}>{participantCount}</span>
+        </ReadoutSegment>
+        {recording && (
+          <ReadoutSegment>
+            <span className="readout-rec">
+              <Led signal="alert" pulse label="Recording" />
+              REC <span className="mono">{elapsed(recording.startedAt)}</span>
+            </span>
+          </ReadoutSegment>
+        )}
+        {!isMicrophoneEnabled && (
+          <ReadoutSegment>
+            <span className="readout-rec">
+              <MicOff aria-hidden="true" />
+              Muted
+            </span>
+          </ReadoutSegment>
+        )}
+      </Readout>
+
+      {showSelf && (
+        <div className="pip-self" data-mirror={mirror ? 'on' : 'off'}>
+          <VideoTrack trackRef={self} />
+        </div>
+      )}
+
+      <div
+        className="pip-controls"
+        role="toolbar"
+        aria-label="Call controls"
+        onPointerEnter={() => setHeld(true)}
+        onPointerLeave={() => setHeld(false)}
+        onFocus={() => setHeld(true)}
+        onBlur={(event) => !event.currentTarget.contains(event.relatedTarget as Node | null) && setHeld(false)}
+        onKeyDown={(event) => event.key === 'Escape' && setConfirmLeave(false)}
+      >
+        <span className={`pip-mic${speaking && isMicrophoneEnabled ? ' pip-mic-speaking' : ''}`}>
+          <DeviceKey
+            source={Track.Source.Microphone}
+            className="key-mic"
+            on={{ icon: Mic, legend: 'Mic', label: 'Mute microphone' }}
+            off={{ icon: MicOff, legend: 'Muted', label: 'Unmute microphone' }}
+            onChange={(enabled, userInitiated) => userInitiated && saveAudioInputEnabled(enabled)}
+          />
+        </span>
         <DeviceKey
           source={Track.Source.Camera}
           on={{ icon: Video, legend: 'Camera', label: 'Turn camera off' }}
@@ -140,13 +237,16 @@ export function FloatingCall({ stage, recording }: { stage: TrackReferenceOrPlac
         />
         <button
           type="button"
-          className={`key pip-leave ${confirmLeave ? 'key-destroy' : 'key-danger'}`}
-          aria-label={confirmLeave ? 'Confirm leaving the call' : 'Leave call'}
+          className="key pip-leave"
+          data-confirm={confirmLeave || undefined}
+          aria-label={confirmLeave ? 'Leave call: click again to confirm' : 'Leave call'}
           title="Leave call"
           onClick={() => (confirmLeave ? void room.disconnect() : setConfirmLeave(true))}
         >
           <PhoneOff aria-hidden="true" />
-          {confirmLeave && <span>Leave?</span>}
+          <span className="pip-leave-text" aria-hidden={!confirmLeave}>
+            Leave call
+          </span>
         </button>
       </div>
     </div>
