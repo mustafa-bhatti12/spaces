@@ -1,7 +1,6 @@
 'use client';
 
 import {
-  ConnectionQualityIndicator,
   useIsSpeaking,
   useParticipantAttribute,
   useParticipantInfo,
@@ -13,6 +12,7 @@ import { Track } from 'livekit-client';
 import { Hand, Mic, MicOff, MoreVertical, Pin, PinOff, ShieldMinus, ShieldPlus, UserX, Video, VideoOff } from 'lucide-react';
 import { useState } from 'react';
 import { Menu } from '../ui/Menu';
+import { SignalBars } from '../ui/SignalBars';
 import { SidePanel } from './SidePanel';
 import { initials } from '../ui/Device';
 import { SwitchRow } from '../ui/SwitchRow';
@@ -82,8 +82,10 @@ function ParticipantRow({
       </span>
       <span className="person-info">
         <span className="person-name">
-          {name}
-          {participant.isLocal && <span className="person-you"> (you)</span>}
+          <span className="person-name-text">
+            {name}
+            {participant.isLocal && <span className="person-you"> (you)</span>}
+          </span>
           {host && <span className="person-host">Host</span>}
         </span>
         {status && <span className={`person-status${error ? ' person-status-error' : hand ? ' person-status-hand' : ''}`}>{status}</span>}
@@ -93,7 +95,7 @@ function ParticipantRow({
         {hand && <Hand className="icon-hand" aria-label="Hand raised" />}
         {micMuted ? <MicOff className="icon-off" aria-label="Mic off" /> : <Mic aria-label="Mic on" />}
         {camMuted ? <VideoOff className="icon-off" aria-label="Camera off" /> : <Video aria-label="Camera on" />}
-        <ConnectionQualityIndicator participant={participant} />
+        <SignalBars participant={participant} />
         <Menu
           label={`Options for ${name}`}
           triggerBase="person-action"

@@ -2,7 +2,6 @@
 
 import {
   AudioTrack,
-  ConnectionQualityIndicator,
   isTrackReference,
   ParticipantTile,
   useEnsureTrackRef,
@@ -15,6 +14,7 @@ import {
 import { Track } from 'livekit-client';
 import { Hand, Lock, MicOff, MonitorUp } from 'lucide-react';
 import { initials } from '../ui/Device';
+import { SignalBars } from '../ui/SignalBars';
 import { MIRROR_ATTRIBUTE } from '@/lib/client/mirror';
 
 export const HAND_ATTRIBUTE = 'hand';
@@ -75,7 +75,7 @@ export function Tile() {
             </>
           )}
         </div>
-        <ConnectionQualityIndicator className="lk-participant-metadata-item" />
+        <SignalBars participant={trackRef.participant} onlyWhenBad className="lk-participant-metadata-item tile-signal" />
       </div>
     </ParticipantTile>
   );

@@ -5,7 +5,6 @@ import { isEqualTrackRef } from '@livekit/components-core';
 import {
   CarouselLayout,
   Chat,
-  FocusLayout,
   FocusLayoutContainer,
   GridLayout,
   isTrackReference,
@@ -16,6 +15,7 @@ import {
   useDataChannel,
   useLocalParticipant,
   useParticipants,
+  TrackRefContext,
   usePinnedTracks,
   useTracks,
 } from '@livekit/components-react';
@@ -253,7 +253,10 @@ export function ConferenceLayout({
                     <CarouselLayout tracks={carouselTracks}>
                       <Tile />
                     </CarouselLayout>
-                    <FocusLayout trackRef={focusTrack} />
+                    {/* Our Tile, not FocusLayout's stock ParticipantTile: same name plate and signal bars. */}
+                    <TrackRefContext.Provider value={focusTrack}>
+                      <Tile />
+                    </TrackRefContext.Provider>
                   </FocusLayoutContainer>
                 </div>
               )}

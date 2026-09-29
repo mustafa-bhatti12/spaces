@@ -515,7 +515,15 @@ code { font: 0.875em var(--mono); background: var(--key); padding: 1px 6px; bord
   font-weight: 600;
 }
 .lk-participant-tile .lk-participant-metadata-item svg { width: 14px; height: 14px; }
-.lk-participant-tile .lk-connection-quality { width: 28px; height: 28px; padding: 6px; }
+.lk-participant-tile .tile-signal { width: 28px; padding: 0; justify-content: center; }
+/* Connection bars (ui/SignalBars): neutral when fine, amber poor, red lost. */
+.signal { display: inline-grid; place-items: center; flex-shrink: 0; width: 18px; height: 18px; color: var(--ink-2); }
+.signal svg { width: 16px; height: 16px; }
+.signal rect { fill: currentColor; stroke: none; transition: opacity 200ms var(--ease-out); }
+.signal .signal-off { opacity: 0.22; }
+.signal-warn { color: var(--warn); }
+.signal-alert { color: var(--alert-ink); }
+.signal-idle { color: var(--ink-3); }
 .name-plate { max-width: 100%; min-width: 0; }
 .name-plate-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .name-plate-you { color: var(--ink-3); font-weight: 500; }
@@ -961,9 +969,12 @@ code { font: 0.875em var(--mono); background: var(--key); padding: 1px 6px; bord
 .person:hover { background: var(--shell-up); }
 .person-speaking .avatar { box-shadow: 0 0 0 2px var(--live); }
 .person-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.person-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+/* The name truncates; the HOST badge after it never does. */
+.person-name { display: flex; align-items: center; min-width: 0; font-weight: 600; }
+.person-name-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .person-you { color: var(--ink-3); font-weight: 500; }
 .person-host {
+  flex-shrink: 0;
   margin-left: 8px;
   padding: 1px 6px;
   border-radius: 5px;
@@ -974,13 +985,12 @@ code { font: 0.875em var(--mono); background: var(--key); padding: 1px 6px; bord
   font-weight: 500;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  vertical-align: 1px;
+  line-height: 1.4;
 }
 .person-status { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-3); font-size: 0.75rem; }
 .person-status-hand { color: var(--warn); font-weight: 600; }
 .person-icons { display: flex; align-items: center; gap: 8px; color: var(--ink-2); }
 .person-icons svg { width: 16px; height: 16px; stroke-width: 1.75; }
-.person-icons .lk-connection-quality { width: 18px; height: 18px; }
 .icon-off { color: var(--alert-ink); }
 .icon-hand { color: var(--warn); }
 .person-status-error { color: var(--alert-ink); }

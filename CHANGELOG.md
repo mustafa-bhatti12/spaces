@@ -7,6 +7,7 @@ the detail. Agents: add a line here with every change that ships (see `AGENTS.md
 
 - **Host moderation:** each person's menu in People lets a host pin them for everyone (everyone's stage follows; anyone can still pin someone else for themselves), mute their mic (they're told, and can unmute themselves), or remove them (two-step confirm; they can't rejoin that call). Hosts can't remove another host without stopping them hosting first.
 - **Pin for me:** anyone can pin a person on their own screen from the People menu, as well as from a tile.
+- **New connection indicator:** three clean bars instead of LiveKit's stock icon: neutral when the link is fine, amber when poor, red when lost. People always shows it; tiles show it only when someone's connection is poor or lost. The pinned stage tile now uses the same name plate as the grid, and the `HOST` chip no longer gets cut off.
 - **Noise cancellation is RNNoise:** the Settings switch (off by default) now runs RNNoise on your mic in the browser: about 18 dB less background noise in testing, speech unchanged, ~20 ms added delay, a few % of one core. It no longer touches Chrome's Voice isolation, which stays off. Echo cancellation, noise suppression and auto gain are always on.
 
 ## 2026-09-28
