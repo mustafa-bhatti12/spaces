@@ -208,7 +208,7 @@ The page and parent talk over `postMessage`, protocol `spaces-embed/1`:
 
 Built on LiveKit's React components and hooks (`@livekit/components-react`), with Space's own look: warm graphite, signal-light colours, and one grouped control dock.
 
-- **Lobby:** start a new room (random name) or join by name, plus a live list of active rooms.
+- **Lobby:** start a new room (random name) or join by name. Live rooms are listed only in `/admin`.
 - **Pre-join:** LiveKit `PreJoin` with camera preview, mic and camera on/off, device pickers, and the display name from your last call filled in.
 - **Layouts:** adaptive grid, and a focus view with a thumbnail strip. Click a tile to pin it; screen shares take the stage automatically. On phones your own camera is a corner thumbnail instead of a grid tile, so the other person fills the screen; tap it to take the stage yourself.
 - **Dock:** a status readout (room, people, `REC` timer and who started it), then three key groups: mic, camera and screen share (device menus included); react (emoji, plus raise hand), chat with an unread badge, and people; and More (record, copy invite link, settings, full screen, floating window). Leave sits on its own. The mic key's ring is green when live, red when muted, and brighter while you speak.

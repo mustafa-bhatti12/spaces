@@ -3,6 +3,10 @@
 What shipped, newest first. One line per user- or operator-visible change; commit hashes point at
 the detail. Agents: add a line here with every change that ships (see `AGENTS.md`).
 
+## 2026-10-07
+
+- **The home page no longer lists live rooms.** The "Live now" panel and the public `/api/rooms` route behind it are gone; live rooms are shown only in `/admin`.
+
 ## 2026-09-29
 
 - **You can't fall out of a call by accident.** Going back (the button, the swipe, Alt/Cmd+←, Backspace where it still navigates) now asks with the same leave dialog instead of dropping you, and closing or reloading the tab raises the browser's own "Leave site?" confirmation. Both stop the moment you've left, so Back works normally from the end screen.

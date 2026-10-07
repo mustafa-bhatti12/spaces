@@ -238,10 +238,9 @@ code { font: 0.875em var(--mono); background: var(--key); padding: 1px 6px; bord
 .lobby {
   min-height: 100dvh;
   display: grid;
-  grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.9fr);
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto 1fr;
-  grid-template-areas: 'top top' 'start live';
-  column-gap: clamp(40px, 6vw, 96px);
+  grid-template-areas: 'top' 'start';
   align-items: center;
   max-width: 1200px;
   margin: 0 auto;
@@ -253,35 +252,6 @@ code { font: 0.875em var(--mono); background: var(--key); padding: 1px 6px; bord
 .lobby-form { margin-top: 14px; max-width: 440px; padding: 18px; display: flex; flex-direction: column; }
 .lobby-form .key-wide { margin-top: 14px; }
 .lobby-form .key-wide .mono { font-weight: 500; }
-.lobby-live { grid-area: live; padding: 0 28px; display: flex; flex-direction: column; gap: 12px; align-self: center; }
-.lobby-live-head { width: 100%; justify-content: space-between; }
-.lobby-live-head .readout-seg + .readout-seg { border-left: 0; }
-.lobby-live > .note { padding: 4px 2px; }
-
-.room-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-.room-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
-  align-items: center;
-  gap: 18px;
-  width: 100%;
-  height: 48px;
-  padding: 0 14px 0 16px;
-  border: 0;
-  border-radius: var(--r-key);
-  background: var(--shell);
-  text-align: left;
-  cursor: pointer;
-  transition: background-color 120ms;
-}
-.room-row:hover { background: var(--key); }
-.room-row-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.9375rem; }
-.room-row-count { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-2); font-size: 0.8125rem; font-variant-numeric: tabular-nums; }
-.room-row-count svg { width: 14px; height: 14px; }
-.room-row-go { display: inline-flex; align-items: center; gap: 4px; color: var(--ink-3); font-size: 0.8125rem; font-weight: 600; transition: color 120ms; }
-.room-row-go svg { width: 16px; height: 16px; transition: transform 160ms var(--ease-out); }
-.room-row:hover .room-row-go { color: var(--live); }
-.room-row:hover .room-row-go svg { transform: translateX(3px); }
 
 /* ---------- Pre-join ---------- */
 .prejoin-page { min-height: 100dvh; display: flex; flex-direction: column; }
@@ -1680,7 +1650,7 @@ code { font: 0.875em var(--mono); background: var(--key); padding: 1px 6px; bord
   .key-flag-rec::after { top: 6px; right: 6px; }
 }
 @media (max-width: 900px) {
-  .lobby { grid-template-columns: 1fr; grid-template-rows: auto; grid-template-areas: 'top' 'start' 'live'; row-gap: 40px; align-items: start; align-content: start; }
+  .lobby { grid-template-rows: auto; row-gap: 40px; align-items: start; align-content: start; }
   .lobby-start { padding-top: 12px; }
   .prejoin-grid {
     grid-template-columns: 1fr;
@@ -1836,7 +1806,7 @@ code { font: 0.875em var(--mono); background: var(--key); padding: 1px 6px; bord
 
 @media (max-width: 560px) {
   .page-top { padding: 16px 20px; }
-  .lobby-start, .lobby-live { padding: 0 20px; }
+  .lobby-start { padding: 0 20px; }
   .lobby-form { padding: 18px; }
   .prejoin-grid { padding: 0 16px 36px; }
   .prejoin-grid .lk-prejoin .lk-username-container .lk-form-control { height: 50px; font-size: 1rem; }
