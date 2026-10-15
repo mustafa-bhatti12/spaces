@@ -29,6 +29,7 @@ import { lobby } from './lobby';
 import { lobbyRoutes } from './lobbyRoutes';
 import { moderationRoutes } from './moderationRoutes';
 import { embedRoutes } from './embedRoutes';
+import { callLogRoutes } from './callLog';
 
 const fastify = Fastify();
 
@@ -333,6 +334,7 @@ fastify.register(adminRoutes, { prefix: '/admin' });
 fastify.register(lobbyRoutes, { prefix: '/lobby' });
 fastify.register(embedRoutes, { prefix: '/embed' });
 fastify.register(moderationRoutes, { prefix: '/room' });
+fastify.register(callLogRoutes, { prefix: '/call-log' });
 
 const port = Number(process.env.PORT ?? 8880);
 fastify

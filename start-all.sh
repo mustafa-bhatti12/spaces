@@ -262,6 +262,23 @@ write_runtime_configs() {
   chmod 644 "$EGRESS_CONFIG"
 }
 
+# LiveKit asks the kernel for 5 MB UDP socket buffers so a burst of media packets isn't dropped
+# before it's read; Linux caps that at net.core.{r,w}mem_max (212 KB on Ubuntu), and LiveKit then
+# logs "UDP receive buffer is too small". Persisted in /etc/sysctl.d so a reboot keeps it.
+# LiveKit sizes its sockets at start, so it applies from the next LiveKit start.
+ensure_udp_buffers() {
+  [ "$(uname)" = "Darwin" ] && return 0
+  local want=5000000
+  [ "$(cat /proc/sys/net/core/rmem_max)" -ge "$want" ] && [ "$(cat /proc/sys/net/core/wmem_max)" -ge "$want" ] && return 0
+  if ! can_sudo; then
+    echo "⚠️  UDP buffers are small and there's no root to raise them (net.core.rmem_max/wmem_max=$want)."
+    return 0
+  fi
+  printf 'net.core.rmem_max = %s\nnet.core.wmem_max = %s\n' "$want" "$want" | as_root tee /etc/sysctl.d/90-spaces-udp.conf >/dev/null
+  as_root sysctl -q -p /etc/sysctl.d/90-spaces-udp.conf
+  echo "📶 UDP socket buffers raised to $want bytes for LiveKit"
+}
+
 # --- 0. Env files + credentials (LiveKit reads the key pair from token-service/.env) ---
 ensure_npm_env token-service
 # The demo only runs locally (Railway hosts it for the droplet), but its .env is where the consumer
@@ -304,6 +321,7 @@ fi
 # but never notify token-service. Use the runtime copy of livekit/config.yaml whenever Redis is up.
 install_livekit_if_needed || true
 write_runtime_configs
+ensure_udp_buffers || true
 REDIS_UP=0
 if have redis-cli && redis-cli -h 127.0.0.1 ping >/dev/null 2>&1; then
   REDIS_UP=1

@@ -14,6 +14,18 @@ import { getSavedDisplayName, saveDisplayName } from '@/lib/client/identity';
 import { MIC_PROCESSING } from '@/lib/client/mic';
 import { useMirrorVideo } from '@/lib/client/mirror';
 
+/**
+ * Phones drop calls in ways desktops don't: a background tab can be paused or cut off, and mobile
+ * data comes and goes. The October 2026 report of a client dropped again and again was an Android
+ * phone on Samsung Internet and mobile data. Said before joining, while it's still easy to act on.
+ */
+function mobileCallAdvice(): string | null {
+  const ua = navigator.userAgent;
+  if (!/Android|iPhone|iPad|iPod/i.test(ua)) return null;
+  const keepOpen = 'Keep this screen open during the call: switching apps or locking the phone can cut you off. Wi-Fi is steadier than mobile data.';
+  return /SamsungBrowser/i.test(ua) ? `Calls are steadier in Chrome than in Samsung Internet; open this link in Chrome if you can. ${keepOpen}` : keepOpen;
+}
+
 // LiveKit's own placeholder for "no camera chosen yet". Cameras have no device with this id
 // (Chrome only has one for audio), so it must never reach getUserMedia or a device switch.
 const NO_CAMERA_CHOSEN = 'default';
@@ -62,6 +74,9 @@ export function PreJoin({ defaults, joinLabel, userLabel, busy, onSubmit, onErro
   const [username, setUsername] = useState(lockedName ?? '');
   const [nameMissing, setNameMissing] = useState(false);
   const nameInput = useRef<HTMLInputElement>(null);
+  // After mount: the server render has no user agent, and the first client render must match it.
+  const [advice, setAdvice] = useState<string | null>(null);
+  useEffect(() => setAdvice(mobileCallAdvice()), []);
 
   // After hydration (the page is server-rendered, localStorage isn't): keep anything already in the
   // field, otherwise fill in the saved name.
@@ -221,6 +236,7 @@ export function PreJoin({ defaults, joinLabel, userLabel, busy, onSubmit, onErro
           </p>
         )}
         {beforeJoin}
+        {advice && <p className="note">{advice}</p>}
         <button className="lk-button lk-join-button" type="submit" disabled={busy}>
           {joinLabel}
         </button>

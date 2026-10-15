@@ -5,7 +5,6 @@ import { supportsScreenSharing } from '@livekit/components-core';
 import {
   ChatToggle,
   MediaDeviceMenu,
-  StartMediaButton,
   useIsSpeaking,
   useLocalParticipant,
   useParticipantAttribute,
@@ -416,7 +415,6 @@ export function Dock({ roomName, participantCount, panel, onTogglePanel, onReact
       </div>
 
       <div className="dock-end">
-        <StartMediaButton className="key" />
         <button
           type="button"
           className="key key-settings"

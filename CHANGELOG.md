@@ -3,6 +3,15 @@
 What shipped, newest first. One line per user- or operator-visible change; commit hashes point at
 the detail. Agents: add a line here with every change that ships (see `AGENTS.md`).
 
+## 2026-10-15
+
+- **A dropped call rejoins by itself.** When the connection is lost for longer than LiveKit's own ~45 s reconnect, the call shows "Connection lost · Reconnecting you to the call…" and keeps rejoining for up to 5 minutes (sooner when the network comes back), with mic and camera as you left them, instead of ending on the "disconnected" screen. Leave call stops it.
+- **You leave only when the page closes.** A background tab frozen by Android no longer counts as "You left the call", and cancelling the browser's leave prompt no longer drops you anyway.
+- **"Your browser paused the call's sound" banner** with a Turn on sound button when the browser blocks playback (replaces the unlabeled Start Audio key by the dock).
+- **Phone advice before joining:** keep the screen open, prefer Wi-Fi, and on Samsung Internet, use Chrome.
+- **Call event log for operators:** each caller's browser reports reconnects, disconnect reasons, blocked audio, hidden/frozen tab, offline and network type to `token-service/logs/calls-<day>.jsonl` (30 days).
+- **Droplet: UDP socket buffers raised to 5 MB** (`start-all.sh`, `/etc/sysctl.d/90-spaces-udp.conf`); LiveKit no longer warns "UDP receive buffer is too small".
+
 ## 2026-10-07
 
 - **The home page no longer lists live rooms.** The "Live now" panel and the public `/api/rooms` route behind it are gone; live rooms are shown only in `/admin`.

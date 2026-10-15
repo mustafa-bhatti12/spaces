@@ -16,12 +16,15 @@ import {
   useLocalParticipant,
   useParticipants,
   TrackRefContext,
+  useAudioPlayback,
+  useRoomContext,
+  useStartVideo,
   usePinnedTracks,
   useTracks,
 } from '@livekit/components-react';
 import { ConnectionState, RoomEvent, Track } from 'livekit-client';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Link2, MonitorUp, WifiOff, X } from 'lucide-react';
+import { Link2, MonitorUp, Volume2, WifiOff, X } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { MIRROR_ATTRIBUTE, useMirrorVideo } from '@/lib/client/mirror';
 import type { Panel } from './Dock';
@@ -76,6 +79,12 @@ export function ConferenceLayout({
   const lobby = useWaitingRoom(roomName, hosting.isHost && !embed ? joinToken : undefined);
   const [aloneDismissed, setAloneDismissed] = useState(false);
   const floating = useFloatingWindow(connectionState === ConnectionState.Connected, `${roomName} · Spaces`);
+  // Browsers (Safari, mobile, a tab woken from the background) can refuse to play sound until the
+  // page gets a tap, and iOS in low-power mode video too; then the call is silent or frozen with
+  // nothing to say why.
+  const room = useRoomContext();
+  const { canPlayAudio, startAudio } = useAudioPlayback(room);
+  const { canPlayVideo } = useStartVideo({ room, props: {} });
 
   // Participant attributes are synchronized through LiveKit, so every client renders this
   // participant's camera with the same orientation. Only send once connected: an update sent while
@@ -264,6 +273,19 @@ export function ConferenceLayout({
                 <div className="stage-banner" role="status">
                   <WifiOff aria-hidden="true" />
                   Connection lost. Reconnecting…
+                </div>
+              )}
+              {(!canPlayAudio || !canPlayVideo) && connectionState === ConnectionState.Connected && (
+                <div className="stage-banner audio-banner" role="alert">
+                  <Volume2 aria-hidden="true" />
+                  Your browser paused the call&apos;s {canPlayAudio ? 'video' : 'sound'}
+                  <button
+                    type="button"
+                    className="key share-banner-stop"
+                    onClick={() => void Promise.all([startAudio(), room.startVideo()]).catch(() => {})}
+                  >
+                    {canPlayAudio ? 'Turn on video' : 'Turn on sound'}
+                  </button>
                 </div>
               )}
               {sharingScreen && (

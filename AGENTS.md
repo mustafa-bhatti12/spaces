@@ -90,7 +90,7 @@ graph LR
 - `token-service` is the **only** thing in this repo (or any consumer) that ever holds real LiveKit
   credentials. Everything else gets a short-lived, room-scoped join token.
 - **Two bearer secrets, checked in `token-service/src/auth.ts`:** `TOKEN_SERVICE_SHARED_SECRET` for
-  consumer routes (`/token`, `/embed/session`, `/rooms`, `/participant`, `/recording/*`, `/room/end`, `/room/host`, `/room/mute|remove|spotlight`, `/lobby/*`) — held by `demo` and later
+  consumer routes (`/token`, `/embed/session`, `/rooms`, `/participant`, `/recording/*`, `/room/end`, `/room/host`, `/room/mute|remove|spotlight`, `/lobby/*`, `/call-log`) — held by `demo` and later
   Petition Studio's API; `ADMIN_SHARED_SECRET` for the operator-only `/admin/*` routes (remove people,
   close rooms, delete recordings) — held only by `demo`'s `/admin` server routes
   (`demo/lib/server/tokenService.ts`, `kind: 'admin'`). Never give a consumer the admin secret; a
@@ -304,6 +304,10 @@ What `start-all.sh` does and doesn't do on a bare Linux host:
   once (see "Security model"), writes `.runtime/livekit.yaml` (key pair + `use_external_ip: true` +
   `node_ip: <public IPv4>` so ICE candidates are reachable) and `.runtime/egress.yaml`.
   `SPACE_PUBLIC_IP` overrides IP detection. It does **not** start the demo on a VPS (Railway hosts it).
+  As root it raises `net.core.rmem_max`/`wmem_max` to 5 MB (`/etc/sysctl.d/90-spaces-udp.conf`,
+  `ensure_udp_buffers`): LiveKit asks for 5 MB UDP socket buffers and Ubuntu caps them at 212 KB,
+  which drops media bursts and logs `UDP receive buffer is too small`. Applied on the droplet
+  2026-10-15; LiveKit logs `UDP receive buffer size {"current": 10000000}` (debug) once it took.
 - **Doesn't:** install Node (need Node 20+ first — `ensure_npm_env` only runs `npm install`),
   install Docker (`curl -fsSL https://get.docker.com | sh`), or install/configure Caddy. It runs in
   the foreground and supervises: if LiveKit, token-service or its Redis exits, it
@@ -322,7 +326,13 @@ What `start-all.sh` does and doesn't do on a bare Linux host:
   `ufw allow from 172.17.0.0/16`.
 - **Logs:** `/tmp/livekit.log`, `/tmp/token-service.log`, `/tmp/redis.log`,
   `/tmp/demo.log` (local only), `journalctl -u spaces` (start-all's own output: which service died,
-  restarts), `docker logs space-egress`, `journalctl -u caddy`.
+  restarts), `docker logs space-egress`, `journalctl -u caddy`. **Callers' own side of a call:**
+  `token-service/logs/calls-<UTC day>.jsonl` (kept 30 days), one JSON line per browser event:
+  connection state, `disconnected` + LiveKit reason, `rejoin`/`rejoined`/`rejoin-failed`,
+  `audio-playback` blocked/allowed, `visibility`, `freeze`/`resume`, `online`/`offline`, `network`
+  type, `quality`, `pagehide`, plus a `session` line with the user agent. `joined` carries the
+  participant sid to match `/tmp/livekit.log`. Start here for "the call kept dropping" reports:
+  `grep <room> token-service/logs/calls-*.jsonl | jq -c '[.at,.identity[:8],.e,.d]'`.
 - **Harmless startup lines:** `could not validate external IP ... from 172.17.0.1:7882 ... context
   canceled` is LiveKit cancelling its parallel per-interface checks once one succeeded; only worry if
   no `using external IPs` line follows.
@@ -438,6 +448,25 @@ works from the same machine; test multi-device calls on the Railway deployment.
   the server (route handlers), not in client code. To debug a deployed page:
   `localStorage.setItem('spaces-debug', '1')` and reload. Browser-native lines (failed requests,
   uncaught promise rejections, GPU warnings) still show, so client promises must be caught.
+  What a deployed caller's browser went through is recorded instead by `useCallLog`
+  (`demo/components/conference/useCallLog.ts` → `/api/call-log` → token-service `/call-log`, which
+  verifies the join token and writes `token-service/logs/`; see "Logs"). Batches every 15 s and on
+  hide/pagehide (beacon); events from an outage are kept (up to 500) and sent once back online.
+- **A dropped call rejoins by itself; LiveKit's page-leave disconnect is off.** LiveKit's own
+  reconnect gives up after about 45 s (`Disconnected` with no reason); `Conference` then calls
+  `connect` again on the same Room for up to 5 minutes (backoff 1→10 s, woken by `online`) behind a
+  "Connection lost" overlay whose Leave stops it, using the latest server-refreshed token (the engine
+  is replaced per connect, so it re-subscribes on `SignalConnected`), and republishes mic and camera
+  as they were. Only connection-loss reasons (`LOST_CONNECTION`) retry; a leave, removal, duplicate
+  or room end never does, and `NotAllowed` stops it. `disconnectOnPageLeave: false`: LiveKit's own
+  handler also fired on `beforeunload` (dropping you even when you cancel the leave prompt) and on
+  Android's `freeze` of a background tab (shown as "You left"); `Conference` leaves on `pagehide`
+  instead. Verified locally by killing LiveKit for 60 s: both callers rejoined ~3 s after it came back.
+- **Blocked playback is a stage banner,** not LiveKit's `StartMediaButton` (that sat unexplained by
+  the dock). `ConferenceLayout` shows "Your browser paused the call's sound/video" with a button when
+  `useAudioPlayback`/`useStartVideo` say playback is blocked. Headless Chrome grants user activation
+  (and capturing pages may autoplay), so test it by making `HTMLMediaElement.play` reject with
+  `NotAllowedError` until a `pointerdown`.
 - **Don't call `setAttributes` before the room is connected.** An update sent during the join is
   never confirmed and livekit-client rejects it after 5 s (`SignalRequestError: Request to update
   local metadata timed out`); the attribute is lost. `ConferenceLayout` gates the mirror attribute
@@ -516,6 +545,7 @@ works from the same machine; test multi-device calls on the Railway deployment.
 - `token-service/src/livekit.ts` — all LiveKit SDK calls (tokens, rooms, participants, egress, path mapping).
 - `token-service/src/index.ts` — consumer routes, including the `/recording/webhook` receiver (LiveKit's events: auto-record, finish + transcribe, room cleanup) and `/recording/transcripts`.
 - `token-service/src/autoRecord.ts` — records a call from its first join (every call, or rooms marked on `/token`); remembers rooms someone stopped by hand.
+- `token-service/src/callLog.ts` — `POST /call-log`: browsers' connection events (via `demo/app/api/call-log`), token-checked, appended to `logs/calls-<day>.jsonl`, pruned after 30 days.
 - `token-service/src/settings.ts` — recording/transcription/limit settings: `.env` defaults, `/admin` overrides in `token-service/settings.json`, validation (unit-tested), and `livekitRoomDefaults()` (the `room:` block LiveKit runs with, for `/admin` to show).
 - `token-service/src/transcripts.ts` — Soniox transcription of finished recordings, transcript files/status, plain-text rendering, startup backfill.
 - `token-service/src/lobby.ts` + `lobbyRoutes.ts` — the waiting room: in-memory join requests (unit-tested) and the `/lobby/*` routes; a data message on topic `space.lobby` tells the host's client to refetch. `lobby.ts` also remembers who a host removed.
@@ -532,7 +562,7 @@ works from the same machine; test multi-device calls on the Railway deployment.
 - `demo/components/conference/*` — `Conference` (Room lifecycle, audio-first publish defaults, duplicate-identity heartbeat, end-for-everyone, the end-screen summary), `ConferenceLayout` (VideoConference prefab expanded; one side panel at a time; tells you when you become or stop being a host), `useHosts` (room settings from metadata: who hosts, make/remove host), `Dock` (status readout · media · talk · more · Leave), `LeaveDialog` (leave confirmation for everyone; hosts also get end-for-everyone), `Tile`, `SidePanel`, `ParticipantsPanel` (hosts: waiting-room switch + requests, make/remove host per row), `SettingsPanel` + `useBackgroundEffect` + `useNoiseFilter`, `useWeakConnection` (reports a weak link to the dock), `ChatToasts` (the notification stack: chat, joins, plus the host's `WaitingNotice` and the alone card), `useWaitingRoom` (host side), `useReactions`, `useRecording`.
 - `demo/components/conference/FloatingWindow.tsx` — the floating window: `useFloatingWindow` (Document Picture-in-Picture, opened by Chrome's `enterpictureinpicture` media-session action on tab switch or by More → Floating window; copies our stylesheets into the new window), `floatingTracks` (what it shows: the pinned track alone, else up to four remote cameras loudest-recent first with a `+N` chip, else your own when you're alone) and `FloatingCall` (that grid edge to edge, status chip, self-view, and a mic/camera/two-step-Leave pill that sleeps after 2.5 s idle), portaled into that window from `ConferenceLayout` so it shares the call's React tree and Room. Its keys reuse `Dock`'s `DeviceKey`, `elapsed` and `useSecondTick`.
 - `demo/components/conference/useIsPhone.ts` — `matchMedia('(max-width: 560px)')`, the same breakpoint as the phone layout in `globals.css`. `ConferenceLayout` uses it to pull the local camera out of the grid into the `.self-view` thumbnail (tap = pin yourself). Keep the two breakpoints in step.
-- `demo/components/conference/useLeaveGuard.ts` — nobody leaves a live call by accident: `beforeunload` while connected (the browser's own prompt; a page can't word it or replace it), and a sentinel `history.pushState` entry re-pushed on `popstate` so Back opens `LeaveDialog` instead of navigating. It gives the entry back when the call ends, so Back works from the end screen. Embedded, only the `beforeunload` half runs — the consumer owns its history. Testing note: dispatching a synthetic `beforeunload` also trips livekit-client's own listener and disconnects the room, so assert that in its own tab.
+- `demo/components/conference/useLeaveGuard.ts` — nobody leaves a live call by accident: `beforeunload` while connected (the browser's own prompt; a page can't word it or replace it), and a sentinel `history.pushState` entry re-pushed on `popstate` so Back opens `LeaveDialog` instead of navigating. It gives the entry back when the call ends, so Back works from the end screen. Embedded, only the `beforeunload` half runs — the consumer owns its history. Cancelling that prompt keeps you in the call: the Room leaves on `pagehide`, not `beforeunload` (see "A dropped call rejoins by itself").
 - `demo/proxy.ts` — `frame-ancestors` CSP on `/embed` from `EMBED_ALLOWED_ORIGINS`.
 - `demo/lib/embed.ts` — `spaces-embed/1` protocol types, allowed-origin parsing, message validators.
 - `demo/app/embed/page.tsx` + `demo/app/api/embed/session/route.ts` — the `/embed` page and its token-check relay to token-service `/embed/session`.
