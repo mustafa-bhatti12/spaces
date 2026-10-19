@@ -155,8 +155,9 @@ Set `ADMIN_PASSWORD` and `ADMIN_SHARED_SECRET` in `demo/.env`; the secret must m
 ## 🎙️ Audio Recording & Transcription Pipeline
 
 1. **Recording Initiation:**
-   - A call is recorded when someone presses **Record** (or the operator starts it from `/admin`): token-service starts a LiveKit **RoomCompositeEgress** (audio-only, 24 kbps Opus). Everyone in the room sees the `REC` badge with a timer. `RECORD_ALL_CALLS=1` in `token-service/.env` records every call instead, starting when the first person joins (LiveKit's `participant_joined` webhook). A consumer app can do the same for one call by sending `record: true` with its `/token` request.
+   - A call is recorded when someone presses **Record** (or the operator starts it from `/admin`): token-service starts a LiveKit **RoomCompositeEgress** (audio-only, 24 kbps Opus). Everyone in the room sees the `REC` badge with a timer. `RECORD_ALL_CALLS=1` in `token-service/.env` records every call instead, starting when the first person joins (LiveKit's `participant_joined` webhook). A consumer app can require it for one call by sending `record: true` with its `/token` request: then the call is always recorded (see below).
    - Anyone in the call can press **Stop** (or **Record** again), and the operator can do the same from `/admin`. Once stopped by hand, a call isn't re-recorded when more people join.
+   - A `record: true` call has no Record/Stop in the call, `/recording/stop` refuses it, and token-service restarts its recording within 10 s whenever people are in it and nothing is recording (egress failure, restart, a call ended and rejoined). Only `/admin` can stop it.
 
 2. **Storage & Auto-Stop:**
    - The Egress worker container mixes everyone's audio (no Chrome: egress's audio-only pipeline) and encodes it straight to the final 24 kbps Opus, about 11 MB an hour. `RECORDING_AUDIO_KBPS` in `token-service/.env` changes the rate.
@@ -199,7 +200,7 @@ The page and parent talk over `postMessage`, protocol `spaces-embed/1`:
 | Spaces → parent | `recording {active}` | Recording started/stopped |
 | Spaces → parent | `screenshare {active, surface}` | Local screen share started/stopped |
 | Spaces → parent | `data {topic, payload, from, fromHost}` | App message from another participant |
-| Spaces → parent | `expired` | Token rejected (401): mint a new one and remount |
+| Spaces → parent | `expired` | Mint a new token and remount: the token was rejected (401), or someone pressed Rejoin |
 | Parent → Spaces | `send {topic, payload, to: 'all' \| 'hosts'}` | Send an app message; `topic` starts with `app.`, payload ≤ 4096 bytes of JSON |
 
 ---

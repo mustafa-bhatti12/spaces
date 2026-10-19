@@ -3,6 +3,11 @@
 What shipped, newest first. One line per user- or operator-visible change; commit hashes point at
 the detail. Agents: add a line here with every change that ships (see `AGENTS.md`).
 
+## 2026-10-19
+
+- **Consumer-required recordings can't go missing.** A call a consumer requires recorded (`record: true` on `/token`, every Petition Studio call) keeps that requirement if it's ended and rejoined, closes before anyone joins, or empties and reconnects (the join token now seeds the room); token-service restarts its recording within 10 s whenever people are in it and nothing records; and nobody in the call can stop it (only `/admin`). Before, a host's "End for everyone" followed by Rejoin left the rest of a call unrecorded.
+- **Embedded Rejoin asks the consumer for a fresh token** (`expired`), so the consumer sets the room up again instead of the old token joining a bare room.
+
 ## 2026-10-15
 
 - **A dropped call rejoins by itself.** When the connection is lost for longer than LiveKit's own ~45 s reconnect, the call shows "Connection lost · Reconnecting you to the call…" and keeps rejoining for up to 5 minutes (sooner when the network comes back), with mic and camera as you left them, instead of ending on the "disconnected" screen. Leave call stops it.

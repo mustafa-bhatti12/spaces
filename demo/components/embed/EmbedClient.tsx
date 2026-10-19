@@ -16,6 +16,7 @@ interface Session { room: string; identity: string; name: string; serverUrl: str
 type Stage =
   | { kind: 'checking' }
   | { kind: 'invalid'; message: string }
+  | { kind: 'refreshing' }
   | { kind: 'prejoin'; error?: string }
   | { kind: 'in-call'; choices: LocalUserChoices }
   | { kind: 'ended'; reason: LeaveReason };
@@ -78,9 +79,17 @@ export function EmbedClient({ parentOrigin }: { parentOrigin: string | null }) {
     setStage({ kind: 'ended', reason });
     api.post({ type: 'left', reason: reason.kind });
   }, [api]);
-  // The token may have lapsed while the call ended; check it before showing the pre-join again.
+  // Embedded, Rejoin always asks the page around us for a fresh token (`expired`; it remounts this
+  // frame), so the consumer's /token sets up the room again: if the call was ended or closed, the
+  // old token would join a new, empty room. Opened on its own there's nobody to ask, so check
+  // the old token instead (its room seed still restores the host and a required recording).
   const handleRejoin = useCallback(async () => {
     if (!session) return;
+    if (framed && parentOrigin) {
+      setStage({ kind: 'refreshing' });
+      api.post({ type: 'expired' });
+      return;
+    }
     const res = await fetch('/api/embed/session', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -88,11 +97,10 @@ export function EmbedClient({ parentOrigin }: { parentOrigin: string | null }) {
     }).catch(() => null);
     if (res?.status === 401) {
       setStage({ kind: 'invalid', message: 'This call link has expired.' });
-      api.post({ type: 'expired' });
       return;
     }
     setStage({ kind: 'prejoin' });
-  }, [api, session]);
+  }, [api, framed, parentOrigin, session]);
   const handlePreviewError = useCallback((err: Error) => setStage({ kind: 'prejoin', error: err.message }), []);
   const details = useMemo<ConnectionDetails | null>(
     () => session && { serverUrl: session.serverUrl, roomName: session.room, participantName: session.name, participantToken: session.token },
@@ -119,8 +127,8 @@ export function EmbedClient({ parentOrigin }: { parentOrigin: string | null }) {
       </main>
     );
   } else {
-    const title = stage.kind === 'ended' ? 'You left the call' : stage.kind === 'invalid' ? 'This call link has expired' : 'Opening the call…';
-    const text = stage.kind === 'invalid' ? (framed && parentOrigin ? 'Getting a fresh link…' : `${stage.message} Reopen the call from the page that sent you here.`) : stage.kind === 'ended' ? (framed ? 'You can rejoin below.' : 'You can close this tab.') : '';
+    const title = stage.kind === 'ended' ? 'You left the call' : stage.kind === 'invalid' ? 'This call link has expired' : stage.kind === 'refreshing' ? 'Rejoining…' : 'Opening the call…';
+    const text = stage.kind === 'refreshing' ? 'Getting a fresh link…' : stage.kind === 'invalid' ? (framed && parentOrigin ? 'Getting a fresh link…' : `${stage.message} Reopen the call from the page that sent you here.`) : stage.kind === 'ended' ? (framed ? 'You can rejoin below.' : 'You can close this tab.') : '';
     body = (
       <main className="end-screen">
         <header className="page-top"><Wordmark /></header>

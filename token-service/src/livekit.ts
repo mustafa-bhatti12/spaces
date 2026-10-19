@@ -9,6 +9,7 @@ import {
   EncodedFileType,
   EncodingOptions,
   ParticipantInfo_State,
+  RoomConfiguration,
   RoomServiceClient,
   TrackSource,
   TrackType,
@@ -29,12 +30,29 @@ export interface CallConnectionDetails {
  * to join which room and what their identity/display name is; this only turns that decision into a
  * signed token. Keeping this generic is what lets a second consumer reuse the same service later.
  */
-export async function mintToken(params: { room: string; identity: string; name: string }): Promise<CallConnectionDetails> {
+export async function mintToken(params: {
+  room: string;
+  identity: string;
+  name: string;
+  /** The consumer made this identity a host (also recorded in the room's metadata by /token). */
+  host?: boolean;
+  /** The consumer wants the call recorded (also marked in the room's metadata by /token). */
+  record?: boolean;
+}): Promise<CallConnectionDetails> {
   const { apiKey, apiSecret, serverUrl } = requireLiveKitEnv();
 
-  // Hosting isn't in the token: it's the room's `hosts` list (see RoomSettings), so it can change
+  // Hosting is checked against the room's `hosts` list (see RoomSettings), so it can change
   // mid-call without reissuing anyone's token.
   const at = new AccessToken(apiKey, apiSecret, { identity: params.identity, name: params.name });
+  // The room's settings live in its metadata, which dies with the room. When this token's join is
+  // what creates the room again (it was ended for everyone, closed idle before anyone joined, or
+  // emptied while everyone dropped and someone reconnected), LiveKit seeds the new room's metadata
+  // from this, so the host still hosts and a call that must be recorded still is. LiveKit never
+  // applies it to a room that already exists, and keeps it in the tokens it refreshes.
+  if (params.host || params.record) {
+    const seed: RoomSettings = { ...NO_SETTINGS, hosts: params.host ? [params.identity] : [], record: params.record === true };
+    at.roomConfig = new RoomConfiguration({ metadata: JSON.stringify(seed) });
+  }
   at.ttl = '2h';
   at.addGrant({
     room: params.room,
@@ -68,7 +86,11 @@ export interface RoomSettings {
   waitingRoom: boolean;
   /** A host pinned this participant for everyone (setSpotlight); null when nobody is. */
   spotlight: string | null;
-  /** The consumer asked for this room to be recorded from its first join (markRoomRecorded). */
+  /**
+   * The consumer requires this call to be recorded (markRoomRecorded, or the join token's room
+   * seed): autoRecord.ts starts it on the first join and restarts it whenever it's missing, and
+   * nobody in the call can stop it (/recording/stop answers 409).
+   */
   record: boolean;
 }
 
@@ -119,9 +141,9 @@ export async function recordRoomHost(room: string, identity: string, waitingRoom
 }
 
 /**
- * Marks the room to be recorded from its first join (autoRecord.ts reads it on participant_joined),
- * creating the room if nobody has joined yet. Sticky for the room's life; a consumer's per-call
- * version of RECORD_ALL_CALLS.
+ * Marks the room as one that must be recorded (see RoomSettings.record), creating the room if
+ * nobody has joined yet. Sticky for the room's life; a consumer's per-call version of
+ * RECORD_ALL_CALLS, except that it can't be stopped from the call.
  */
 export async function markRoomRecorded(room: string): Promise<void> {
   const svc = roomService();
@@ -468,6 +490,14 @@ export async function stopRecording(egressId: string): Promise<string> {
   const info = await egress.stopEgress(egressId);
   recordingStartedBy.delete(egressId);
   return info.roomName;
+}
+
+/** The room a recording belongs to, or null when LiveKit doesn't know that egress id. */
+export async function recordingRoom(egressId: string): Promise<string | null> {
+  const { apiKey, apiSecret, serverUrl } = requireLiveKitEnv();
+  const egress = new EgressClient(serverUrl, apiKey, apiSecret);
+  const [info] = await egress.listEgress({ egressId });
+  return info?.roomName ?? null;
 }
 
 /** Recordings currently in progress for a room (starting, active, or wrapping up). */

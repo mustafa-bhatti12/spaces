@@ -13,6 +13,7 @@ import {
   listActiveRooms,
   mintToken,
   markRoomRecorded,
+  recordingRoom,
   recordRoomHost,
   setRoomHost,
   hostIdentity,
@@ -106,9 +107,9 @@ fastify.post<{ Body: { room?: string; identity?: string; name?: string; host?: b
         reply.code(409).send({ error: 'This call has a waiting room. Ask to join.', waitingRoom: true });
         return;
       }
-      // The consumer wants this call recorded from its first join (autoRecord.ts).
+      // The consumer requires this call to be recorded (autoRecord.ts).
       if (record === true) await markRoomRecorded(room);
-      reply.send(await mintToken({ room, identity, name }));
+      reply.send(await mintToken({ room, identity, name, host: host === true, record: record === true }));
     } catch (err) {
       console.error('Failed to mint LiveKit token:', err);
       reply.code(500).send({ error: 'Could not mint a token.' });
@@ -197,6 +198,12 @@ fastify.post<{ Body: { egressId?: string } }>('/recording/stop', { preHandler: r
     return;
   }
   try {
+    const room = await recordingRoom(egressId);
+    if (room && (await getRoomSettings(room))?.record) {
+      // The consumer requires this call recorded (autoRecord.ts); only /admin can stop it.
+      reply.code(409).send({ error: 'This call is always recorded.', required: true });
+      return;
+    }
     autoRecord.onRecordingStoppedByHand(await stopRecording(egressId));
     reply.send({ ok: true });
   } catch (err) {
@@ -343,6 +350,8 @@ fastify
     console.log(`token-service listening on :${port}`);
     // Recordings saved while transcription was off, or cut short by a restart.
     setTimeout(() => transcribeMissing().catch((err) => console.error('Could not transcribe missing recordings:', err)), 10_000).unref();
+    // Calls a consumer requires recorded, whose recording is missing for any reason.
+    autoRecord.watchRequiredRecordings();
   })
   .catch((err) => {
     console.error(err);

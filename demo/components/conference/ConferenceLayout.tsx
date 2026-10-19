@@ -40,7 +40,7 @@ import { useNoiseFilter } from './useNoiseFilter';
 import { useIsPhone } from './useIsPhone';
 import { useReactions } from './useReactions';
 import { useRecording } from './useRecording';
-import { useHosts } from './useHosts';
+import { useHosts, useRoomSettings } from './useHosts';
 import { useWaitingRoom } from './useWaitingRoom';
 import { WaitingNotice } from './WaitingNotice';
 import { useEmbed } from '../embed/EmbedContext';
@@ -75,6 +75,8 @@ export function ConferenceLayout({
   const { reactions, react } = useReactions();
   const rec = useRecording(roomName, localParticipant.name || localParticipant.identity);
   const hosting = useHosts(roomName, joinToken);
+  // A call the consumer requires recorded records itself, and nobody in it can stop it.
+  const recordingRequired = useRoomSettings().record;
   const embed = useEmbed();
   const lobby = useWaitingRoom(roomName, hosting.isHost && !embed ? joinToken : undefined);
   const [aloneDismissed, setAloneDismissed] = useState(false);
@@ -385,7 +387,7 @@ export function ConferenceLayout({
                 onToggle: () => void (rec.recording ? rec.stop() : rec.start()),
               }}
               weakConnection={weakConnection}
-              canRecord={!embed || hosting.isHost}
+              canRecord={!recordingRequired && (!embed || hosting.isHost)}
               floatingWindow={floating.supported ? { open: Boolean(floating.window), onToggle: floating.toggle } : undefined}
             />
           </div>

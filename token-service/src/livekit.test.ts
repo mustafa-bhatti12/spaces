@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { AccessToken } from 'livekit-server-sdk';
-import { mintToken, listActiveRooms, tokenIdentity, inspectJoinToken } from './livekit';
+import { AccessToken, TokenVerifier } from 'livekit-server-sdk';
+import { mintToken, listActiveRooms, parseRoomSettings, tokenIdentity, inspectJoinToken } from './livekit';
 
 test('throws when LiveKit env vars are missing', async () => {
   delete process.env.LIVEKIT_API_KEY;
@@ -55,6 +55,21 @@ test('tokenIdentity refuses a token signed with another secret', async () => {
   const forged = await mintToken({ room: 'r1', identity: 'host', name: 'Host' });
   useDevEnv();
   assert.equal(await tokenIdentity('r1', forged.participantToken), null);
+});
+
+// LiveKit seeds a room its join creates from this, so a required recording survives the room being
+// ended or closed and joined again with the same token.
+test('a host or recorded token carries the room settings a join should recreate', async () => {
+  useDevEnv();
+  const seedOf = async (params: { host?: boolean; record?: boolean }) => {
+    const { participantToken } = await mintToken({ room: 'r1', identity: 'u1', name: 'Sara', ...params });
+    const claims = await new TokenVerifier('devkey', 'secret').verify(participantToken);
+    return claims.roomConfig ? parseRoomSettings(claims.roomConfig.metadata) : null;
+  };
+  assert.deepEqual(await seedOf({ record: true }), { hosts: [], waitingRoom: false, spotlight: null, record: true });
+  assert.deepEqual(await seedOf({ host: true, record: true }), { hosts: ['u1'], waitingRoom: false, spotlight: null, record: true });
+  assert.deepEqual(await seedOf({ host: true }), { hosts: ['u1'], waitingRoom: false, spotlight: null, record: false });
+  assert.equal(await seedOf({}), null);
 });
 
 test('inspectJoinToken returns room, identity and name from a valid join token', async () => {

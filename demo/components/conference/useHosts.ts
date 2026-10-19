@@ -9,6 +9,8 @@ export interface RoomSettings {
   waitingRoom: boolean;
   /** Pinned for everyone by a host; null when nobody is. */
   spotlight: string | null;
+  /** The consumer requires this call recorded: token-service starts it and nobody in the call can stop it. */
+  record: boolean;
 }
 
 export function parseRoomSettings(metadata: string | undefined): RoomSettings {
@@ -18,9 +20,10 @@ export function parseRoomSettings(metadata: string | undefined): RoomSettings {
       hosts: Array.isArray(m.hosts) ? m.hosts.filter((h: unknown): h is string => typeof h === 'string') : [],
       waitingRoom: m.waitingRoom === true,
       spotlight: typeof m.spotlight === 'string' && m.spotlight ? m.spotlight : null,
+      record: m.record === true,
     };
   } catch {
-    return { hosts: [], waitingRoom: false, spotlight: null };
+    return { hosts: [], waitingRoom: false, spotlight: null, record: false };
   }
 }
 

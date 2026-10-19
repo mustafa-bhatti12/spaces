@@ -97,9 +97,13 @@ graph LR
   leaked consumer secret must not be able to moderate or delete. Neither is a user-auth system —
   `token-service` has no concept of a logged-in person.
 - **Hosting is the consumer's decision; token-service only records and enforces it.** A room's
-  hosts are a `hosts` list in its LiveKit metadata, not anything in the join token. `/token` with
+  hosts are a `hosts` list in its LiveKit metadata, which is what every check reads. `/token` with
   `host: true` adds the identity to it (`recordRoomHost`, creating the room if needed; `GET /rooms`
-  reports `hosts`). `/room/host` lets a host make someone in the call a host or stop them hosting
+  reports `hosts`). Metadata dies with the room, so a host or `record: true` token also carries a
+  room seed (`roomConfig.metadata`, `mintToken`): when that token's join is what creates the room
+  again (ended for everyone, closed idle before anyone joined, emptied and rejoined), LiveKit starts
+  it with that host and `record` flag. LiveKit ignores the seed for a room that exists and keeps it
+  in refreshed tokens. `/room/host` lets a host make someone in the call a host or stop them hosting
   (never themselves, so a room can't lose its last host that way; someone demoted is admitted so
   they can rejoin past the waiting room). Every host action (`/room/end`, `/room/host`,
   `/room/mute|remove|spotlight`, `/lobby/pending|answer|settings`) takes the caller's own join token, verifies it (`tokenIdentity`;
@@ -142,12 +146,16 @@ graph LR
   the LiveKit API secret) — see gotchas below for the header-name trap. LiveKit posts them to
   `localhost:8880`; Caddy answers `404` for `/recording/webhook` from outside.
 - **Calls are recorded only on request; every recording is transcribed.** Someone presses Record
-  (or `/admin` starts it). `RECORD_ALL_CALLS=1` records every call instead, and a consumer can ask
-  for one call with `record: true` on `/token` (`markRoomRecorded`, a `record` flag in the room's
-  metadata next to `hosts`): the first participant to join starts the room's recording
-  (`autoRecord.ts`, on LiveKit's `participant_joined` webhook, which carries the room metadata; the
-  egress participant itself is ignored), and once stopped by hand it stays off for that room until it
-  closes (in memory). Each
+  (or `/admin` starts it). `RECORD_ALL_CALLS=1` records every call instead, starting on the first
+  join (`autoRecord.ts`, on LiveKit's `participant_joined` webhook, which carries the room metadata;
+  the egress participant itself is ignored); once stopped by hand it stays off for that room until
+  it closes (in memory). **A consumer's `record: true` on `/token` makes recording mandatory**
+  (`markRoomRecorded` plus the token's room seed, a `record` flag in the room's metadata next to
+  `hosts`; Petition Studio sends it on every call): it starts on the first join, `/recording/stop`
+  refuses it (409) and the call UI shows no Record/Stop, and every 10 s
+  `checkRequiredRecordings` starts one for any such room with people in it and no recording (egress
+  failed or was down, a webhook was missed, token-service restarted). Only `/admin` can stop it.
+  This is why one call can leave several recordings. Each
   finished recording goes to Soniox's async API (`transcripts.ts`, `stt-async-v5`, speakers
   separated as "1", "2", …: the mix has no names) and the transcript is saved as
   `egress/transcripts/<recording>.json`; the upload and Soniox's copy are deleted as soon as it's
@@ -221,13 +229,14 @@ the call from its first join; tokens live 2 h) and loads
   $EMBED_ALLOWED_ORIGINS` (comma-separated) on `/embed` only, read at request time. The bridge only
   talks when `?origin=` is in the same list.
 - **What's different when embedded:** no invite/copy-link keys, no waiting room, only hosts see
-  Record/Stop, no floating window (Document Picture-in-Picture is refused in iframes), and nobody
+  Record/Stop (nobody does when the call's recording is mandatory), no floating window (Document Picture-in-Picture is refused in iframes), and nobody
   can make or remove hosts — the consumer decides hosts through the token. Hosts can still pin for
   everyone, mute and remove.
 - **Bridge `spaces-embed/1`** (postMessage, `demo/lib/embed.ts`, `EmbedBridge.tsx`). Spaces → parent:
   `ready`, `joined {room, identity}`, `left {reason}`, `recording {active}`,
-  `screenshare {active, surface}`, `data {topic, payload, from, fromHost}`, and `expired` (the token
-  got a 401 on load or Rejoin: mint a fresh token and remount the iframe). Parent → Spaces:
+  `screenshare {active, surface}`, `data {topic, payload, from, fromHost}`, and `expired` (mint a
+  fresh token and remount the iframe: the token got a 401 on load, or someone pressed Rejoin, which
+  embedded always asks for a fresh token so the consumer's `/token` sets the room up again). Parent → Spaces:
   `send {topic, payload, to: 'all'|'hosts'}`, relayed as LiveKit data. Topics must start with
   `app.` (the `space.*` topics are ours); the payload is JSON of at most 4096 bytes; `hosts` means
   the room's hosts minus the sender, and nothing is sent when that's empty.
@@ -544,7 +553,7 @@ works from the same machine; test multi-device calls on the Railway deployment.
 
 - `token-service/src/livekit.ts` — all LiveKit SDK calls (tokens, rooms, participants, egress, path mapping).
 - `token-service/src/index.ts` — consumer routes, including the `/recording/webhook` receiver (LiveKit's events: auto-record, finish + transcribe, room cleanup) and `/recording/transcripts`.
-- `token-service/src/autoRecord.ts` — records a call from its first join (every call, or rooms marked on `/token`); remembers rooms someone stopped by hand.
+- `token-service/src/autoRecord.ts` — records a call from its first join (every call, or rooms marked on `/token`); remembers rooms someone stopped by hand; `watchRequiredRecordings` restarts a missing recording in a `record: true` room every 10 s.
 - `token-service/src/callLog.ts` — `POST /call-log`: browsers' connection events (via `demo/app/api/call-log`), token-checked, appended to `logs/calls-<day>.jsonl`, pruned after 30 days.
 - `token-service/src/settings.ts` — recording/transcription/limit settings: `.env` defaults, `/admin` overrides in `token-service/settings.json`, validation (unit-tested), and `livekitRoomDefaults()` (the `room:` block LiveKit runs with, for `/admin` to show).
 - `token-service/src/transcripts.ts` — Soniox transcription of finished recordings, transcript files/status, plain-text rendering, startup backfill.

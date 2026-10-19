@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { onRecordingStoppedByHand, shouldAutoRecord } from './autoRecord';
+import { onRecordingStoppedByHand, roomsMissingRecording, shouldAutoRecord } from './autoRecord';
 
 // RECORD_ALL_CALLS is unset under `npm test`, so only the room's own flag can turn recording on.
 const marked = JSON.stringify({ hosts: ['h'], waitingRoom: false, spotlight: null, record: true });
@@ -19,4 +19,16 @@ test('the recorder joining its own room does not start a recording', () => {
 test('once stopped by hand a marked room stays unrecorded for later joins', () => {
   onRecordingStoppedByHand('f');
   assert.equal(shouldAutoRecord('f', 0, marked), false);
+});
+
+test('a required room with people and no recording is found missing; others are not', () => {
+  const rooms = [
+    { name: 'live', numParticipants: 2, record: true },
+    { name: 'recording', numParticipants: 2, record: true },
+    { name: 'empty', numParticipants: 0, record: true },
+    { name: 'not-required', numParticipants: 2, record: false },
+    { name: 'stopped-by-admin', numParticipants: 2, record: true },
+  ];
+  onRecordingStoppedByHand('stopped-by-admin');
+  assert.deepEqual(roomsMissingRecording(rooms, new Set(['recording'])), ['live']);
 });

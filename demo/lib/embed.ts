@@ -5,6 +5,7 @@ export const MAX_PAYLOAD_BYTES = 4096;
 export type ShareSurface = 'browser' | 'window' | 'monitor' | 'unknown';
 export type EmbedEvent =
   | { type: 'ready' }
+  /** Mint a fresh token and remount the frame: the token was refused (401), or someone pressed Rejoin. */
   | { type: 'expired' }
   | { type: 'joined'; room: string; identity: string }
   | { type: 'left'; reason: string }
