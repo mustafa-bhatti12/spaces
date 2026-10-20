@@ -273,7 +273,7 @@ Egress container → host traffic the way host `ufw` can):
 
 |Open to the internet|Keep closed|
 |---|---|
-|22/tcp SSH, 80/tcp + 443/tcp Caddy, 7881/tcp + 7882/udp LiveKit media|6379 Redis, 7880 LiveKit (browsers reach `/rtc` via Caddy), 8880 token-service (via Caddy), 8888|
+|22/tcp SSH, 80/tcp + 443/tcp Caddy, 7881/tcp + 7882/udp LiveKit media, 3478/udp TURN/UDP|6379 Redis, 7880 LiveKit (browsers reach `/rtc` via Caddy), 8880 token-service (via Caddy), 8888|
 
 Railway's outbound IPs aren't static, so token-service can't be IP-allowlisted; the bearer secrets
 over Caddy's HTTPS are the protection. Those are inbound rules. **Outbound stays DigitalOcean's
@@ -342,6 +342,12 @@ What `start-all.sh` does and doesn't do on a bare Linux host:
   type, `quality`, `pagehide`, plus a `session` line with the user agent. `joined` carries the
   participant sid to match `/tmp/livekit.log`. Start here for "the call kept dropping" reports:
   `grep <room> token-service/logs/calls-*.jsonl | jq -c '[.at,.identity[:8],.e,.d]'`.
+  Every 15 s a `stats` line (RTT, ICE path, audio loss, concealed %, bitrates) plus `adapt`
+  (low-bandwidth mode) and `relay` (relay-first rejoin); `/admin` → Call quality aggregates them
+  (`token-service/src/callStats.ts`) and deletes log files. LiveKit runs at `log_level: info`, so
+  this browser log, not `/tmp/livekit.log`, is where per-caller quality lives. Call-quality knobs
+  are live settings (`settings.ts` `calls`, sent as `callSettings` with `/token` and
+  `/embed/session`, applied at the next join).
 - **Harmless startup lines:** `could not validate external IP ... from 172.17.0.1:7882 ... context
   canceled` is LiveKit cancelling its parallel per-interface checks once one succeeded; only worry if
   no `using external IPs` line follows.

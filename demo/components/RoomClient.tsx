@@ -8,6 +8,7 @@ import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { getDeviceId } from '@/lib/client/identity';
+import { previewErrorMessage } from '@/lib/client/prejoinGuidance';
 import type { CallSummary, ConnectionDetails, LeaveReason } from './conference/types';
 import type { Signal } from './ui/Device';
 import { Led, Readout, ReadoutSegment, Wordmark } from './ui/Device';
@@ -163,7 +164,7 @@ export function RoomClient({ roomName }: { roomName: string }) {
   const handleLeave = useCallback((reason: LeaveReason) => setStage({ kind: 'ended', reason }), []);
   // Same for PreJoin: onError is a dependency of its preview-track effect, so a new function per
   // render stops the camera and reopens it on every re-render (name load, occupancy polls).
-  const handlePreviewError = useCallback((err: Error) => setStage({ kind: 'prejoin', error: err.message }), []);
+  const handlePreviewError = useCallback((err: Error) => setStage({ kind: 'prejoin', error: previewErrorMessage(err, navigator.userAgent, navigator.maxTouchPoints) }), []);
   // WaitingScreen's poll depends on these, so they're stable too.
   const handleAdmitted = useCallback(
     (details: ConnectionDetails) =>

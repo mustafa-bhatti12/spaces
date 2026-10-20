@@ -31,6 +31,7 @@ import { lobbyRoutes } from './lobbyRoutes';
 import { moderationRoutes } from './moderationRoutes';
 import { embedRoutes } from './embedRoutes';
 import { callLogRoutes } from './callLog';
+import { getSettings } from './settings';
 
 const fastify = Fastify();
 
@@ -109,7 +110,8 @@ fastify.post<{ Body: { room?: string; identity?: string; name?: string; host?: b
       }
       // The consumer requires this call to be recorded (autoRecord.ts).
       if (record === true) await markRoomRecorded(room);
-      reply.send(await mintToken({ room, identity, name, host: host === true, record: record === true }));
+      const details = await mintToken({ room, identity, name, host: host === true, record: record === true });
+      reply.send({ ...details, callSettings: getSettings().calls });
     } catch (err) {
       console.error('Failed to mint LiveKit token:', err);
       reply.code(500).send({ error: 'Could not mint a token.' });

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { getSettings, resetSettings, saveSettings, validateSettings } from './settings';
+import { DEFAULT_CALL_SETTINGS, defaultSettings, getSettings, resetSettings, saveSettings, validateSettings } from './settings';
 
 // settings.ts reads the file path and .env values when first used, so these apply.
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'spaces-settings-'));
@@ -17,6 +17,7 @@ const valid = {
   limits: { maxPerRoom: 40, maxTotal: 40 },
 };
 const withKbps = (audioKbps: unknown) => ({ ...valid, recording: { ...valid.recording, audioKbps } });
+const withCalls = (calls: unknown) => ({ ...valid, calls });
 const withLimits = (limits: unknown) => ({ ...valid, limits });
 
 test('people limits are whole numbers, and the total is never below one call', () => {
@@ -46,12 +47,38 @@ test('missing switches are rejected rather than defaulted', () => {
   assert.throws(() => validateSettings({ ...valid, transcription: { ...valid.transcription, enabled: undefined } }), /enabled/);
   assert.throws(() => validateSettings({ transcription: valid.transcription }), /recordAllCalls/);
 });
+test('call settings default missing values and validate every option', () => {
+  assert.deepEqual(defaultSettings().calls, DEFAULT_CALL_SETTINGS);
+  assert.deepEqual(validateSettings(valid).calls, DEFAULT_CALL_SETTINGS);
+  assert.deepEqual(
+    validateSettings(withCalls({ micPreset: 'music', adaptive: false, relayRttMs: 2400 })).calls,
+    { ...DEFAULT_CALL_SETTINGS, micPreset: 'music', adaptive: false, relayRttMs: 2400 },
+  );
+
+  for (const [field, value] of [
+    ['micPreset', 'studio'],
+    ['red', 1],
+    ['adaptive', 'true'],
+    ['adaptAvailOutKbps', -1],
+    ['adaptHoldSec', 1.5],
+    ['lowCameraHeight', 240],
+    ['lowScreenFps', 0],
+    ['relayFallback', 'false'],
+    ['relayRttMs', -1],
+    ['relayDrops', 0],
+    ['statsIntervalSec', -1],
+  ] as [string, unknown][]) {
+    assert.throws(() => validateSettings(withCalls({ ...DEFAULT_CALL_SETTINGS, [field]: value })), /calls\./, field);
+  }
+});
+
 
 test('saved settings win over .env until reset', () => {
   assert.equal(getSettings().recording.audioKbps, 24);
   assert.deepEqual(getSettings().transcription.languageHints, ['en', 'ur']);
-  saveSettings(withKbps(32));
+  saveSettings({ ...withKbps(32), calls: { ...DEFAULT_CALL_SETTINGS, adaptive: false } });
   assert.equal(getSettings().recording.audioKbps, 32);
+  assert.equal(getSettings().calls.adaptive, false);
   assert.ok(fs.existsSync(process.env.SPACES_SETTINGS_FILE!));
   resetSettings();
   assert.equal(getSettings().recording.audioKbps, 24);

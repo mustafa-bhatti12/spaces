@@ -1,8 +1,10 @@
+import type { CallSettings } from '@/lib/callSettings';
 export interface ConnectionDetails {
   serverUrl: string;
   roomName: string;
   participantName: string;
   participantToken: string;
+  callSettings?: CallSettings;
 }
 
 /** What this participant saw of the call, for the end screen. */

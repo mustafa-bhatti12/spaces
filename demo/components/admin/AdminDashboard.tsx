@@ -2,6 +2,7 @@
 
 import type { LucideIcon } from 'lucide-react';
 import {
+  Activity,
   ChevronLeft,
   ChevronRight,
   CircleDot,
@@ -30,6 +31,7 @@ import { api, SessionExpired } from './api';
 import type { SystemSnapshot } from './ServerPanel';
 import { ServerPanel } from './ServerPanel';
 import { SettingsPanel } from './SettingsPanel';
+import { CallQuality } from './CallQuality';
 import type { TranscriptState } from './Transcripts';
 import { TranscriptCell, TranscriptPanel } from './Transcripts';
 
@@ -94,9 +96,10 @@ const SOURCES: Record<string, { label: string; icon: LucideIcon }> = {
   SCREEN_SHARE_AUDIO: { label: 'Screen audio', icon: Volume2 },
 };
 
-type ConsoleView = 'overview' | 'settings';
+type ConsoleView = 'overview' | 'calls' | 'settings';
 const CONSOLE_VIEWS: { id: ConsoleView; label: string; icon: LucideIcon }[] = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
+  { id: 'calls', label: 'Call quality', icon: Activity },
   { id: 'settings', label: 'Settings', icon: Settings },
 ];
 
@@ -213,8 +216,12 @@ function Dashboard({ onLoggedOut }: { onLoggedOut: () => void }) {
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [playing, setPlaying] = useState<Set<string>>(() => new Set());
   const [openTranscript, setOpenTranscript] = useState<string | null>(null);
-  // #settings in the URL opens the Settings tab, so a reload (or a link) lands back on it.
-  const [view, setView] = useState<ConsoleView>(() => (window.location.hash === '#settings' ? 'settings' : 'overview'));
+  // Each hash opens the matching tab on reload, so operators can link directly to a panel.
+  const [view, setView] = useState<ConsoleView>(() => {
+    if (window.location.hash === '#settings') return 'settings';
+    if (window.location.hash === '#calls') return 'calls';
+    return 'overview';
+  });
   const [recQuery, setRecQuery] = useState('');
   const [recPage, setRecPage] = useState(1);
   const toastTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -363,7 +370,8 @@ function Dashboard({ onLoggedOut }: { onLoggedOut: () => void }) {
               className="console-tab"
               onClick={() => {
                 setView(v.id);
-                history.replaceState(null, '', v.id === 'settings' ? '#settings' : window.location.pathname + window.location.search);
+                const hash = v.id === 'settings' ? '#settings' : v.id === 'calls' ? '#calls' : '';
+                history.replaceState(null, '', hash || window.location.pathname + window.location.search);
               }}
             >
               <v.icon aria-hidden="true" />
@@ -381,6 +389,10 @@ function Dashboard({ onLoggedOut }: { onLoggedOut: () => void }) {
               onError={handleError}
               flash={flash}
             />
+          </div>
+        ) : view === 'calls' ? (
+          <div id="view-calls" role="tabpanel" aria-labelledby="tab-calls" className="console-view">
+            <CallQuality onError={handleError} flash={flash} />
           </div>
         ) : (
         <div id="view-overview" role="tabpanel" aria-labelledby="tab-overview" className="console-view">

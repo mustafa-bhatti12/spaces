@@ -11,6 +11,7 @@ import {
 import { facingModeFromLocalTrack, LocalVideoTrack, Track, type LocalAudioTrack } from 'livekit-client';
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { getSavedDisplayName, saveDisplayName } from '@/lib/client/identity';
+import { getPreJoinBrowserStatus } from '@/lib/client/prejoinGuidance';
 import { MIC_PROCESSING } from '@/lib/client/mic';
 import { useMirrorVideo } from '@/lib/client/mirror';
 
@@ -42,6 +43,8 @@ interface PreJoinProps {
   beforeJoin?: ReactNode;
   /** The name is fixed (embedded calls): shown as text instead of the input, and used on submit. */
   lockedName?: string;
+  /** A joinable URL to copy; embedded calls restore their token in its fragment. */
+  copyLink?: string;
 }
 
 /**
@@ -57,7 +60,7 @@ interface PreJoinProps {
  * typing before hydration) that React hasn't heard about, which left a filled field with a dead
  * button. Submitting reads the field itself, and an empty name just flags the field.
  */
-export function PreJoin({ defaults, joinLabel, userLabel, busy, onSubmit, onError, beforeJoin, lockedName }: PreJoinProps) {
+export function PreJoin({ defaults, joinLabel, userLabel, busy, onSubmit, onError, beforeJoin, lockedName, copyLink }: PreJoinProps) {
   const {
     userChoices: initial,
     saveAudioInputDeviceId,
@@ -74,10 +77,15 @@ export function PreJoin({ defaults, joinLabel, userLabel, busy, onSubmit, onErro
   const [username, setUsername] = useState(lockedName ?? '');
   const [nameMissing, setNameMissing] = useState(false);
   const nameInput = useRef<HTMLInputElement>(null);
-  // After mount: the server render has no user agent, and the first client render must match it.
   const [advice, setAdvice] = useState<string | null>(null);
-  useEffect(() => setAdvice(mobileCallAdvice()), []);
-
+  const [browserStatus, setBrowserStatus] = useState<{ unsupported: boolean; firefox: boolean } | null>(null);
+  const [linkCopyState, setLinkCopyState] = useState<'copied' | 'failed' | null>(null);
+  const joinLink = copyLink ?? (typeof window === 'undefined' ? '' : window.location.href);
+  useEffect(() => {
+    const userAgent = navigator.userAgent;
+    setAdvice(mobileCallAdvice());
+    setBrowserStatus(getPreJoinBrowserStatus(userAgent));
+  }, []);
   // After hydration (the page is server-rendered, localStorage isn't): keep anything already in the
   // field, otherwise fill in the saved name.
   useEffect(() => {
@@ -166,6 +174,14 @@ export function PreJoin({ defaults, joinLabel, userLabel, busy, onSubmit, onErro
     saveDisplayName(name);
     onSubmit({ ...choices, username: name });
   };
+  const copyJoinLink = async () => {
+    try {
+      await navigator.clipboard.writeText(joinLink);
+      setLinkCopyState('copied');
+    } catch {
+      setLinkCopyState('failed');
+    }
+  };
 
   return (
     <div className="lk-prejoin" data-mirror={mirror ? 'on' : 'off'}>
@@ -236,6 +252,22 @@ export function PreJoin({ defaults, joinLabel, userLabel, busy, onSubmit, onErro
           </p>
         )}
         {beforeJoin}
+        {browserStatus?.unsupported && (
+          <div className="prejoin-browser-notice" role="status">
+            <p className="note">Open this link in Chrome or Safari for a reliable call.</p>
+            <button className="key key-quiet" type="button" onClick={() => void copyJoinLink()}>
+              {linkCopyState === 'copied' ? 'Link copied' : 'Copy link'}
+            </button>
+            {linkCopyState === 'failed' && (
+              <p className="note prejoin-copy-failure">
+                Couldn&apos;t copy. Select and copy this link: <span>{joinLink}</span>
+              </p>
+            )}
+          </div>
+        )}
+        {browserStatus?.firefox && !browserStatus.unsupported && (
+          <p className="note">On unstable Wi-Fi, Chrome or Edge protect call audio better than Firefox.</p>
+        )}
         {advice && <p className="note">{advice}</p>}
         <button className="lk-button lk-join-button" type="submit" disabled={busy}>
           {joinLabel}

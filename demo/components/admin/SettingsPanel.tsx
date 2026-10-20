@@ -7,16 +7,16 @@ import { Led } from '../ui/Device';
 import { SwitchRow } from '../ui/SwitchRow';
 import { api, SessionExpired } from './api';
 import type { SystemSnapshot } from './ServerPanel';
+import type { CallSettings } from '@/lib/callSettings';
 
-// Settings tab. Recording, transcription and capacity settings are saved on the droplet by
-// token-service (settings.ts) and apply to the next recording or join, no restart. Everything else is read-only here:
-// droplet .env and Railway variables are changed where they live. The restart key restarts the
-// droplet stack, which token-service refuses while anyone is in a call.
+// Recording, transcription, call quality and capacity settings are saved on the droplet by
+// token-service and apply without a restart. Deployment facts remain read-only here.
 
 interface RuntimeSettings {
   transcription: { enabled: boolean; languageHints: string[]; terms: string[]; translateTo: string };
   recording: { audioKbps: number; recordAllCalls: boolean };
   limits: { maxPerRoom: number; maxTotal: number };
+  calls: CallSettings;
 }
 interface SettingsView {
   settings: RuntimeSettings;
@@ -51,6 +51,19 @@ interface Draft {
   recordAll: boolean;
   maxPerRoom: string;
   maxTotal: string;
+  calls: {
+    micPreset: CallSettings['micPreset'];
+    red: boolean;
+    adaptive: boolean;
+    adaptAvailOutKbps: string;
+    adaptHoldSec: string;
+    lowCameraHeight: string;
+    lowScreenFps: string;
+    relayFallback: boolean;
+    relayRttMs: string;
+    relayDrops: string;
+    statsIntervalSec: string;
+  };
 }
 
 const toDraft = (s: RuntimeSettings): Draft => ({
@@ -62,6 +75,19 @@ const toDraft = (s: RuntimeSettings): Draft => ({
   recordAll: s.recording.recordAllCalls,
   maxPerRoom: String(s.limits.maxPerRoom),
   maxTotal: String(s.limits.maxTotal),
+  calls: {
+    micPreset: s.calls.micPreset,
+    red: s.calls.red,
+    adaptive: s.calls.adaptive,
+    adaptAvailOutKbps: String(s.calls.adaptAvailOutKbps),
+    adaptHoldSec: String(s.calls.adaptHoldSec),
+    lowCameraHeight: String(s.calls.lowCameraHeight),
+    lowScreenFps: String(s.calls.lowScreenFps),
+    relayFallback: s.calls.relayFallback,
+    relayRttMs: String(s.calls.relayRttMs),
+    relayDrops: String(s.calls.relayDrops),
+    statsIntervalSec: String(s.calls.statsIntervalSec),
+  },
 });
 const split = (value: string, by: RegExp) =>
   value
@@ -77,6 +103,19 @@ const fromDraft = (d: Draft): RuntimeSettings => ({
   },
   recording: { audioKbps: Number(d.kbps), recordAllCalls: d.recordAll },
   limits: { maxPerRoom: Number(d.maxPerRoom), maxTotal: Number(d.maxTotal) },
+  calls: {
+    micPreset: d.calls.micPreset,
+    red: d.calls.red,
+    adaptive: d.calls.adaptive,
+    adaptAvailOutKbps: Number(d.calls.adaptAvailOutKbps),
+    adaptHoldSec: Number(d.calls.adaptHoldSec),
+    lowCameraHeight: Number(d.calls.lowCameraHeight) as CallSettings['lowCameraHeight'],
+    lowScreenFps: Number(d.calls.lowScreenFps),
+    relayFallback: d.calls.relayFallback,
+    relayRttMs: Number(d.calls.relayRttMs),
+    relayDrops: Number(d.calls.relayDrops),
+    statsIntervalSec: Number(d.calls.statsIntervalSec),
+  },
 });
 const list = (items: string[]) => (items.length ? items.join(', ') : 'none');
 
@@ -147,6 +186,7 @@ export function SettingsPanel({
   const next = fromDraft(draft);
   const dirty = JSON.stringify(next) !== JSON.stringify(view.settings);
   const set = (patch: Partial<Draft>) => setDraft({ ...draft, ...patch });
+  const setCall = (patch: Partial<Draft['calls']>) => set({ calls: { ...draft.calls, ...patch } });
   const { defaults, info, limits } = view;
   const noKey = !info.secrets.sonioxApiKey;
 
@@ -154,7 +194,7 @@ export function SettingsPanel({
     setBusy('save');
     try {
       apply(await api<SettingsView>('POST', '/settings', next));
-      flash('Settings saved. They apply to the next recording or join.');
+      flash('Settings saved. Call quality and limits apply to the next call; recording applies to the next recording.');
     } catch (err) {
       flash(onError(err), true);
     } finally {
@@ -163,11 +203,11 @@ export function SettingsPanel({
   };
 
   const reset = async () => {
-    if (!window.confirm('Go back to the values in token-service/.env on the droplet?')) return;
+    if (!window.confirm('Go back to the token-service defaults?')) return;
     setBusy('reset');
     try {
       apply(await api<SettingsView>('POST', '/settings/reset', {}));
-      flash('Back to the .env values.');
+      flash('Back to the token-service defaults.');
     } catch (err) {
       flash(onError(err), true);
     } finally {
@@ -232,8 +272,8 @@ export function SettingsPanel({
     <div className="settings">
       <section aria-labelledby="h-settings-calls">
         <h2 id="h-settings-calls" className="section-title">
-          Recording and transcripts
-          <span className="section-meta">{view.saved ? 'Saved here, overrides .env' : 'From token-service/.env'}</span>
+          Call and recording settings
+          <span className="section-meta">{view.saved ? 'Saved here, overrides defaults' : 'Token-service defaults'}</span>
         </h2>
         <form
           className="settings-card"
@@ -376,13 +416,144 @@ export function SettingsPanel({
               </label>
             </div>
           </div>
+          <div className="settings-group">
+            <h3 className="settings-group-title">Call quality</h3>
+            <div className="settings-fields">
+              <label className="settings-field">
+                <span className="field-label">Microphone preset</span>
+                <select
+                  className="field mono"
+                  value={draft.calls.micPreset}
+                  onChange={(e) => setCall({ micPreset: e.target.value as CallSettings['micPreset'] })}
+                >
+                  <option value="telephone">Telephone · 12 kbps</option>
+                  <option value="speech">Speech · 24 kbps</option>
+                  <option value="music">Music · 48 kbps</option>
+                </select>
+                <span className="note">Opus send quality for new calls. Default: {defaults.calls.micPreset}.</span>
+              </label>
+              <label className="settings-field">
+                <span className="field-label">Low-mode camera height (pixels)</span>
+                <select
+                  className="field mono"
+                  value={draft.calls.lowCameraHeight}
+                  onChange={(e) => setCall({ lowCameraHeight: e.target.value })}
+                >
+                  <option value="180">180 px</option>
+                  <option value="270">270 px</option>
+                  <option value="360">360 px</option>
+                </select>
+                <span className="note">Camera resolution while adaptive mode is low. Default: {defaults.calls.lowCameraHeight} px.</span>
+              </label>
+            </div>
+            <SwitchRow
+              label="Opus RED redundancy"
+              hint={`Adds redundant audio packets where supported to recover from loss. Default: ${defaults.calls.red ? 'on' : 'off'}.`}
+              checked={draft.calls.red}
+              onChange={(red) => setCall({ red })}
+            />
+            <SwitchRow
+              label="Adaptive low-bandwidth mode"
+              hint={`Reduce video when available outbound bandwidth falls below the threshold; restore after sustained recovery. Default: ${defaults.calls.adaptive ? 'on' : 'off'}.`}
+              checked={draft.calls.adaptive}
+              onChange={(adaptive) => setCall({ adaptive })}
+            />
+            <div className="settings-fields">
+              <label className="settings-field">
+                <span className="field-label">Enter low mode below (kbps)</span>
+                <input
+                  className="field mono"
+                  type="number"
+                  inputMode="numeric"
+                  min={0}
+                  step={1}
+                  value={draft.calls.adaptAvailOutKbps}
+                  onChange={(e) => setCall({ adaptAvailOutKbps: e.target.value })}
+                />
+                <span className="note">Available outbound bandwidth threshold. Default: {defaults.calls.adaptAvailOutKbps} kbps.</span>
+              </label>
+              <label className="settings-field">
+                <span className="field-label">Restore hold (seconds)</span>
+                <input
+                  className="field mono"
+                  type="number"
+                  inputMode="numeric"
+                  min={0}
+                  step={1}
+                  value={draft.calls.adaptHoldSec}
+                  onChange={(e) => setCall({ adaptHoldSec: e.target.value })}
+                />
+                <span className="note">Good bandwidth must last this long before normal mode returns. Default: {defaults.calls.adaptHoldSec}s.</span>
+              </label>
+              <label className="settings-field">
+                <span className="field-label">Low-mode screen frame rate</span>
+                <input
+                  className="field mono"
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  step={1}
+                  value={draft.calls.lowScreenFps}
+                  onChange={(e) => setCall({ lowScreenFps: e.target.value })}
+                />
+                <span className="note">Screen-share frames per second in low mode. Default: {defaults.calls.lowScreenFps} fps.</span>
+              </label>
+              <label className="settings-field">
+                <span className="field-label">Stats interval (seconds)</span>
+                <input
+                  className="field mono"
+                  type="number"
+                  inputMode="numeric"
+                  min={0}
+                  step={1}
+                  value={draft.calls.statsIntervalSec}
+                  onChange={(e) => setCall({ statsIntervalSec: e.target.value })}
+                />
+                <span className="note">0 disables WebRTC stats sampling. Default: {defaults.calls.statsIntervalSec}s.</span>
+              </label>
+            </div>
+            <SwitchRow
+              label="Relay fallback"
+              hint={`Rejoin using a TURN relay when RTT or recent drops exceed their thresholds. Default: ${defaults.calls.relayFallback ? 'on' : 'off'}.`}
+              checked={draft.calls.relayFallback}
+              onChange={(relayFallback) => setCall({ relayFallback })}
+            />
+            <div className="settings-fields">
+              <label className="settings-field">
+                <span className="field-label">Relay fallback RTT (ms)</span>
+                <input
+                  className="field mono"
+                  type="number"
+                  inputMode="numeric"
+                  min={0}
+                  step={1}
+                  value={draft.calls.relayRttMs}
+                  onChange={(e) => setCall({ relayRttMs: e.target.value })}
+                />
+                <span className="note">Switch to relay-only above this RTT. Default: {defaults.calls.relayRttMs} ms.</span>
+              </label>
+              <label className="settings-field">
+                <span className="field-label">Relay fallback drops</span>
+                <input
+                  className="field mono"
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  step={1}
+                  value={draft.calls.relayDrops}
+                  onChange={(e) => setCall({ relayDrops: e.target.value })}
+                />
+                <span className="note">Switch to relay-only after this many drops within 5 minutes. Default: {defaults.calls.relayDrops}.</span>
+              </label>
+            </div>
+          </div>
 
           <div className="settings-foot">
-            <span className="note">Recording and transcription changes apply to the next recording; limits apply to the next join. No restart, no dropped calls.</span>
+            <span className="note">Call quality and call limits apply at the next join; recording and transcription changes apply to the next recording. No restart, no dropped calls.</span>
             {view.saved && (
               <button type="button" className="key key-quiet" disabled={busy !== null} onClick={reset}>
                 <RotateCcw aria-hidden="true" />
-                Reset to .env
+                Reset to defaults
               </button>
             )}
             <button type="button" className="key" disabled={!dirty || busy !== null} onClick={() => setDraft(toDraft(view.settings))}>

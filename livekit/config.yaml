@@ -33,4 +33,4 @@ webhook:
   api_key: devkey
   urls:
     - http://localhost:8880/recording/webhook
-log_level: debug
+log_level: info

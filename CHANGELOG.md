@@ -3,6 +3,14 @@
 What shipped, newest first. One line per user- or operator-visible change; commit hashes point at
 the detail. Agents: add a line here with every change that ships (see `AGENTS.md`).
 
+## 2026-10-20
+
+- **Calls hold up on weak links.** Mic publishes at speech quality (24 kbps + RED, was ~92 kbps); low-bandwidth mode caps the camera and slows screen share only for a caller whose own link is Poor or whose upload falls under the threshold, and restores after it recovers; LiveKit's resume gives up sooner so our rejoin takes over; repeated drops or multi-second RTT switch the next rejoin to TURN/TLS 443.
+- **Per-caller WebRTC stats in the call log** (`stats` every 15 s: RTT, path, loss, concealed audio, bitrates; plus `adapt`, `relay`), and a **Call quality** tab in `/admin` with per-session verdicts, browser/day summaries, and deleting call-log files.
+- **Call-quality settings are live in `/admin` → Settings** (mic quality, RED, low-bandwidth mode and thresholds, relay fallback, stats interval); they apply at the next join.
+- **Pre-join help:** browser/OS-specific steps for blocked camera/mic, join audio-only when a device is missing, "open in Chrome or Safari" for in-app/unsupported browsers, a Firefox hint; remote tiles say "Unstable connection" / "Reconnecting…" and a dropped caller shows "<name> lost connection".
+- **Droplet:** TURN over UDP on 3478, LiveKit log level `info`, `/tmp/*.log` capped at 100 MB with rotation.
+
 ## 2026-10-19
 
 - **Consumer-required recordings can't go missing.** A call a consumer requires recorded (`record: true` on `/token`, every Petition Studio call) keeps that requirement if it's ended and rejoined, closes before anyone joins, or empties and reconnects (the join token now seeds the room); token-service restarts its recording within 10 s whenever people are in it and nothing records; and nobody in the call can stop it (only `/admin`). Before, a host's "End for everyone" followed by Rejoin left the rest of a call unrecorded.

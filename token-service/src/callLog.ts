@@ -10,7 +10,10 @@ import { tokenIdentity } from './livekit';
  * apart from the server's side in livekit.log. One JSON line per event in `logs/calls-<UTC day>.jsonl`,
  * kept for KEEP_DAYS.
  */
-const DIR = process.env.CALL_LOG_DIR ?? path.join(__dirname, '..', 'logs');
+export const CALL_LOG_DIR = process.env.CALL_LOG_DIR ?? path.join(__dirname, '..', 'logs');
+/** A day's call log file name; anything else in CALL_LOG_DIR is not ours. */
+export const CALL_LOG_NAME = /^calls-\d{4}-\d{2}-\d{2}\.jsonl$/;
+const DIR = CALL_LOG_DIR;
 const KEEP_DAYS = 30;
 const MAX_EVENTS = 100;
 const MAX_NAME = 40;
@@ -49,7 +52,7 @@ function prune(): void {
   }
   // Names sort by date, so anything before the cutoff day's name is older.
   for (const name of names) {
-    if (/^calls-\d{4}-\d{2}-\d{2}\.jsonl$/.test(name) && path.join(DIR, name) < cutoff) fs.rmSync(path.join(DIR, name), { force: true });
+    if (CALL_LOG_NAME.test(name) && path.join(DIR, name) < cutoff) fs.rmSync(path.join(DIR, name), { force: true });
   }
 }
 

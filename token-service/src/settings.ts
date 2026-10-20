@@ -7,6 +7,34 @@ import path from 'node:path';
  * file next to it and win over .env until reset. Readers call getSettings() each time, so a change
  * applies to the next recording, transcript or join.
  */
+export interface CallSettings {
+  micPreset: 'telephone' | 'speech' | 'music';
+  red: boolean;
+  adaptive: boolean;
+  adaptAvailOutKbps: number;
+  adaptHoldSec: number;
+  lowCameraHeight: 180 | 270 | 360;
+  lowScreenFps: number;
+  relayFallback: boolean;
+  relayRttMs: number;
+  relayDrops: number;
+  statsIntervalSec: number;
+}
+
+export const DEFAULT_CALL_SETTINGS: CallSettings = {
+  micPreset: 'speech',
+  red: true,
+  adaptive: true,
+  adaptAvailOutKbps: 600,
+  adaptHoldSec: 30,
+  lowCameraHeight: 360,
+  lowScreenFps: 5,
+  relayFallback: true,
+  relayRttMs: 2000,
+  relayDrops: 2,
+  statsIntervalSec: 15,
+};
+
 export interface RuntimeSettings {
   transcription: {
     /** Off: finished recordings aren't sent to Soniox. Needs SONIOX_API_KEY either way. */
@@ -30,6 +58,7 @@ export interface RuntimeSettings {
     /** Most people across every call on this server at once; nothing but token-service knows this. */
     maxTotal: number;
   };
+  calls: CallSettings;
 }
 
 // Read when first needed (not at import), after dotenv has loaded .env.
@@ -95,6 +124,7 @@ export function defaultSettings(): RuntimeSettings {
       maxPerRoom: envCount('MAX_PARTICIPANTS_PER_ROOM'),
       maxTotal: envCount('MAX_PARTICIPANTS_TOTAL'),
     },
+    calls: { ...DEFAULT_CALL_SETTINGS },
   };
 }
 
@@ -115,10 +145,16 @@ export function validateSettings(input: unknown): RuntimeSettings {
     transcription?: Record<string, unknown>;
     recording?: Record<string, unknown>;
     limits?: Record<string, unknown>;
+    calls?: Record<string, unknown>;
   };
   const t = body.transcription ?? {};
   const r = body.recording ?? {};
   const l = body.limits ?? {};
+  const callInput = body.calls;
+  if (callInput !== undefined && (callInput === null || typeof callInput !== 'object' || Array.isArray(callInput))) {
+    throw new Error('calls must be an object.');
+  }
+  const c = { ...DEFAULT_CALL_SETTINGS, ...callInput };
   if (typeof t.enabled !== 'boolean') throw new Error('transcription.enabled must be true or false.');
   if (typeof r.recordAllCalls !== 'boolean') throw new Error('recording.recordAllCalls must be true or false.');
 
@@ -151,10 +187,40 @@ export function validateSettings(input: unknown): RuntimeSettings {
   const maxTotal = people(l.maxTotal, 'People across all calls');
   if (maxTotal < maxPerRoom) throw new Error('People across all calls can\u2019t be fewer than people per call.');
 
+  const booleanSetting = (value: unknown, name: string): boolean => {
+    if (typeof value !== 'boolean') throw new Error(`calls.${name} must be true or false.`);
+    return value;
+  };
+  const integerSetting = (value: unknown, name: string, min = 0): number => {
+    if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < min) {
+      throw new Error(`calls.${name} must be a whole number of at least ${min}.`);
+    }
+    return value;
+  };
+  if (c.micPreset !== 'telephone' && c.micPreset !== 'speech' && c.micPreset !== 'music') {
+    throw new Error('calls.micPreset must be telephone, speech or music.');
+  }
+  if (c.lowCameraHeight !== 180 && c.lowCameraHeight !== 270 && c.lowCameraHeight !== 360) {
+    throw new Error('calls.lowCameraHeight must be 180, 270 or 360.');
+  }
+  const calls: CallSettings = {
+    micPreset: c.micPreset,
+    red: booleanSetting(c.red, 'red'),
+    adaptive: booleanSetting(c.adaptive, 'adaptive'),
+    adaptAvailOutKbps: integerSetting(c.adaptAvailOutKbps, 'adaptAvailOutKbps'),
+    adaptHoldSec: integerSetting(c.adaptHoldSec, 'adaptHoldSec'),
+    lowCameraHeight: c.lowCameraHeight,
+    lowScreenFps: integerSetting(c.lowScreenFps, 'lowScreenFps', 1),
+    relayFallback: booleanSetting(c.relayFallback, 'relayFallback'),
+    relayRttMs: integerSetting(c.relayRttMs, 'relayRttMs'),
+    relayDrops: integerSetting(c.relayDrops, 'relayDrops', 1),
+    statsIntervalSec: integerSetting(c.statsIntervalSec, 'statsIntervalSec'),
+  };
   return {
     transcription: { enabled: t.enabled, languageHints, terms, translateTo },
     recording: { audioKbps, recordAllCalls: r.recordAllCalls },
     limits: { maxPerRoom, maxTotal },
+    calls,
   };
 }
 

@@ -13,6 +13,9 @@ EGRESS_STARTED=0
 LK_PID=""
 TS_PID=""
 DEMO_PID=""
+LOG_ROTATE_BYTES=$((100 * 1024 * 1024))
+LOG_FILES=(/tmp/livekit.log /tmp/token-service.log /tmp/redis.log /tmp/egress.log /tmp/demo.log)
+
 PUBLIC_IP="${SPACE_PUBLIC_IP:-}"
 LK_CONFIG=""
 EGRESS_CONFIG=""
@@ -199,8 +202,9 @@ wait_for_docker() {
 # TURN_DOMAIN (token-service/.env) turns on LiveKit's built-in TURN relay for networks that only
 # let HTTPS out. Browsers are told turns:<domain>:443 (LiveKit hardcodes 443); Caddy's layer4
 # listener wrapper terminates TLS for that SNI and forwards plain TCP with a PROXY v2 header to
-# 127.0.0.1:5349 (see deploy/Caddyfile). Without the header TURN would report Caddy's loopback
-# address to the browser, which Firefox rejects. No UDP port: UDP 443 is Caddy's HTTP/3.
+# 127.0.0.1:5349 (see deploy/Caddyfile). UDP TURN listens on 3478 because UDP 443 is Caddy's
+# HTTP/3. Without the header TURN would report Caddy's loopback address to the browser, which Firefox
+# rejects.
 write_runtime_configs() {
   local runtime="$ROOT/.runtime"
   mkdir -p "$runtime"
@@ -248,6 +252,7 @@ write_runtime_configs() {
         '  enabled: true' \
         "  domain: $turn_domain" \
         '  tls_port: 5349' \
+        '  udp_port: 3478' \
         '  external_tls: true' \
         '  proxy_protocol: true' >> "$LK_CONFIG"
     fi
@@ -279,6 +284,50 @@ ensure_udp_buffers() {
   echo "📶 UDP socket buffers raised to $want bytes for LiveKit"
 }
 
+# On startup and every supervisor pass, copy then truncate logs that reach 100 MB; copying keeps
+# active processes writing to the same file descriptor while leaving a readable .1.
+rotate_large_logs() {
+  local log size
+  for log in "${LOG_FILES[@]}"; do
+    [ -f "$log" ] || continue
+    size="$(wc -c < "$log")"
+    [ "$size" -lt "$LOG_ROTATE_BYTES" ] || {
+      cp "$log" "$log.1" && : > "$log"
+    }
+  done
+}
+
+# Linux hosts also retain daily compressed archives while logrotate's maxsize catches large logs
+# when its system timer runs. macOS manages local development logs separately.
+ensure_log_rotation() {
+  [ "$(uname)" = "Darwin" ] && return 0
+  if ! have logrotate; then
+    echo "📦 logrotate not found, installing..."
+    apt_install logrotate || {
+      echo "⚠️  logrotate is unavailable; logs still rotate at 100 MB while this supervisor runs."
+      return 0
+    }
+  fi
+  can_sudo || {
+    echo "⚠️  Can't install /etc/logrotate.d/spaces without root; logs still rotate at 100 MB while this supervisor runs."
+    return 0
+  }
+  printf '%s\n' \
+    '/tmp/livekit.log' \
+    '/tmp/token-service.log' \
+    '/tmp/redis.log' \
+    '/tmp/egress.log' \
+    '/tmp/demo.log {' \
+    '    daily' \
+    '    maxsize 100M' \
+    '    rotate 3' \
+    '    compress' \
+    '    copytruncate' \
+    '    missingok' \
+    '    notifempty' \
+    '}' | as_root tee /etc/logrotate.d/spaces >/dev/null
+}
+
 # --- 0. Env files + credentials (LiveKit reads the key pair from token-service/.env) ---
 ensure_npm_env token-service
 # The demo only runs locally (Railway hosts it for the droplet), but its .env is where the consumer
@@ -290,6 +339,9 @@ elif [ ! -f demo/.env ]; then
 fi
 ensure_real_credentials
 align_shared_secret
+rotate_large_logs
+ensure_log_rotation
+
 
 # --- 1. Redis (LiveKit Egress job queue; calling still works without it) ---
 install_redis_if_needed || true
@@ -442,6 +494,7 @@ trap cleanup SIGINT SIGTERM
 # Restart=on-failure) brings the whole stack back; run by hand, you see which one died.
 # `sleep & wait` keeps the Ctrl+C / SIGTERM trap responsive.
 while true; do
+  rotate_large_logs
   for entry in "LiveKit:$LK_PID" "token-service:$TS_PID" "Redis:$REDIS_PID"; do
     pid="${entry#*:}"
     if [ -n "$pid" ] && ! kill -0 "$pid" 2>/dev/null; then

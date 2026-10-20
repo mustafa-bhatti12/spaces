@@ -4,7 +4,9 @@ import type { LocalUserChoices } from '@livekit/components-react';
 import dynamic from 'next/dynamic';
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { EMBED_PROTOCOL, type EmbedEvent, type ParentCommand, parseParentCommand } from '@/lib/embed';
+import { previewErrorMessage } from '@/lib/client/prejoinGuidance';
 import { PreJoin } from '../PreJoin';
+import type { CallSettings } from '@/lib/callSettings';
 import type { ConnectionDetails, LeaveReason } from '../conference/types';
 import { Wordmark } from '../ui/Device';
 import { EmbedContext, type EmbedApi } from './EmbedContext';
@@ -12,7 +14,7 @@ import { EmbedContext, type EmbedApi } from './EmbedContext';
 const Conference = dynamic(() => import('../conference/Conference').then((m) => m.Conference), { ssr: false });
 const EmbedBridge = dynamic(() => import('./EmbedBridge').then((m) => m.EmbedBridge), { ssr: false });
 
-interface Session { room: string; identity: string; name: string; serverUrl: string; token: string }
+interface Session { room: string; identity: string; name: string; serverUrl: string; token: string; callSettings?: CallSettings }
 type Stage =
   | { kind: 'checking' }
   | { kind: 'invalid'; message: string }
@@ -26,6 +28,12 @@ export function EmbedClient({ parentOrigin }: { parentOrigin: string | null }) {
   const [stage, setStage] = useState<Stage>({ kind: 'checking' });
   const listeners = useRef(new Set<(c: ParentCommand) => void>());
   const framed = typeof window !== 'undefined' && window.parent !== window;
+  const prejoinLink = useMemo(() => {
+    if (!session || typeof window === 'undefined') return undefined;
+    const url = new URL(window.location.href);
+    url.hash = new URLSearchParams({ t: session.token }).toString();
+    return url.href;
+  }, [session]);
 
   const api = useMemo<EmbedApi>(() => ({
     post: (event: EmbedEvent) => {
@@ -101,9 +109,9 @@ export function EmbedClient({ parentOrigin }: { parentOrigin: string | null }) {
     }
     setStage({ kind: 'prejoin' });
   }, [api, framed, parentOrigin, session]);
-  const handlePreviewError = useCallback((err: Error) => setStage({ kind: 'prejoin', error: err.message }), []);
+  const handlePreviewError = useCallback((err: Error) => setStage({ kind: 'prejoin', error: previewErrorMessage(err, navigator.userAgent, navigator.maxTouchPoints) }), []);
   const details = useMemo<ConnectionDetails | null>(
-    () => session && { serverUrl: session.serverUrl, roomName: session.room, participantName: session.name, participantToken: session.token },
+    () => session && { serverUrl: session.serverUrl, roomName: session.room, participantName: session.name, participantToken: session.token, callSettings: session.callSettings },
     [session],
   );
 
@@ -121,7 +129,7 @@ export function EmbedClient({ parentOrigin }: { parentOrigin: string | null }) {
         <div className="prejoin-grid">
           <div className="prejoin-head"><h1 className="title">Ready to join?</h1></div>
           <PreJoin defaults={{}} lockedName={session.name} joinLabel="Join call" userLabel="" busy={false}
-            onSubmit={(choices) => setStage({ kind: 'in-call', choices })} onError={handlePreviewError} />
+            onSubmit={(choices) => setStage({ kind: 'in-call', choices })} onError={handlePreviewError} copyLink={prejoinLink} />
           <p className="prejoin-error note note-alert" role="alert" hidden={!stage.error}>{stage.error}</p>
         </div>
       </main>

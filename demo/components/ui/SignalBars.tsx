@@ -3,13 +3,13 @@
 import { useConnectionQualityIndicator } from '@livekit/components-react';
 import { ConnectionQuality, type Participant } from 'livekit-client';
 
-type Tone = 'ok' | 'warn' | 'alert' | 'idle';
+type Tone = 'ok' | 'warn' | 'idle';
 
 const LEVELS: Record<ConnectionQuality, { lit: number; tone: Tone; label: string }> = {
   [ConnectionQuality.Excellent]: { lit: 3, tone: 'ok', label: 'Excellent connection' },
   [ConnectionQuality.Good]: { lit: 2, tone: 'ok', label: 'Good connection' },
-  [ConnectionQuality.Poor]: { lit: 1, tone: 'warn', label: 'Poor connection' },
-  [ConnectionQuality.Lost]: { lit: 0, tone: 'alert', label: 'Connection lost' },
+  [ConnectionQuality.Poor]: { lit: 1, tone: 'warn', label: 'Unstable connection' },
+  [ConnectionQuality.Lost]: { lit: 0, tone: 'warn', label: 'Reconnecting…' },
   [ConnectionQuality.Unknown]: { lit: 0, tone: 'idle', label: 'Checking connection' },
 };
 
@@ -17,8 +17,8 @@ const LEVELS: Record<ConnectionQuality, { lit: number; tone: Tone; label: string
 const BARS = [5, 9, 13];
 
 /**
- * A participant's connection as three bars. Neutral while it's fine; the signal colours only when
- * it isn't (amber poor, red lost). `onlyWhenBad` hides it on good links (tiles, like Meet).
+ * A participant's connection as three bars. Neutral while it's fine; amber signals unstable or
+ * reconnecting links. `onlyWhenBad` hides it on good links (tiles, like Meet).
  */
 export function SignalBars({
   participant,

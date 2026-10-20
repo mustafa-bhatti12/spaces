@@ -1,7 +1,8 @@
 'use client';
 
-import { ConnectionQuality, DisconnectReason, ParticipantEvent, type Room, RoomEvent } from 'livekit-client';
+import { ConnectionQuality, ConnectionState, DisconnectReason, ParticipantEvent, type Room, RoomEvent } from 'livekit-client';
 import { useCallback, useEffect, useRef } from 'react';
+import { type CallStats, createStatsSampler } from './callStats';
 
 /** What a browser reports about its side of a call; token-service writes it to `logs/calls-<day>.jsonl`. */
 export type CallLog = (event: string, detail?: unknown) => void;
@@ -24,11 +25,20 @@ const networkInfo = (n = network()) => n && { type: n.type, effectiveType: n.eff
 /**
  * Records this browser's connection events for the call (connection state, disconnect reasons,
  * audio blocked, tab hidden/frozen, offline, network type) and posts them to `/api/call-log` in
- * batches; events from an outage are sent once the network is back. Returns `log` for the caller's
- * own events (the auto-rejoin). The browser console is muted in production, so this is the only
- * record of what a caller's device went through.
+ * batches; events from an outage are sent once the network is back. At statsIntervalSec while
+ * connected it also logs a `stats` sample of the call's WebRTC stats (RTT, path, bitrates, audio
+ * loss/jitter/concealment; see `callStats.ts`) and hands it to `onStats`. Returns `log` for the
+ * caller's own events (the auto-rejoin). The browser console is muted in production, so this is
+ * the only record of what a caller's device went through.
  */
-export function useCallLog(room: Room, roomName: string, token: string, embedded: boolean): CallLog {
+export function useCallLog(
+  room: Room,
+  roomName: string,
+  token: string,
+  embedded: boolean,
+  onStats?: (stats: CallStats, log: CallLog) => void,
+  statsIntervalSec = 15,
+): CallLog {
   const queue = useRef<CallEvent[]>([]);
   const log = useCallback<CallLog>((e, d) => {
     queue.current.push(d === undefined ? { t: Date.now(), e } : { t: Date.now(), e, d });
@@ -129,6 +139,38 @@ export function useCallLog(room: Room, roomName: string, token: string, embedded
       flush(true);
     };
   }, [room, roomName, token, embedded, log]);
+
+  useEffect(() => {
+    if (statsIntervalSec <= 0) return;
+    // A new sampler per (re)connect: its first sample only seeds the counters, so no window spans
+    // an outage.
+    let sampler = createStatsSampler(room);
+    let sampling = false;
+    const fresh = () => {
+      sampler = createStatsSampler(room);
+    };
+    room.on(RoomEvent.Connected, fresh).on(RoomEvent.Reconnected, fresh);
+    const timer = setInterval(() => {
+      if (sampling || room.state !== ConnectionState.Connected) return;
+      sampling = true;
+      const current = sampler;
+      current
+        .sample()
+        .then((stats) => {
+          if (!stats || current !== sampler || room.state !== ConnectionState.Connected) return;
+          log('stats', stats);
+          onStats?.(stats, log);
+        })
+        .catch(() => {})
+        .finally(() => {
+          sampling = false;
+        });
+    }, statsIntervalSec * 1000);
+    return () => {
+      clearInterval(timer);
+      room.off(RoomEvent.Connected, fresh).off(RoomEvent.Reconnected, fresh);
+    };
+  }, [room, log, onStats, statsIntervalSec]);
 
   return log;
 }

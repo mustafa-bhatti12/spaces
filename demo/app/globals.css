@@ -277,6 +277,21 @@ code { font: 0.875em var(--mono); background: var(--key); padding: 1px 6px; bord
 .prejoin-head .readout-strong .mono { overflow: hidden; text-overflow: ellipsis; }
 .prejoin-hint { grid-area: hint; color: var(--ink-3); font-size: 0.8125rem; margin: -4px 0 2px; line-height: 1.4; }
 .prejoin-error { grid-area: err; }
+/* Unsupported browsers and in-app webviews can still join; suggest moving to a full browser. */
+.prejoin-browser-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 10px 12px;
+  border-radius: var(--r-key);
+  background: var(--warn-soft);
+  box-shadow: inset 0 0 0 1px oklch(0.83 0.15 80 / 0.2);
+}
+.prejoin-browser-notice .note { flex: 1 1 180px; color: var(--warn); }
+.prejoin-browser-notice .key { flex: 0 0 auto; }
+.prejoin-browser-notice .prejoin-copy-failure { flex-basis: 100%; overflow-wrap: anywhere; }
+.prejoin-browser-notice .prejoin-copy-failure span { display: block; user-select: text; }
 .prejoin-grid .lk-prejoin { display: contents; }
 .prejoin-grid .lk-audio-container { display: none; }
 .prejoin-grid .lk-prejoin .lk-video-container {
@@ -501,13 +516,12 @@ code { font: 0.875em var(--mono); background: var(--key); padding: 1px 6px; bord
 }
 .lk-participant-tile .lk-participant-metadata-item svg { width: 14px; height: 14px; }
 .lk-participant-tile .tile-signal { width: 28px; padding: 0; justify-content: center; }
-/* Connection bars (ui/SignalBars): neutral when fine, amber poor, red lost. */
+/* Connection bars (ui/SignalBars): neutral when fine, amber for unstable or reconnecting. */
 .signal { display: inline-grid; place-items: center; flex-shrink: 0; width: 18px; height: 18px; color: var(--ink-2); }
 .signal svg { width: 16px; height: 16px; }
 .signal rect { fill: currentColor; stroke: none; transition: opacity 200ms var(--ease-out); }
 .signal .signal-off { opacity: 0.22; }
 .signal-warn { color: var(--warn); }
-.signal-alert { color: var(--alert-ink); }
 .signal-idle { color: var(--ink-3); }
 .name-plate { max-width: 100%; min-width: 0; }
 .name-plate-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1382,6 +1396,11 @@ code { font: 0.875em var(--mono); background: var(--key); padding: 1px 6px; bord
   color: var(--ink-2);
   overflow-wrap: anywhere;
 }
+.lost-connection-toast {
+  padding: 12px 16px;
+  box-shadow: var(--pop), inset 0 0 0 1px oklch(0.83 0.15 80 / 0.32);
+}
+.lost-connection-toast .chat-toast-text { margin: 0; color: var(--warn); }
 .chat-toast-close {
   position: absolute;
   top: 8px;
@@ -1606,7 +1625,7 @@ code { font: 0.875em var(--mono); background: var(--key); padding: 1px 6px; bord
 }
 .console .toast-slot { bottom: 28px; }
 
-/* Console tabs (Overview / Settings): a pill group on a recessed track. */
+/* Console tabs (Overview / Call quality / Settings): a pill group on a recessed track. */
 .console-tabs { display: inline-flex; align-self: flex-start; gap: 4px; margin-bottom: -8px; padding: 4px; border-radius: 9999px; background: var(--screen); box-shadow: var(--recess); }
 .console-tab { display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 14px; border: 0; border-radius: 9999px; background: transparent; color: var(--ink-3); font: 600 0.8125rem/1 inherit; cursor: pointer; transition: background-color 140ms var(--ease-out), color 140ms var(--ease-out); }
 .console-tab svg { width: 15px; height: 15px; stroke-width: 1.7; }
@@ -1614,6 +1633,36 @@ code { font: 0.875em var(--mono); background: var(--key); padding: 1px 6px; bord
 .console-tab:focus-visible { outline: 2px solid var(--live); outline-offset: 2px; }
 .console-tab[aria-selected='true'] { background: var(--key); color: var(--ink); box-shadow: var(--key-edge), 0 1px 3px rgb(0 0 0 / 0.35); }
 .console-view { display: flex; flex-direction: column; gap: 32px; }
+/* Call quality */
+.call-quality { display: flex; flex-direction: column; gap: 32px; }
+.call-quality-head, .call-quality-log-head { display: flex; align-items: center; justify-content: space-between; gap: 12px 20px; margin-bottom: 12px; }
+.call-quality-head .section-title, .call-quality-log-head .section-title { min-width: 0; margin: 0; }
+.call-quality-days { display: inline-flex; align-items: center; gap: 8px; color: var(--ink-3); font-size: 0.8125rem; font-weight: 600; }
+.call-quality-days .field { min-width: 106px; height: 36px; padding: 0 10px; }
+.call-quality-summary { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 1px; margin-top: 12px; overflow: hidden; border-radius: var(--r-face); background: var(--seam-soft); box-shadow: var(--lift); }
+.call-quality-summary .health-seg { min-height: 88px; }
+.call-quality-value { color: var(--ink); font-size: 1.2rem; font-weight: 650; line-height: 1.15; font-variant-numeric: tabular-nums; }
+.call-quality-groups { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 18px; }
+.call-quality-group { min-width: 0; }
+.call-quality-group-title { margin: 0 0 8px; color: var(--ink-2); font-size: 0.8125rem; font-weight: 650; }
+.call-quality-group-table { min-width: 500px; }
+.call-quality-group-table th, .call-quality-group-table td { padding-right: 8px; padding-left: 8px; }
+.call-quality-empty { color: var(--ink-3); text-align: center; }
+.call-quality-sessions { min-width: 1210px; }
+.call-quality-logs { min-width: 680px; }
+.call-quality-room { max-width: 180px; overflow-wrap: anywhere; font-size: 0.8125rem; }
+.call-quality-secondary { display: block; margin-top: 2px; color: var(--ink-3); font-size: 0.75rem; line-height: 1.35; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.call-quality-verdict { display: inline-flex; align-items: center; gap: 7px; text-transform: capitalize; font-size: 0.8125rem; font-weight: 650; }
+.call-quality-log-head .key { flex-shrink: 0; }
+@media (max-width: 900px) {
+  .call-quality-summary { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .call-quality-groups { grid-template-columns: 1fr; }
+}
+@media (max-width: 560px) {
+  .call-quality-head, .call-quality-log-head { align-items: stretch; flex-direction: column; }
+  .call-quality-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
 
 /* Settings tab */
 .settings { display: flex; flex-direction: column; gap: 32px; }

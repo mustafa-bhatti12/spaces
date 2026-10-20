@@ -19,6 +19,7 @@ import { lobby } from './lobby';
 import * as autoRecord from './autoRecord';
 import { deleteTranscript, readTranscript, transcribeRecording, transcriptStates, transcriptToText } from './transcripts';
 import { defaultSettings, getSettings, hasSavedSettings, LIMITS, livekitRoomDefaults, resetSettings, saveSettings } from './settings';
+import { listCallLogs, MAX_DAYS, readCallStats, resolveCallLogFile } from './callStats';
 
 // systemd sets INVOCATION_ID for a unit's processes (inherited through start-all.sh), so it tells
 // "running as spaces.service on the droplet" apart from a local or hand-started stack.
@@ -220,6 +221,34 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
   app.post('/settings/reset', async () => {
     resetSettings();
     return settingsView();
+  });
+
+  // Call quality tab: per-session summaries of the browsers' call log over the last `days` UTC days.
+  app.get<{ Querystring: { days?: string } }>('/call-stats', async (req, reply) => {
+    const days = req.query.days === undefined ? 7 : Number(req.query.days);
+    if (!Number.isInteger(days) || days < 1 || days > MAX_DAYS) return reply.code(400).send({ error: `days must be 1–${MAX_DAYS}.` });
+    return readCallStats(days);
+  });
+
+  app.get('/call-logs', async () => ({ files: await listCallLogs() }));
+
+  // Safe while callLog.ts writes: each batch is its own appendFile, which recreates today's file.
+  app.delete<{ Params: { file: string } }>('/call-logs/:file', async (req, reply) => {
+    const file = resolveCallLogFile(req.params.file);
+    if (!file) return reply.code(400).send({ error: 'Unknown log file.' });
+    try {
+      await fs.promises.unlink(file);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return reply.code(404).send({ error: 'Log file not found.' });
+      throw err;
+    }
+    return { ok: true };
+  });
+
+  app.delete('/call-logs', async () => {
+    const files = await listCallLogs();
+    for (const f of files) await fs.promises.rm(resolveCallLogFile(f.name)!, { force: true });
+    return { ok: true, deleted: files.length };
   });
 
   // Restarts the whole stack (LiveKit, token-service, Redis, recording worker): what an .env or

@@ -22,7 +22,7 @@ import {
   usePinnedTracks,
   useTracks,
 } from '@livekit/components-react';
-import { ConnectionState, RoomEvent, Track } from 'livekit-client';
+import { ConnectionState, DisconnectReason, RoomEvent, Track, type RemoteParticipant } from 'livekit-client';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link2, MonitorUp, Volume2, WifiOff, X } from 'lucide-react';
 import { createPortal } from 'react-dom';
@@ -45,6 +45,19 @@ import { useWaitingRoom } from './useWaitingRoom';
 import { WaitingNotice } from './WaitingNotice';
 import { useEmbed } from '../embed/EmbedContext';
 
+const LOST_CONNECTION_REASONS = new Set<DisconnectReason | undefined>([
+  undefined,
+  DisconnectReason.UNKNOWN_REASON,
+  DisconnectReason.SERVER_SHUTDOWN,
+  DisconnectReason.STATE_MISMATCH,
+  DisconnectReason.JOIN_FAILURE,
+  DisconnectReason.MIGRATION,
+  DisconnectReason.SIGNAL_CLOSE,
+  DisconnectReason.CONNECTION_TIMEOUT,
+  DisconnectReason.MEDIA_FAILURE,
+]);
+const LOST_CONNECTION_NOTICE_MS = 4000;
+
 /**
  * LiveKit's VideoConference prefab, expanded so the demo can add its own panels and controls:
  * same grid ⇄ focus layouts (auto-focus on screen share, click a tile to pin) and LiveKit Chat, plus
@@ -65,6 +78,8 @@ export function ConferenceLayout({
   const [sidePanel, setSidePanel] = useState<Exclude<Panel, 'chat'>>(null);
   const [toast, setToast] = useState<{ id: number; text: string } | null>(null);
   const toastId = useRef(0);
+  const [lostConnectionName, setLostConnectionName] = useState<string | null>(null);
+  const lostConnectionTimer = useRef<number | undefined>(undefined);
   const layoutContext = useCreateLayoutContext();
   const connectionState = useConnectionState();
   const participants = useParticipants();
@@ -197,6 +212,19 @@ export function ConferenceLayout({
     setTimeout(() => setToast((current) => (current?.id === id ? null : current)), 3000);
   }, []);
   const weakConnection = useWeakConnection();
+  useEffect(() => {
+    const onParticipantDisconnected = (participant: RemoteParticipant, reason?: DisconnectReason) => {
+      if (!LOST_CONNECTION_REASONS.has(reason)) return;
+      setLostConnectionName(participant.name || participant.identity);
+      window.clearTimeout(lostConnectionTimer.current);
+      lostConnectionTimer.current = window.setTimeout(() => setLostConnectionName(null), LOST_CONNECTION_NOTICE_MS);
+    };
+    room.on(RoomEvent.ParticipantDisconnected, onParticipantDisconnected);
+    return () => {
+      room.off(RoomEvent.ParticipantDisconnected, onParticipantDisconnected);
+      window.clearTimeout(lostConnectionTimer.current);
+    };
+  }, [room]);
 
   // Another host can make us a host (or stop us hosting) mid-call; say so when it happens.
   const wasHost = useRef<boolean | null>(null);
@@ -345,6 +373,11 @@ export function ConferenceLayout({
                 onOpenPeople={openPeople}
                 lead={
                   <>
+                    {lostConnectionName && (
+                      <div className="chat-toast lost-connection-toast" role="status">
+                        <p className="chat-toast-text"><strong>{lostConnectionName}</strong> lost connection</p>
+                      </div>
+                    )}
                     {/* With People open, its waiting section already shows every request. */}
                     {lobby && sidePanel !== 'people' && <WaitingNotice lobby={lobby} onView={openPeople} />}
                     {participants.length === 1 &&

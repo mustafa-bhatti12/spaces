@@ -74,7 +74,7 @@ systemctl restart spaces
 Without the TURN record and `TURN_DOMAIN`, skip the plugin and the `layer4` block in `deploy/Caddyfile`; calls work, except on networks that only allow HTTPS.
 
 Firewall (a cloud firewall is preferred over `ufw`, because `ufw` also blocks the Egress container's traffic to the host):
-- Inbound open: **22/tcp**, **80/tcp**, **443/tcp** (site and TURN), **7881/tcp**, **7882/udp**.
+- Inbound open: **22/tcp**, **80/tcp**, **443/tcp** (site and TURN/TLS), **7881/tcp**, **7882/udp** and **3478/udp** (TURN/UDP).
 - Everything else closed, including 6379, 7880, 8880 and 8888.
 - Outbound: leave the default allow-all, or media breaks.
 
