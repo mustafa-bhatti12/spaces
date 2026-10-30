@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "description": "Mints LiveKit join tokens. The only thing in this repo that holds LIVEKIT_API_KEY/SECRET.",
+  "engines": {
+    "node": "22.23.4"
+  },
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
