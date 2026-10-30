@@ -10,10 +10,10 @@ Media, token-service and recording run on one Linux VPS (Ubuntu / Debian) behind
 
 ### 1. VPS
 
-Prerequisites the script does **not** install: Node.js 20+ and Docker (Docker is only needed for recording):
+Prerequisites the script does **not** install: Node.js 22.23.4 and Docker (Docker is only needed for recording):
 
 ```bash
-curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - && sudo apt-get install -y nodejs
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && sudo apt-get install -y nodejs
 curl -fsSL https://get.docker.com | sh
 ```
 
@@ -95,7 +95,7 @@ Optional `start-all.sh` override: `SPACE_PUBLIC_IP=203.0.113.10`. On a VPS the s
 ## 💻 Local Development Setup
 
 ### Prerequisites
-- **Node.js** v22.22+ for the demo (`livekit-client` requires it); v20+ is enough for the droplet services
+- **Node.js** v22.23.4 for the demo and token-service (`livekit-client` requires it)
 - **LiveKit Server binary**:
   - macOS: `brew install livekit`
   - Linux: `curl -sSL https://get.livekit.io | bash`
