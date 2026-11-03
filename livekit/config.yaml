@@ -21,8 +21,9 @@ room:
   empty_timeout: 300
   departure_timeout: 40
   max_participants: 40
+# start-all.sh adds `password:` from REDIS_PASSWORD (token-service/.env) to the runtime copy.
 redis:
-  address: localhost:6379
+  address: 127.0.0.1:6379
 keys:
   devkey: secret
 # Every room, participant and egress event goes to token-service (on this host), signed with devkey's

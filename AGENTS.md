@@ -80,7 +80,7 @@ graph LR
 |---|---|---|---|---|---|
 | `livekit-server` | Go binary | droplet | 7880 ws/http, 7881 tcp, 7882 udp | LiveKit key pair (runtime config) | Media server (SFU). Native, not Docker — see below. |
 | `token-service` | TypeScript, Fastify | droplet | 8880 | LiveKit key pair, both bearer secrets, `SONIOX_API_KEY` | **Only** thing that mints tokens or talks to LiveKit's admin/egress API. Consumer routes + operator `/admin/*` routes. Starts every call's recording and has Soniox transcribe every finished one. |
-| Redis | — | droplet | 6379 | — | Job queue LiveKit server ↔ Egress worker use to coordinate. Recording-only; calling works without it. |
+| Redis | — | droplet | 6379 (loopback + docker0 only) | `REDIS_PASSWORD` (`requirepass`) | Job queue LiveKit server ↔ Egress worker use to coordinate. Recording-only; calling works without it. |
 | Egress worker | Docker (`livekit/egress:v1.14.1`, pinned) | droplet | — | LiveKit key pair (runtime config) | Joins a room as a hidden participant, mixes everyone's audio and writes 24 kbps Opus to `egress/raw/`; token-service moves it to `egress/compressed/` when egress reports it finished. |
 | Caddy | — | droplet | 80/443 | Let's Encrypt certs | TLS for `api.spaces.hof-global.com`: `/rtc` → LiveKit, `/twirp` + `/recording/webhook` blocked, everything else → token-service. Also, via the `layer4` plugin (custom build, see README), TURN/TLS for `turn.hof-global.com` → LiveKit's TURN on `127.0.0.1:5349`. Config: `deploy/Caddyfile`. |
 | `demo` | TypeScript, Next.js 16, React 19, Node ≥ 22.22 (`livekit-client`'s `machina` requires it), `@livekit/components-react` | Railway `https://spaces.hof-global.com` (also local via `start-all.sh`) | `$PORT` (8888 locally) | `TOKEN_SERVICE_SHARED_SECRET`; plus `ADMIN_SHARED_SECRET` + `ADMIN_PASSWORD` for `/admin` | `/` + `/rooms/[room]`: full call UI (pre-join, grid/focus, chat, people, devices, background blur/virtual backgrounds, noise cancellation, reactions, raise hand, record, invite, reconnect banner). `/embed`: the same call UI, token-only, for consumer apps to iframe (see "Embed mode"). `/admin`: the permanent operator control center. Server routes under `app/api/*` and `app/admin/*` hold the secrets; the browser never sees them. |
@@ -185,14 +185,22 @@ graph LR
   committed `devkey`/`secret` + `local-dev-secret-not-for-production` are LiveKit's/our published dev
   values. On Linux (not macOS) `start-all.sh`'s `ensure_real_credentials` replaces
   them once with generated ones in the gitignored `token-service/.env` / `demo/.env` (plus
-  `ADMIN_SHARED_SECRET`), and `write_runtime_configs` renders `.runtime/livekit.yaml` and
-  `.runtime/egress.yaml` with that key pair. The committed YAMLs keep only the dev pair — never put a
+  `ADMIN_SHARED_SECRET` and `REDIS_PASSWORD`), and `write_runtime_configs` renders
+  `.runtime/livekit.yaml` and `.runtime/egress.yaml` with that key pair and `redis.password`. The committed YAMLs keep only the dev pair — never put a
   real key in them.
-- **The droplet services listen on `0.0.0.0`:** `token-service` (8880), `livekit-server` (7880) and
-  the Redis that `start-all.sh` launches (6379, `--bind 0.0.0.0 --protected-mode no`, no password).
-  On the droplet the Cloud Firewall keeps them private and Caddy is the only
-  public way in — see "Deployment". Redis must stay `0.0.0.0` (the Egress container reaches it over
-  the Docker bridge, not loopback), so don't "fix" this by rebinding it to `127.0.0.1`.
+- **`token-service` (8880) and `livekit-server` (7880) listen on `0.0.0.0`;** on the droplet the Cloud
+  Firewall keeps them private and Caddy is the only public way in — see "Deployment".
+- **Redis (6379) is locked down on Linux (ERP-74):** it requires `REDIS_PASSWORD` (generated once into
+  `token-service/.env` by `ensure_real_credentials`, rendered into `redis.password` of both
+  `.runtime` YAMLs; never on a command line: `redis-server` reads its config from stdin, `redis-cli`
+  uses `REDISCLI_AUTH`) and binds only `127.0.0.1` plus docker0's address (`redis_bind_addrs`). The
+  Egress container reaches it as `host.docker.internal` = docker0's address, so don't rebind it to
+  loopback only and don't go back to `0.0.0.0`; docker0 is private, not internet-reachable. `FLUSHALL`,
+  `FLUSHDB`, `CONFIG` and `DEBUG` are `rename-command`ed away (LiveKit, Egress's go-redis/psrpc code and
+  token-service never issue them; checked in the `livekit/{livekit,protocol,psrpc,egress}` sources).
+  macOS dev keeps a password-less Redis on `0.0.0.0` unless you set `REDIS_PASSWORD` by hand. On the
+  droplet check: `redis-cli ping` → `NOAUTH`, `REDISCLI_AUTH=<pw> redis-cli ping` → `PONG`, and
+  `redis-cli -h <droplet IP> ping` from outside → connection refused/timeout.
 - **Never expose `/twirp`** (LiveKit's admin API) publicly. Caddy blocks it; `token-service` reaches
   it on localhost. Browsers only ever need `/rtc`.
 - **Rooms close themselves, and calls are capped.** `livekit/config.yaml`'s `room:` block sets the
@@ -273,7 +281,7 @@ Egress container → host traffic the way host `ufw` can):
 
 |Open to the internet|Keep closed|
 |---|---|
-|22/tcp SSH, 80/tcp + 443/tcp Caddy, 7881/tcp + 7882/udp LiveKit media, 3478/udp TURN/UDP|6379 Redis, 7880 LiveKit (browsers reach `/rtc` via Caddy), 8880 token-service (via Caddy), 8888|
+|22/tcp SSH, 80/tcp + 443/tcp Caddy, 7881/tcp + 7882/udp LiveKit media, 3478/udp TURN/UDP|6379 Redis (also bound to loopback + docker0 and password-protected), 7880 LiveKit (browsers reach `/rtc` via Caddy), 8880 token-service (via Caddy), 8888|
 
 Railway's outbound IPs aren't static, so token-service can't be IP-allowlisted; the bearer secrets
 over Caddy's HTTPS are the protection. Those are inbound rules. **Outbound stays DigitalOcean's
@@ -327,7 +335,7 @@ What `start-all.sh` does and doesn't do on a bare Linux host:
   failures in 5 minutes). Use `systemctl status|restart|stop spaces` and `journalctl -u spaces -f`;
   don't also run `start-all.sh` by hand there (two copies fight over the ports). The recording
   container has `--restart on-failure`, and Ubuntu's `redis-server.service` is disabled because
-  `start-all.sh` runs its own Redis on 0.0.0.0 for the container. The tools on the droplet are
+  `start-all.sh` runs its own password-protected Redis (loopback + docker0) for the container. The tools on the droplet are
   `/root/tools/stack-check.sh` (full end-to-end check), `/root/tools/lk` (LiveKit CLI) and
   `/root/tools/turn-enable.sh` (the one-off TURN switch-on, already run).
 - **Host `ufw`:** if enabled with default-deny incoming, it also drops the Egress container's traffic
