@@ -26,9 +26,9 @@ Color never decorates. Each hue means exactly one family of states. The one exce
 
 ## Type
 
-Lean and readable: nothing in the UI is set below 12px (0.75rem) except mono badge caps, and nothing above 2.75rem.
+Lean and readable: nothing in the UI is set below 12px (0.75rem) except mono badge caps, and nothing above 2.75rem except the home page's headline.
 
-- **Hanken Grotesk** (`--font-sans`): all UI text. Display is `clamp(2rem, 3.1vw, 2.75rem)`/600 with -0.035em tracking. Title is 1.375rem/600, body and lede 0.9375rem, keys 0.875rem/600, dock legends 0.75rem/600. Form fields stay at 1rem so iOS Safari doesn't zoom on focus.
+- **Hanken Grotesk** (`--font-sans`): all UI text. Display is `clamp(2rem, 3.1vw, 2.75rem)`/600 with -0.035em tracking; the home page headline (`.lobby-display`) alone goes to `clamp(2.5rem, 6.2vw, 4.5rem)` with -0.045em. Title is 1.375rem/600, body and lede 0.9375rem, keys 0.875rem/600, dock legends 0.75rem/600. Form fields stay at 1rem so iOS Safari doesn't zoom on focus.
 - **JetBrains Mono** (`--font-mono`): data only, meaning room names, timers, counts, identities, file names and sizes. Always tabular numbers.
 
 ## Components
