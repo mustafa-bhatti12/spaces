@@ -1,9 +1,10 @@
 import type { NextRequest } from 'next/server';
 import { normalizeRoomName } from '@/lib/room';
+import { getReservation, INACTIVE_LINK } from '@/lib/server/reservation';
 import { jsonBody, relayJson, tokenServiceFetch } from '@/lib/server/tokenService';
 
 /**
- * The demo's hosting rule: whoever starts a room hosts it. A room with no recorded host is being
+ * The demo's hosting rule for rooms nobody reserved: whoever starts a room hosts it. A room with no recorded host is being
  * started, so the joiner becomes host; recorded hosts (including anyone a host made host) keep
  * hosting when they rejoin. The record lives in the room itself, so it goes away when the room does.
  */
@@ -29,7 +30,18 @@ export async function POST(request: NextRequest) {
   }
   let host: boolean;
   try {
-    host = await isHost(room, identity);
+    // A reserved room (created through the Rooms API) lets guests in only inside its window and
+    // never makes anyone host: the owner's host token (/rooms/<name>#t=...) is the only way to host.
+    const reservation = await getReservation(room);
+    if (reservation.reserved) {
+      if (reservation.state === 'early') {
+        return Response.json({ error: 'This meeting has not started yet.', reservation: 'early', startsAt: reservation.startsAt }, { status: 403 });
+      }
+      if (reservation.state !== 'open') {
+        return Response.json({ error: INACTIVE_LINK, reservation: 'expired' }, { status: 403 });
+      }
+    }
+    host = reservation.reserved ? false : await isHost(room, identity);
   } catch (err) {
     console.error('Could not look up the room host:', err);
     return Response.json({ error: 'Could not reach the call service. Try again shortly.' }, { status: 502 });

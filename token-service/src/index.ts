@@ -4,17 +4,13 @@ import path from 'node:path';
 import Fastify from 'fastify';
 import { EgressStatus, WebhookReceiver } from 'livekit-server-sdk';
 import {
-  capacityFor,
   containerPathToHostPath,
   endRoomAsHost,
   getActiveRecordings,
   getParticipantSid,
   getRoomSettings,
   listActiveRooms,
-  mintToken,
-  markRoomRecorded,
   recordingRoom,
-  recordRoomHost,
   setRoomHost,
   hostIdentity,
   startRoomAudioRecording,
@@ -22,6 +18,9 @@ import {
   stopRecording,
 } from './livekit';
 import { auditCaller, requireApp } from './auth';
+import { issueJoinToken } from './joinToken';
+import { guardTokenRequest } from './reservations';
+import { reservationLookupRoutes, roomsApi } from './roomsApi';
 import { backupDir, getRegistry } from './apps';
 import { finishRecording, listRecordingFiles, resolveRecordingFile } from './recordings';
 import { autoTranscribe, parseRecordingName, readTranscript, transcribeMissing, transcribeRecording, transcriptStates } from './transcripts';
@@ -32,7 +31,6 @@ import { lobbyRoutes } from './lobbyRoutes';
 import { moderationRoutes } from './moderationRoutes';
 import { embedRoutes } from './embedRoutes';
 import { callLogRoutes } from './callLog';
-import { getSettings } from './settings';
 
 const fastify = Fastify();
 // Opens (migrates, seeds) the app registry now, so a bad SPACES_DB_FILE fails the start, not a request.
@@ -97,36 +95,32 @@ fastify.post<{ Body: { room?: string; identity?: string; name?: string; host?: b
     }
 
     try {
-      if (host !== true && lobby.isRemoved(room, identity)) {
-        // A host removed them; they stay out until the room ends.
-        reply.code(403).send({ error: 'A host removed you from this call.', removed: true });
+      const caller = req.caller!;
+      const reservation = getRegistry().reservations.getByRoom(room);
+      const guard = guardTokenRequest(reservation, caller.app.id, host === true, Date.now());
+      if (!guard.ok) {
+        if (host === true) auditCaller(req, 'host_token.mint', { room, result: 'denied', detail: guard.error });
+        reply.code(guard.status).send({ error: guard.error, ...(guard.reservation && { reservation: guard.reservation }) });
         return;
       }
-      const capacity = await capacityFor(room);
-      if (capacity !== 'ok') {
-        reply.code(503).send({
-          error:
-            capacity === 'room-full'
-              ? 'This call is full. Ask someone to leave, or start another call.'
-              : 'All calls on this server are full right now. Try again in a few minutes.',
-          full: true,
-        });
+      const result = await issueJoinToken({
+        room,
+        identity,
+        name,
+        host: host === true,
+        waitingRoom: host === true && typeof waitingRoom === 'boolean' ? waitingRoom : undefined,
+        record: record === true,
+        // A reservation's settings apply to every token for the room, whoever joins first.
+        reserved: reservation && !reservation.implicit ? { record: reservation.record, waitingRoom: reservation.waitingRoom } : undefined,
+      });
+      if (!result.ok) {
+        reply.code(result.status).send(result.body);
         return;
       }
-      if (host === true) {
-        // The caller decides who hosts; recording it lets GET /rooms report it on the next join.
-        // A host may also set the waiting room as they join.
-        await recordRoomHost(room, identity, typeof waitingRoom === 'boolean' ? waitingRoom : undefined);
-      } else if ((await getRoomSettings(room))?.waitingRoom && !lobby.isAdmitted(room, identity)) {
-        // Enforced here, not left to each consumer: a guest gets in only through /lobby/ask.
-        reply.code(409).send({ error: 'This call has a waiting room. Ask to join.', waitingRoom: true });
-        return;
-      }
-      // The consumer requires this call to be recorded (autoRecord.ts).
-      if (record === true) await markRoomRecorded(room);
-      const details = await mintToken({ room, identity, name, host: host === true, record: record === true });
       if (host === true) auditCaller(req, 'host_token.mint', { room });
-      reply.send({ ...details, callSettings: getSettings().calls });
+      // Petition Studio's rooms (`case-…`) are tracked as its own reservations.
+      if (!reservation && caller.scopes.has('rooms:create')) getRegistry().reservations.recordImplicit(caller.app.id, room);
+      reply.send(result.details);
     } catch (err) {
       console.error('Failed to mint LiveKit token:', err);
       reply.code(500).send({ error: 'Could not mint a token.' });
@@ -356,6 +350,8 @@ fastify.register(async (scoped) => {
   });
 });
 
+fastify.register(roomsApi(), { prefix: '/v1' });
+fastify.register(reservationLookupRoutes());
 fastify.register(adminRoutes, { prefix: '/admin' });
 fastify.register(lobbyRoutes, { prefix: '/lobby' });
 fastify.register(embedRoutes, { prefix: '/embed' });

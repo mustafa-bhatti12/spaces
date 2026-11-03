@@ -175,6 +175,21 @@ Its **Apps** tab is the registry of apps allowed to call token-service: create a
    - `/admin` shows each recording's transcript (view, download as `.txt`, retry a failed one). Consumers read them with `GET /recording/transcripts?room=<room>` and download a recording's audio with `GET /recording/file/<file>` (both consumer secret).
    - Speakers are numbered ("Speaker 1", "Speaker 2"): the recording is one mixed track, so it carries no names.
 
+### Rooms API (reserved rooms for registered apps)
+
+An app key with `rooms:create` makes durable meeting rooms with unguessable names (`<appSlug>-<26 base32 characters>`); guests open the link, the app's backend mints host tokens on demand:
+
+```bash
+curl -s -XPOST $API/v1/rooms -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' \
+  -d '{"title":"Intro call","externalRef":"activity-123","startsAt":"2026-11-10T09:00:00Z","record":true}'
+# → {"roomId":"rm_…","roomName":"erp-…","joinUrl":"https://spaces.hof-global.com/rooms/erp-…","expiresAt":"…"}   (201)
+curl -s -XPOST $API/v1/rooms/$ID/join-tokens -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' \
+  -d '{"identity":"user-1","name":"Ann","host":true}'
+# → {"token":"…","url":"https://spaces.hof-global.com/rooms/erp-…#t=…"}   open `url` to join as host
+```
+
+`GET /v1/rooms/:id` (`rooms:read`), `POST /v1/rooms/:id/end` (`rooms:end`), `GET /v1/apps/me` (any valid key). A room is visible to its owning app only (others get 404). Guests can join from 15 minutes before `startsAt` until `expiresAt` (default start + 12 h, at most 90 days); in a reserved room nobody becomes host except through a host token. `SPACES_PUBLIC_WEB_URL` (token-service `.env`) sets the origin in `joinUrl`.
+
 ---
 
 ## 🪟 Embedding a call
