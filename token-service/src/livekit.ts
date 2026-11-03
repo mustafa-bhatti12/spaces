@@ -355,6 +355,14 @@ export async function closeRoom(room: string): Promise<void> {
   await roomService().deleteRoom(room);
 }
 
+/** Closes the room if LiveKit has it live (a reserved room only exists once someone joins). True when it did. */
+export async function closeRoomIfLive(room: string): Promise<boolean> {
+  const [existing] = await roomService().listRooms([room]);
+  if (!existing) return false;
+  await closeRoom(room);
+  return true;
+}
+
 function roomService(): RoomServiceClient {
   const { apiKey, apiSecret, serverUrl } = requireLiveKitEnv();
   return new RoomServiceClient(serverUrl, apiKey, apiSecret);

@@ -3,10 +3,11 @@
 import type { LocalUserChoices } from '@livekit/components-react';
 import { PreJoin } from './PreJoin';
 import type { LucideIcon } from 'lucide-react';
-import { ArrowLeft, CircleSlash, DoorClosed, Hourglass, LogOut, RefreshCw, UserX, WifiOff } from 'lucide-react';
+import { ArrowLeft, CalendarClock, CircleSlash, DoorClosed, Hourglass, LinkIcon, LogOut, RefreshCw, UserX, WifiOff } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { takeFragmentToken } from '@/lib/client/fragmentToken';
 import { getDeviceId } from '@/lib/client/identity';
 import { previewErrorMessage } from '@/lib/client/prejoinGuidance';
 import type { CallSummary, ConnectionDetails, LeaveReason } from './conference/types';
@@ -20,6 +21,11 @@ import { WaitingScreen } from './WaitingScreen';
 const Conference = dynamic(() => import('./conference/Conference').then((m) => m.Conference), { ssr: false });
 
 type Stage =
+  | { kind: 'checking' }
+  /** Reserved room, before guests may join (15 min before it starts). */
+  | { kind: 'early'; startsAt: string }
+  /** The room can't be joined: its link is inactive, or the host link is invalid. */
+  | { kind: 'blocked'; title: string; body: string }
   | { kind: 'prejoin'; error?: string }
   | { kind: 'joining' }
   | { kind: 'waiting'; requestId: string; choices: LocalUserChoices; identity: string }
@@ -67,6 +73,38 @@ const END_SCREENS: Record<LeaveReason['kind'], { title: string; body: string; ic
   },
 };
 
+const INACTIVE = {
+  title: 'This meeting link is no longer active',
+  body: 'Ask the person who invited you for a new link.',
+};
+const BAD_HOST_LINK = { title: 'This host link has expired', body: 'Open the meeting again from where you started it to get a fresh link.' };
+
+/** A host's pre-minted token, checked by token-service (the same verification /embed uses). */
+interface HostSession {
+  room: string;
+  identity: string;
+  name: string;
+  serverUrl: string;
+  token: string;
+  callSettings?: ConnectionDetails['callSettings'];
+}
+
+const EARLY_RECHECK_MS = 30_000;
+
+/** The reservation window for this room, or null when it's unreserved/open (or the check failed: the join itself re-checks). */
+async function checkWindow(roomName: string, signal?: AbortSignal): Promise<Stage | null> {
+  try {
+    const res = await fetch(`/api/rooms/reservation?room=${encodeURIComponent(roomName)}`, { cache: 'no-store', signal });
+    if (!res.ok) return null;
+    const r = await res.json();
+    if (!r.reserved || r.state === 'open') return null;
+    if (r.state === 'early') return { kind: 'early', startsAt: r.startsAt };
+    return { kind: 'blocked', ...INACTIVE };
+  } catch {
+    return null;
+  }
+}
+
 interface RoomStatus {
   numParticipants: number;
   /** This browser would host the room if it joined now (see /api/connect's rule). */
@@ -101,6 +139,24 @@ function useRoomStatus(roomName: string, enabled: boolean): RoomStatus | null {
   return status;
 }
 
+function formatStart(iso: string): string {
+  return new Date(iso).toLocaleString([], { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
+}
+
+/** The session behind a host token (room, who it's for), or why it can't be used. */
+async function verifyHostToken(token: string, roomName: string, signal?: AbortSignal): Promise<HostSession | 'invalid' | 'inactive'> {
+  const res = await fetch('/api/embed/session', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token }),
+    signal,
+  });
+  if (res.status === 410) return 'inactive';
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || data.room !== roomName) return 'invalid';
+  return { ...data, token };
+}
+
 function occupancyText(count: number | null): string {
   if (count === null) return 'Checking the room…';
   if (count === 0) return 'Nobody here yet';
@@ -128,7 +184,9 @@ function SummaryReadout({ summary }: { summary: CallSummary }) {
 }
 
 export function RoomClient({ roomName }: { roomName: string }) {
-  const [stage, setStage] = useState<Stage>({ kind: 'prejoin' });
+  const [stage, setStage] = useState<Stage>({ kind: 'checking' });
+  // Set when the page was opened with a host's pre-minted token (`#t=...`).
+  const [hostSession, setHostSession] = useState<HostSession | null>(null);
   const status = useRoomStatus(roomName, stage.kind === 'prejoin' || stage.kind === 'joining' || stage.kind === 'ended');
   // The host's pre-join choice; until they touch the switch it follows the room's current setting.
   const [waitingRoomChoice, setWaitingRoomChoice] = useState<boolean | null>(null);
@@ -136,18 +194,62 @@ export function RoomClient({ roomName }: { roomName: string }) {
   // The choices of the last join attempt, to ask again if token-service lost the request.
   const lastChoices = useRef<LocalUserChoices | null>(null);
 
+  // First look at the page: a host token in the fragment (stripped from the URL at once), else the
+  // reservation's guest window. Unreserved rooms go straight to the pre-join as they always did.
+  useEffect(() => {
+    const ctrl = new AbortController();
+    const token = takeFragmentToken();
+    (async () => {
+      if (token) {
+        const session = await verifyHostToken(token, roomName, ctrl.signal);
+        if (ctrl.signal.aborted) return;
+        if (session === 'invalid') return setStage({ kind: 'blocked', ...BAD_HOST_LINK });
+        if (session === 'inactive') return setStage({ kind: 'blocked', ...INACTIVE });
+        setHostSession(session);
+        return setStage({ kind: 'prejoin' });
+      }
+      const blocked = await checkWindow(roomName, ctrl.signal);
+      if (!ctrl.signal.aborted) setStage(blocked ?? { kind: 'prejoin' });
+    })().catch(() => {
+      if (ctrl.signal.aborted) return;
+      // A host link that can't be checked must not fall back to joining as a guest.
+      setStage(token ? { kind: 'blocked', title: "Couldn't open the meeting", body: 'Check your connection, then open the meeting again from where you started it.' } : { kind: 'prejoin' });
+    });
+    return () => ctrl.abort();
+  }, [roomName]);
+
+  // Waiting for the window to open: look again until it does.
+  useEffect(() => {
+    if (stage.kind !== 'early') return;
+    const timer = setInterval(async () => {
+      const next = await checkWindow(roomName);
+      if (next?.kind !== 'early') setStage(next ?? { kind: 'prejoin' });
+    }, EARLY_RECHECK_MS);
+    return () => clearInterval(timer);
+  }, [stage.kind, roomName]);
+
   const join = useCallback(
     async (choices: LocalUserChoices, waitingRoomSetting?: boolean) => {
       lastChoices.current = choices;
       setStage({ kind: 'joining' });
       const identity = getDeviceId();
       try {
+        if (hostSession) {
+          // Check the token again: a room ended since, or a token that timed out, must not rejoin.
+          const session = await verifyHostToken(hostSession.token, roomName);
+          if (session === 'invalid') return setStage({ kind: 'blocked', ...BAD_HOST_LINK });
+          if (session === 'inactive') return setStage({ kind: 'blocked', ...INACTIVE });
+          const details: ConnectionDetails = { serverUrl: session.serverUrl, roomName: session.room, participantName: session.name, participantToken: session.token, callSettings: session.callSettings };
+          return setStage({ kind: 'in-call', details, choices, identity: session.identity });
+        }
         const res = await fetch('/api/connect', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ room: roomName, name: choices.username, identity, waitingRoom: waitingRoomSetting }),
         });
         const data = await res.json().catch(() => ({}));
+        if (data.reservation === 'early') return setStage({ kind: 'early', startsAt: data.startsAt });
+        if (data.reservation === 'expired') return setStage({ kind: 'blocked', ...INACTIVE });
         if (!res.ok) throw new Error(data.error || `Could not join (HTTP ${res.status}).`);
         if (data.waiting) setStage({ kind: 'waiting', requestId: data.requestId, choices, identity });
         else setStage({ kind: 'in-call', details: data as ConnectionDetails, choices, identity });
@@ -155,7 +257,7 @@ export function RoomClient({ roomName }: { roomName: string }) {
         setStage({ kind: 'prejoin', error: (err as Error).message });
       }
     },
-    [roomName],
+    [roomName, hostSession],
   );
   // Only a would-be host sends the switch; the server ignores it from anyone else anyway.
   const handleSubmit = (choices: LocalUserChoices) => join(choices, status?.youHost ? waitingRoom : undefined);
@@ -182,6 +284,30 @@ export function RoomClient({ roomName }: { roomName: string }) {
     [join],
   );
   const cancelWaiting = useCallback(() => setStage({ kind: 'prejoin' }), []);
+
+  if (stage.kind === 'checking' || stage.kind === 'early' || stage.kind === 'blocked') {
+    const early = stage.kind === 'early';
+    const Icon = early ? CalendarClock : LinkIcon;
+    return (
+      <main className="end-screen">
+        <header className="page-top">
+          <Wordmark />
+        </header>
+        <section className="face end-face" aria-labelledby="end-title">
+          {stage.kind !== 'checking' && (
+            <span className={`end-icon end-icon-${early ? 'idle' : 'warn'}`} aria-hidden="true">
+              <Icon />
+            </span>
+          )}
+          <h1 id="end-title" className="title">
+            {early ? `This meeting starts at ${formatStart(stage.startsAt)}` : stage.kind === 'blocked' ? stage.title : 'Opening the room…'}
+          </h1>
+          {early && <p className="lede">You can join 15 minutes before it starts. This page checks again by itself.</p>}
+          {stage.kind === 'blocked' && <p className="lede">{stage.body}</p>}
+        </section>
+      </main>
+    );
+  }
 
   if (stage.kind === 'waiting') {
     return (
@@ -266,11 +392,14 @@ export function RoomClient({ roomName }: { roomName: string }) {
               {occupancyText(status?.numParticipants ?? null)}
             </ReadoutSegment>
           </Readout>
-          <p className="lede">Check your camera and mic, then enter the name others will see.</p>
+          <p className="lede">
+            {hostSession ? `You're joining as host, as ${hostSession.name}. Check your camera and mic.` : 'Check your camera and mic, then enter the name others will see.'}
+          </p>
         </div>
         <PreJoin
           defaults={{}}
-          joinLabel={stage.kind === 'joining' ? 'Joining…' : 'Join call'}
+          joinLabel={stage.kind === 'joining' ? 'Joining…' : hostSession ? 'Join as host' : 'Join call'}
+          lockedName={hostSession?.name}
           userLabel="Enter your name (e.g. Alex)"
           busy={stage.kind === 'joining'}
           onSubmit={handleSubmit}
