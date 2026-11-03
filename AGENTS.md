@@ -107,12 +107,47 @@ graph LR
   Seeded apps (first start, no keys issued): `erp`, `petition-studio`, `spaces-web`. The registry
   (tables `app`, `app_key`, `audit_event`) is SQLite via `node:sqlite` in `token-service/data/spaces.db`
   (`SPACES_DB_FILE` overrides; gitignored; copied daily into `data/backups/`, newest 14 kept). The
-  audit log records app/key changes, `host_token.mint` and `room.end` (also from `/admin` room close),
+  audit log records app/key changes, `room.create`, `host_token.mint` and `room.end` (also from `/admin` room close),
   and is read in `/admin` → Apps. `ADMIN_SHARED_SECRET` guards the operator-only `/admin/*` routes (remove
   people, close rooms, delete recordings, the Apps registry) — held only by `demo`'s `/admin` server
   routes (`demo/lib/server/tokenService.ts`, `kind: 'admin'`). Never give a consumer the admin secret;
   a leaked consumer credential must not be able to moderate or delete. Neither is a user-auth system —
   `token-service` has no concept of a logged-in person.
+- **Reserved rooms (Rooms API, `token-service/src/roomsApi.ts`, `reservations.ts`).** An app with
+  `rooms:create` calls `POST /v1/rooms` `{title, externalRef, startsAt?, expiresAt?, waitingRoom?,
+  record?}` (201 → `{roomId, roomName, joinUrl, expiresAt}`). The name is `<appSlug>-<26 lowercase
+  base32 chars>` from 128 random bits, so it can't be guessed. `expiresAt` defaults to start + 12 h,
+  at most 90 days after start. The reservation (SQLite table `reservation`, owned by the app) is the
+  only record: the LiveKit room still appears on the first join. `GET /v1/rooms/:id` (`rooms:read`),
+  `POST /v1/rooms/:id/end` (`rooms:end`: marks it ended first, then closes the live room; 502 if
+  LiveKit is unreachable, and a retry finishes), `POST /v1/rooms/:id/join-tokens` (`tokens:mint`,
+  `{identity, name, host}` → `{token, url}`, `url` = `joinUrl#t=<token>`; 410 once ended/expired),
+  `GET /v1/apps/me` (any valid credential). Another app's room answers **404**, same as a missing
+  one. `joinUrl` uses `SPACES_PUBLIC_WEB_URL` (default `https://spaces.hof-global.com`). Audit:
+  `room.create`, `room.end`, `host_token.mint`. `record: true` marks the room recorded
+  (`markRoomRecorded`, same path as `/token`'s `record`), so recording starts at the first join. Every token minted for a
+  reserved room (guest or host, `/token` or `join-tokens`) first creates the room if absent with the
+  reservation's `record`/`waitingRoom` (`seedRoomIfAbsent`) and carries them in its room seed, so a guest
+  who arrives before the host still waits in the waiting room and the recording is required; a later
+  host token only adds the host. Guest window (`guestState`): joinable from 15 min before `startsAt`
+  until `expiresAt` and not ended. `/token` is shared by everyone (`joinToken.ts`): for a reserved
+  room another app gets **403** for `host: true` (never), and for a guest token outside the window;
+  the owner is never blocked. A `/token` call by an app with `rooms:create` for an unreserved room
+  records an **implicit** reservation (`implicit = 1`, owned by that app, window not enforced), so
+  Petition Studio's `case-…` rooms (and, until ERP-72, the demo's own rooms, since the shared secret
+  resolves to Petition Studio) are tracked. `GET /room/reservation?room=` (`tokens:mint`) is what the
+  demo asks before letting a guest in: `{reserved, state: open|early|expired|ended, startsAt, expiresAt}`;
+  implicit and unknown rooms are `{reserved: false}`. `POST /embed/session` refuses (410) a token for a
+  room whose reservation ended or expired.
+- **Demo behaviour in a reserved room.** `/api/connect` mints only **guest** tokens (`host: false`,
+  never promoted, no first-joiner rule; `/api/rooms/status` reports `youHost: false`) while the window
+  is open, else 403 `{reservation: 'early'|'expired'}`. `/rooms/<name>` shows "This meeting starts at
+  <time>" (re-checks every 30 s) before the window and the inactive-link page after it.
+  `/rooms/<name>#t=<token>` (the owner's host token): `RoomClient` takes the token from the fragment
+  (`lib/client/fragmentToken.ts`, shared with `/embed`, stripped from the URL at once), verifies it
+  through `/api/embed/session` (room must match), and lands on the pre-join with the name locked and
+  "Join as host"; joining uses the token directly, no `/api/connect`. Unreserved rooms and the Lobby
+  are unchanged until ERP-72 closes self-serve creation.
 - **Hosting is the consumer's decision; token-service only records and enforces it.** A room's
   hosts are a `hosts` list in its LiveKit metadata, which is what every check reads. `/token` with
   `host: true` adds the identity to it (`recordRoomHost`, creating the room if needed; `GET /rooms`
@@ -594,8 +629,9 @@ works from the same machine; test multi-device calls on the Railway deployment.
 - `token-service/src/system.ts` — `GET /admin/system`: host CPU/memory/network, per-service process rows, versions, TLS expiry, deployed commit. Linux-only parts return null on macOS; rates are deltas between calls (first call after a restart has nulls). It runs on every console poll, so keep it cheap; the comments explain why it reads cgroup files instead of `docker stats`.
 - `token-service/src/recordings.ts` — recording directories, safe filename resolution, file listing, `finishRecording` (webhook: raw/ → compressed/).
 - `token-service/src/embedRoutes.ts` — `POST /embed/session`: verifies a join token for `/embed`.
+- `token-service/src/roomsApi.ts` — `/v1` Rooms API and `GET /room/reservation`; `reservations.ts` — reservation store, room names, guest window, `/token` guard; `joinToken.ts` — the one join-token mint shared by `/token` and `/v1/rooms/:id/join-tokens` (tests: `rooms.test.ts`).
 - `token-service/src/auth.ts` — `requireApp(scope)` (key or shared secret → app, scope, rate limit), `auditCaller`, and the `ADMIN_SHARED_SECRET` `preHandler`. `apps.ts` — the SQLite app registry (apps, keys, audit, backup; unit-tested), `rateLimit.ts` — per-app fixed-window limiter, `appAdmin.ts` — `/admin/apps` and `/admin/audit` routes (UI: `demo/components/admin/AppsPanel.tsx`).
-- `demo/app/api/*` — call-page server routes (`connect`, `rooms/status` (pre-join: occupancy, would-you-host, waiting room), `rooms/end`, `rooms/host`, `lobby/status` (guest poll), `lobby/[action]` (host), `whoami`, `recording/{start,stop,status}`) → token-service consumer routes. The public home page doesn't list live rooms (only `/admin` does), so there's no public room-list route; don't add one back.
+- `demo/app/api/*` — call-page server routes (`connect`, `rooms/reservation` (reservation window), `rooms/status` (pre-join: occupancy, would-you-host, waiting room), `rooms/end`, `rooms/host`, `lobby/status` (guest poll), `lobby/[action]` (host), `whoami`, `recording/{start,stop,status}`) → token-service consumer routes. The public home page doesn't list live rooms (only `/admin` does), so there's no public room-list route; don't add one back.
 - `demo/app/admin/*` — `/admin` page + `login`/`logout`/`session` routes + `api/[...path]` streaming proxy → token-service `/admin/*`.
 - `demo/lib/server/tokenService.ts` — the only token-service client (both secrets); `demo/lib/server/adminSession.ts` — admin cookie + rate limit.
 - `demo/components/RoomClient.tsx` — pre-join (`PreJoin.tsx`, LiveKit's `PreJoin` markup with one camera open; the name field is controlled, prefilled with the last-used name, and Join is never disabled for an empty-looking field: submit reads the field itself, because autofill or restored form state can show a value React never heard about; the would-be host gets the waiting-room switch) → `WaitingScreen` if the room has a waiting room → join → end screen (with a duration/people summary).

@@ -4,6 +4,7 @@ import type { LocalUserChoices } from '@livekit/components-react';
 import dynamic from 'next/dynamic';
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { EMBED_PROTOCOL, type EmbedEvent, type ParentCommand, parseParentCommand } from '@/lib/embed';
+import { takeFragmentToken } from '@/lib/client/fragmentToken';
 import { previewErrorMessage } from '@/lib/client/prejoinGuidance';
 import { PreJoin } from '../PreJoin';
 import type { CallSettings } from '@/lib/callSettings';
@@ -59,8 +60,7 @@ export function EmbedClient({ parentOrigin }: { parentOrigin: string | null }) {
 
   // The token arrives in the fragment (never sent to a server); drop it from the address bar at once.
   useEffect(() => {
-    const token = new URLSearchParams(window.location.hash.slice(1)).get('t') ?? '';
-    history.replaceState(null, '', window.location.pathname + window.location.search);
+    const token = takeFragmentToken();
     if (!token) {
       setStage({ kind: 'invalid', message: 'This call link is missing its access token.' });
       return;

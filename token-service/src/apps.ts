@@ -2,6 +2,7 @@ import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { RESERVATION_SCHEMA, ReservationStore } from './reservations';
 
 /**
  * App registry: which registered apps may call token-service, what they may do, and an append-only
@@ -134,6 +135,7 @@ const TOUCH_EVERY_MS = 30_000;
 export class AppRegistry {
   private readonly db: DatabaseSync;
   private readonly touched = new Map<string, number>();
+  readonly reservations: ReservationStore;
 
   constructor(file: string) {
     if (file !== ':memory:') fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -141,6 +143,7 @@ export class AppRegistry {
     this.db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;');
     this.migrate();
     this.seed();
+    this.reservations = new ReservationStore(this.db);
   }
 
   // Forward-only: each entry runs once, in order; `user_version` is how many have run.
@@ -180,6 +183,7 @@ export class AppRegistry {
          detail TEXT
        );
        CREATE INDEX audit_event_at ON audit_event(id DESC);`,
+      RESERVATION_SCHEMA,
     ];
     const { user_version: version } = this.db.prepare('PRAGMA user_version').get() as { user_version: number };
     for (let i = version; i < steps.length; i++) {

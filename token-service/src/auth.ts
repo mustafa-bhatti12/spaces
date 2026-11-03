@@ -40,14 +40,14 @@ export const limiter = new RateLimiter();
 
 /**
  * Who is calling and may they do `scope`. Order: credential (401), app status and scope (403), rate
- * limit (429). Pure over its inputs so tests can drive it without a server.
+ * limit (429). `scope` null means any valid credential. Pure over its inputs so tests can drive it without a server.
  */
 export function authorize(
   registry: AppRegistry,
   rateLimiter: RateLimiter,
   authorization: string | undefined,
   sharedSecret: string | undefined,
-  scope: Scope,
+  scope: Scope | null,
   now = Date.now(),
 ): AuthResult {
   const header = authorization ?? '';
@@ -68,15 +68,15 @@ export function authorize(
     registry.touchApp(app, now);
   }
   if (caller.app.status !== 'active') return { ok: false, status: 403, error: `App ${caller.app.slug} is disabled.` };
-  if (!caller.scopes.has(scope)) return { ok: false, status: 403, error: `This credential lacks the ${scope} scope.` };
-  const limit = caller.app.rateLimits[scope] ?? caller.app.rateLimits['*'] ?? 300;
-  const hit = rateLimiter.hit(`${caller.app.slug}:${scope}`, limit, now);
+  if (scope && !caller.scopes.has(scope)) return { ok: false, status: 403, error: `This credential lacks the ${scope} scope.` };
+  const limit = (scope ? caller.app.rateLimits[scope] : undefined) ?? caller.app.rateLimits['*'] ?? 300;
+  const hit = rateLimiter.hit(`${caller.app.slug}:${scope ?? '*'}`, limit, now);
   if (!hit.allowed) return { ok: false, status: 429, error: 'Rate limit exceeded.', retryAfterSec: hit.retryAfterSec };
   return { ok: true, caller };
 }
 
-/** preHandler for a consumer route: authenticates the app and requires `scope`. Sets `req.caller`. */
-export function requireApp(scope: Scope): preHandlerAsyncHookHandler {
+/** preHandler for a consumer route: authenticates the app and requires `scope` (null: any valid credential). Sets `req.caller`. */
+export function requireApp(scope: Scope | null): preHandlerAsyncHookHandler {
   return async (req: FastifyRequest, reply: FastifyReply) => {
     const result = authorize(getRegistry(), limiter, req.headers.authorization, process.env.TOKEN_SERVICE_SHARED_SECRET, scope);
     if (result.ok) {
@@ -92,7 +92,7 @@ export function requireApp(scope: Scope): preHandlerAsyncHookHandler {
 export function auditCaller(
   req: FastifyRequest,
   action: string,
-  fields: { room?: string; result?: 'ok' | 'denied' | 'error'; detail?: string } = {},
+  fields: { room?: string; externalRef?: string; result?: 'ok' | 'denied' | 'error'; detail?: string } = {},
 ): void {
   const c = req.caller;
   getRegistry().audit({
@@ -101,6 +101,7 @@ export function auditCaller(
     keyId: c?.keyId ?? null,
     action,
     room: fields.room ?? null,
+    externalRef: fields.externalRef ?? null,
     ip: req.ip,
     result: fields.result ?? 'ok',
     detail: fields.detail ?? null,

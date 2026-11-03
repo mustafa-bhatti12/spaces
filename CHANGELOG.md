@@ -5,6 +5,7 @@ the detail. Agents: add a line here with every change that ships (see `AGENTS.md
 
 ## 2026-11-03
 
+- **Rooms API for registered apps** (ERP-69): `POST /v1/rooms` reserves a room with an unguessable name (`<app>-<26 base32 chars>`, window up to 90 days, optional recording and waiting room), `GET /v1/rooms/:id`, `POST /v1/rooms/:id/end`, `POST /v1/rooms/:id/join-tokens` (host link `…/rooms/<name>#t=<token>`) and `GET /v1/apps/me`, owner-only (404 for other apps) and audited. In a reserved room the call app lets guests in only from 15 min before the start until it expires ("This meeting starts at …" / "This meeting link is no longer active") and never makes a guest host; `/token` tracks Petition Studio's rooms as implicit reservations. Lobby and unreserved rooms are unchanged.
 - **App registry with per-app API keys, scopes, rate limits and an audit log** (ERP-68): `/admin` → Apps issues `hsk_…` keys (shown once, two active per app) for registered apps (`erp`, `petition-studio`, `spaces-web` seeded); consumer routes check the app's scope; `TOKEN_SERVICE_SHARED_SECRET` keeps working unchanged as Petition Studio's credential. Needs Node's built-in SQLite (`token-service/data/spaces.db`, `SPACES_DB_FILE`).
 
 ## 2026-10-20

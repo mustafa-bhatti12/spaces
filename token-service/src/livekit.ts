@@ -38,6 +38,8 @@ export async function mintToken(params: {
   host?: boolean;
   /** The consumer wants the call recorded (also marked in the room's metadata by /token). */
   record?: boolean;
+  /** The room's waiting room is on (a reservation's setting), kept in the room seed. */
+  waitingRoom?: boolean;
 }): Promise<CallConnectionDetails> {
   const { apiKey, apiSecret, serverUrl } = requireLiveKitEnv();
 
@@ -49,8 +51,8 @@ export async function mintToken(params: {
   // emptied while everyone dropped and someone reconnected), LiveKit seeds the new room's metadata
   // from this, so the host still hosts and a call that must be recorded still is. LiveKit never
   // applies it to a room that already exists, and keeps it in the tokens it refreshes.
-  if (params.host || params.record) {
-    const seed: RoomSettings = { ...NO_SETTINGS, hosts: params.host ? [params.identity] : [], record: params.record === true };
+  if (params.host || params.record || params.waitingRoom) {
+    const seed: RoomSettings = { ...NO_SETTINGS, hosts: params.host ? [params.identity] : [], waitingRoom: params.waitingRoom === true, record: params.record === true };
     at.roomConfig = new RoomConfiguration({ metadata: JSON.stringify(seed) });
   }
   at.ttl = '2h';
@@ -154,6 +156,16 @@ export async function markRoomRecorded(room: string): Promise<void> {
   }
   const current = parseRoomSettings(existing.metadata);
   if (!current.record) await svc.updateRoomMetadata(room, JSON.stringify({ ...current, record: true }));
+}
+
+/**
+ * Creates the room with these settings if nobody has joined yet (no hosts), so a guest who arrives
+ * first still meets the reservation's waiting room and required recording. An existing room is left alone.
+ */
+export async function seedRoomIfAbsent(room: string, settings: { record: boolean; waitingRoom: boolean }): Promise<void> {
+  const svc = roomService();
+  const [existing] = await svc.listRooms([room]);
+  if (!existing) await svc.createRoom({ name: room, metadata: JSON.stringify({ ...NO_SETTINGS, ...settings }) });
 }
 
 /**
@@ -353,6 +365,14 @@ export async function setTrackMuted(room: string, identity: string, trackSid: st
 /** Disconnects everyone and ends the room (its recording, if any, stops with it). */
 export async function closeRoom(room: string): Promise<void> {
   await roomService().deleteRoom(room);
+}
+
+/** Closes the room if LiveKit has it live (a reserved room only exists once someone joins). True when it did. */
+export async function closeRoomIfLive(room: string): Promise<boolean> {
+  const [existing] = await roomService().listRooms([room]);
+  if (!existing) return false;
+  await closeRoom(room);
+  return true;
 }
 
 function roomService(): RoomServiceClient {
