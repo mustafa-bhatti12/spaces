@@ -114,8 +114,7 @@ export function roomsApi(deps: RoomsDeps = realDeps): FastifyPluginAsync {
             identity: text(identity)!,
             name: text(name)!,
             host: host === true,
-            waitingRoom: host === true ? r.waitingRoom : undefined,
-            record: r.record,
+            reserved: { record: r.record, waitingRoom: r.waitingRoom },
           });
           if (!result.ok) return reply.code(result.status).send(result.body);
           const token = result.details.participantToken;

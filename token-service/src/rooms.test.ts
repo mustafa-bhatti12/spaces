@@ -97,12 +97,11 @@ test('create, get, join-tokens and end for the owning app', async () => {
   assert.equal(host.status, 200);
   assert.equal(host.body.token, 'tok.u1');
   assert.equal(host.body.url, `${created.body.joinUrl}#t=tok.u1`);
-  assert.deepEqual(t.calls.minted[0], { room: created.body.roomName, identity: 'u1', name: 'Ann', host: true, waitingRoom: true, record: true });
+  assert.deepEqual(t.calls.minted[0], { room: created.body.roomName, identity: 'u1', name: 'Ann', host: true, reserved: { record: true, waitingRoom: true } });
 
   const guest = await t.call('POST', `/v1/rooms/${created.body.roomId}/join-tokens`, erp, { identity: 'u2', name: 'Bob' });
   assert.equal(guest.status, 200);
   assert.equal(t.calls.minted[1].host, false);
-  assert.equal(t.calls.minted[1].waitingRoom, undefined);
 
   const ended = await t.call('POST', `/v1/rooms/${created.body.roomId}/end`, erp);
   assert.equal(ended.status, 200);
@@ -214,4 +213,73 @@ test('token guard: a guest is never promoted, and other apps get no host token o
   t.registry.reservations.recordImplicit(psId, 'case-9', NOW);
   assert.equal(guardTokenRequest(t.registry.reservations.getByRoom('case-9'), erpId, false, NOW + 99 * HOUR_MS).ok, true, 'implicit windows are not enforced');
   assert.equal(guardTokenRequest(t.registry.reservations.getByRoom('case-9'), erpId, true, NOW).ok, false);
+});
+
+// --- guest-first joins seed the room from the reservation ---
+
+process.env.LIVEKIT_API_KEY = 'devkey';
+process.env.LIVEKIT_API_SECRET = 'secret';
+process.env.LIVEKIT_URL = 'ws://localhost:7880';
+
+import { issueJoinToken, type LiveKitOps } from './joinToken';
+import { mintToken, parseRoomSettings } from './livekit';
+
+/** An in-memory LiveKit: rooms with metadata, the real token minting. */
+function fakeLiveKit() {
+  const rooms = new Map<string, string>();
+  const settings = (room: string) => (rooms.has(room) ? parseRoomSettings(rooms.get(room)) : null);
+  const ops: LiveKitOps = {
+    capacityFor: async () => 'ok',
+    getRoomSettings: async (room) => settings(room),
+    seedRoomIfAbsent: async (room, s) => {
+      if (!rooms.has(room)) rooms.set(room, JSON.stringify({ hosts: [], spotlight: null, ...s }));
+    },
+    recordRoomHost: async (room, identity, waitingRoom) => {
+      const cur = settings(room) ?? { hosts: [], waitingRoom: false, spotlight: null, record: false };
+      rooms.set(room, JSON.stringify({ ...cur, hosts: [...new Set([...cur.hosts, identity])], waitingRoom: waitingRoom ?? cur.waitingRoom }));
+    },
+    markRoomRecorded: async (room) => {
+      rooms.set(room, JSON.stringify({ ...(settings(room) ?? { hosts: [], waitingRoom: false, spotlight: null }), record: true }));
+    },
+    mintToken,
+  };
+  return { rooms, settings, ops };
+}
+const seedOf = (token: string) => JSON.parse(JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString()).roomConfig.metadata);
+
+test('a guest token for a record:true reservation carries the record seed, and the room is marked', async () => {
+  const lk = fakeLiveKit();
+  const res = await issueJoinToken({ room: 'erp-a', identity: 'g', name: 'G', host: false, reserved: { record: true, waitingRoom: false } }, lk.ops);
+  assert.ok(res.ok);
+  assert.deepEqual(seedOf(res.details.participantToken), { hosts: [], waitingRoom: false, spotlight: null, record: true });
+  assert.equal(lk.settings('erp-a')!.record, true);
+});
+
+test('a guest token for a waitingRoom reservation carries it, and a guest who arrives first waits', async () => {
+  const lk = fakeLiveKit();
+  const reserved = { record: false, waitingRoom: true };
+  const first = await issueJoinToken({ room: 'erp-b', identity: 'g', name: 'G', host: false, reserved }, lk.ops);
+  assert.ok(!first.ok && first.status === 409 && first.body.waitingRoom === true, 'held in the waiting room');
+  assert.equal(lk.settings('erp-b')!.waitingRoom, true);
+  // Once admitted (or when the room has died and the token recreates it) the seed still says so.
+  const seeded = await mintToken({ room: 'erp-b', identity: 'g', name: 'G', host: false, waitingRoom: true });
+  assert.equal(seedOf(seeded.participantToken).waitingRoom, true);
+});
+
+test('a host mint after a guest keeps record and waitingRoom and adds the host', async () => {
+  const lk = fakeLiveKit();
+  const reserved = { record: true, waitingRoom: true };
+  await issueJoinToken({ room: 'erp-c', identity: 'g', name: 'G', host: false, reserved }, lk.ops);
+  const host = await issueJoinToken({ room: 'erp-c', identity: 'h', name: 'H', host: true, reserved }, lk.ops);
+  assert.ok(host.ok);
+  assert.deepEqual(lk.settings('erp-c'), { hosts: ['h'], waitingRoom: true, spotlight: null, record: true });
+  assert.deepEqual(seedOf(host.details.participantToken), { hosts: ['h'], waitingRoom: true, spotlight: null, record: true });
+});
+
+test('an unreserved room is not seeded for guests', async () => {
+  const lk = fakeLiveKit();
+  const res = await issueJoinToken({ room: 'lobby-x', identity: 'g', name: 'G', host: false }, lk.ops);
+  assert.ok(res.ok);
+  assert.equal(lk.rooms.size, 0);
+  assert.equal(JSON.parse(Buffer.from(res.details.participantToken.split('.')[1], 'base64url').toString()).roomConfig, undefined);
 });

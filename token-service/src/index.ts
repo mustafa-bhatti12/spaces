@@ -109,8 +109,9 @@ fastify.post<{ Body: { room?: string; identity?: string; name?: string; host?: b
         name,
         host: host === true,
         waitingRoom: host === true && typeof waitingRoom === 'boolean' ? waitingRoom : undefined,
-        // Required by the caller, or by the room's reservation (whoever joins first sets it up).
-        record: record === true || reservation?.record === true,
+        record: record === true,
+        // A reservation's settings apply to every token for the room, whoever joins first.
+        reserved: reservation && !reservation.implicit ? { record: reservation.record, waitingRoom: reservation.waitingRoom } : undefined,
       });
       if (!result.ok) {
         reply.code(result.status).send(result.body);

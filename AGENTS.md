@@ -125,9 +125,11 @@ graph LR
   `GET /v1/apps/me` (any valid credential). Another app's room answers **404**, same as a missing
   one. `joinUrl` uses `SPACES_PUBLIC_WEB_URL` (default `https://spaces.hof-global.com`). Audit:
   `room.create`, `room.end`, `host_token.mint`. `record: true` marks the room recorded
-  (`markRoomRecorded`, same path as `/token`'s `record`), so recording starts at the first join; every
-  token minted for the room (also guests from `/token`) carries it. `waitingRoom` applies when the
-  host token creates the room. Guest window (`guestState`): joinable from 15 min before `startsAt`
+  (`markRoomRecorded`, same path as `/token`'s `record`), so recording starts at the first join. Every token minted for a
+  reserved room (guest or host, `/token` or `join-tokens`) first creates the room if absent with the
+  reservation's `record`/`waitingRoom` (`seedRoomIfAbsent`) and carries them in its room seed, so a guest
+  who arrives before the host still waits in the waiting room and the recording is required; a later
+  host token only adds the host. Guest window (`guestState`): joinable from 15 min before `startsAt`
   until `expiresAt` and not ended. `/token` is shared by everyone (`joinToken.ts`): for a reserved
   room another app gets **403** for `host: true` (never), and for a guest token outside the window;
   the owner is never blocked. A `/token` call by an app with `rooms:create` for an unreserved room
