@@ -31,6 +31,14 @@ keep this repo generic so any future consumer can reuse it the same way. Don't e
   spaces`, which drops live calls: check for live rooms first and ask the user if anyone is in one.
   `/admin` → Settings → Restart Spaces does the same (`POST /admin/restart`: refused while anyone
   is in a room or a recording runs, then `systemctl --no-block restart spaces` after the reply).
+  When `token-service/package.json` or its lockfile changed, run
+  `npm --prefix token-service ci --no-audit --no-fund` before the restart. Never add
+  `--omit=optional`: it drops `@esbuild/linux-x64`, which `tsx` needs, and token-service won't start.
+- **Droplet Node:** 22.23.4 from NodeSource `node_22.x` (`/etc/apt/sources.list.d/nodesource.sources`),
+  installed 2026-11-03 and pinned with `apt-mark hold nodejs`. token-service needs Node ≥ 22.5 for
+  `node:sqlite` (the app registry); on Node 20 it crashes at start. To move to a newer 22.x, change
+  `engines` in both `package.json` files, then `apt-mark unhold nodejs`,
+  `apt-get install nodejs=<version>-1nodesource1`, `apt-mark hold nodejs`, restart.
 - **Verify on the real surface:** `/root/tools/stack-check.sh` on the droplet (health, every
   service, a join over the public URL, a recording started on it through to its finished file and Soniox transcript); `puppeteer-core`
   scripts in `/tmp` for UI and calls (see "Testing"). `npm test` in `token-service`, `npm run build`
@@ -377,7 +385,7 @@ What `start-all.sh` does and doesn't do on a bare Linux host:
   `ensure_udp_buffers`): LiveKit asks for 5 MB UDP socket buffers and Ubuntu caps them at 212 KB,
   which drops media bursts and logs `UDP receive buffer is too small`. Applied on the droplet
   2026-10-15; LiveKit logs `UDP receive buffer size {"current": 10000000}` (debug) once it took.
-- **Doesn't:** install Node (need Node 20+ first — `ensure_npm_env` only runs `npm install`),
+- **Doesn't:** install Node (need Node 22.23.4 first, see "Droplet Node" — `ensure_npm_env` only runs `npm install`),
   install Docker (`curl -fsSL https://get.docker.com | sh`), or install/configure Caddy. It runs in
   the foreground and supervises: if LiveKit, token-service or its Redis exits, it
   stops the rest and exits 1.
