@@ -150,6 +150,8 @@ npx next dev -p 8888
 #### 4. Admin control center (optional)
 Set `ADMIN_PASSWORD` and `ADMIN_SHARED_SECRET` in `demo/.env`; the secret must match `ADMIN_SHARED_SECRET` in `token-service/.env`. Restart the demo and open `/admin`. That page is the operator login for live rooms (remove participants, mute tracks, close rooms), starting and stopping recordings, playing, downloading and deleting recordings, and service health. Its **Settings** tab changes the recording and transcription settings live (saved in `token-service/settings.json`, which overrides `.env` until reset), shows the deployment's values read-only (secrets only as set / not set), and restarts the stack when nobody is in a call.
 
+Its **Apps** tab is the registry of apps allowed to call token-service: create an app, issue an API key (`hsk_<keyId>_<secret>`, shown once, at most two active per app, revoke any time) and read the audit log. A key is sent as `Authorization: Bearer <key>` and only works for its app's scopes (`rooms:create|end|read`, `tokens:mint`, `recordings:read`, `events:read`). `TOKEN_SERVICE_SHARED_SECRET` still works as Petition Studio's credential. The registry is SQLite (Node's built-in `node:sqlite`) at `token-service/data/spaces.db` (`SPACES_DB_FILE` to move it), backed up daily into `data/backups/`.
+
 ---
 
 ## 🎙️ Audio Recording & Transcription Pipeline

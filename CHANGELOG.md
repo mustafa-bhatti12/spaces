@@ -3,6 +3,10 @@
 What shipped, newest first. One line per user- or operator-visible change; commit hashes point at
 the detail. Agents: add a line here with every change that ships (see `AGENTS.md`).
 
+## 2026-11-03
+
+- **App registry with per-app API keys, scopes, rate limits and an audit log** (ERP-68): `/admin` → Apps issues `hsk_…` keys (shown once, two active per app) for registered apps (`erp`, `petition-studio`, `spaces-web` seeded); consumer routes check the app's scope; `TOKEN_SERVICE_SHARED_SECRET` keeps working unchanged as Petition Studio's credential. Needs Node's built-in SQLite (`token-service/data/spaces.db`, `SPACES_DB_FILE`).
+
 ## 2026-10-20
 
 - **Calls hold up on weak links.** Mic publishes at speech quality (24 kbps + RED, was ~92 kbps); low-bandwidth mode caps the camera and slows screen share only for a caller whose own link is Poor or whose upload falls under the threshold, and restores after it recovers; LiveKit's resume gives up sooner so our rejoin takes over; repeated drops or multi-second RTT switch the next rejoin to TURN/TLS 443.
