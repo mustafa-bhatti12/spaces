@@ -114,7 +114,64 @@ ensure_real_credentials() {
     echo "🔐 Generating ADMIN_SHARED_SECRET (for the admin app) into token-service/.env"
     env_set "$ts_env" ADMIN_SHARED_SECRET "$(openssl rand -hex 32)"
   fi
+  if [ -z "$(env_get "$ts_env" REDIS_PASSWORD)" ]; then
+    echo "🔐 Generating REDIS_PASSWORD (Redis requirepass, LiveKit + Egress redis.password) into token-service/.env"
+    env_set "$ts_env" REDIS_PASSWORD "$(openssl rand -hex 32)"
+  fi
   chmod 600 "$ts_env" "$tc_env"
+}
+
+# Redis is the LiveKit <-> Egress job queue; anyone who can reach it can read it, inject egress jobs
+# or wipe it. On Linux it requires REDIS_PASSWORD (generated above, kept in token-service/.env next
+# to the LiveKit keys) and listens only on loopback plus the Docker bridge address (the Egress
+# container reaches the host through host.docker.internal = docker0's address). Local macOS keeps an
+# unauthenticated Redis unless REDIS_PASSWORD is set by hand. The value is hex, so the YAML copies
+# below need no quoting; it never goes on a command line (`ps`): redis-server reads its config from
+# stdin and redis-cli reads REDISCLI_AUTH.
+redis_ping() {
+  have redis-cli || return 1
+  if [ -n "$REDIS_PASSWORD" ]; then
+    REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli -h 127.0.0.1 ping 2>/dev/null | grep -q '^PONG'
+  else
+    redis-cli -h 127.0.0.1 ping 2>/dev/null | grep -q '^PONG'
+  fi
+}
+
+# Addresses Redis binds on Linux: loopback, plus docker0's address when Docker is up. Waits for
+# Docker first: the bridge doesn't exist until dockerd has started (spaces.service orders After it).
+redis_bind_addrs() {
+  local bridge=""
+  if [ "$(uname)" = "Darwin" ]; then
+    echo "0.0.0.0"
+    return 0
+  fi
+  if have docker && have ip; then
+    wait_for_docker || true
+    bridge="$(ip -4 -o addr show docker0 2>/dev/null | awk '{ print $4 }' | cut -d/ -f1 | head -1)"
+  fi
+  echo "127.0.0.1${bridge:+ $bridge}"
+}
+
+# FLUSHALL/FLUSHDB/CONFIG/DEBUG are disabled: neither LiveKit, Egress (go-redis, pub/sub, streams, Lua)
+# nor token-service issues them, and they are what an attacker would use to wipe or reconfigure Redis.
+redis_config() {
+  local binds="$1"
+  printf '%s\n' \
+    'port 6379' \
+    "bind $binds" \
+    'daemonize no' \
+    'dir /tmp' \
+    'logfile /tmp/redis.log' \
+    'save ""' \
+    'rename-command FLUSHALL ""' \
+    'rename-command FLUSHDB ""' \
+    'rename-command CONFIG ""' \
+    'rename-command DEBUG ""'
+  if [ -n "$REDIS_PASSWORD" ]; then
+    printf '%s\n' 'protected-mode yes' "requirepass $REDIS_PASSWORD"
+  else
+    printf '%s\n' 'protected-mode no'
+  fi
 }
 
 discover_public_ip() {
@@ -214,6 +271,7 @@ write_runtime_configs() {
   lk_secret="$(env_get "$ROOT/token-service/.env" LIVEKIT_API_SECRET)"
   lk_key="${lk_key:-devkey}"
   lk_secret="${lk_secret:-secret}"
+  REDIS_PASSWORD="$(env_get "$ROOT/token-service/.env" REDIS_PASSWORD)"
 
   local public_rtc=0 node=""
   if [ "$(uname)" != "Darwin" ]; then
@@ -223,10 +281,11 @@ write_runtime_configs() {
   fi
 
   LK_CONFIG="$runtime/livekit.yaml"
-  (umask 077 && awk -v key="$lk_key" -v secret="$lk_secret" -v public_rtc="$public_rtc" -v node="$node" '
+  (umask 077 && awk -v key="$lk_key" -v secret="$lk_secret" -v public_rtc="$public_rtc" -v node="$node" -v redis_pw="$REDIS_PASSWORD" '
     skip && /^  / { next }
     { skip = 0 }
     /^keys:/ { print; print "  " key ": " secret; skip = 1; next }
+    /^redis:/ { print; if (redis_pw != "") print "  password: \"" redis_pw "\""; next }
     /^  api_key:/ { print "  api_key: " key; next }
     public_rtc && /^  use_external_ip:/ { print "  use_external_ip: true"; next }
     public_rtc && /^  node_ip:/ { next }
@@ -259,11 +318,12 @@ write_runtime_configs() {
   fi
 
   EGRESS_CONFIG="$runtime/egress.yaml"
-  awk -v key="$lk_key" -v secret="$lk_secret" '
+  (umask 022 && awk -v key="$lk_key" -v secret="$lk_secret" -v redis_pw="$REDIS_PASSWORD" '
+    /^redis:/ { print; if (redis_pw != "") print "  password: \"" redis_pw "\""; next }
     /^api_key:/ { print "api_key: " key; next }
     /^api_secret:/ { print "api_secret: " secret; next }
     { print }
-  ' "$ROOT/egress/config.yaml" > "$EGRESS_CONFIG"
+  ' "$ROOT/egress/config.yaml" > "$EGRESS_CONFIG")
   chmod 644 "$EGRESS_CONFIG"
 }
 
@@ -339,6 +399,7 @@ elif [ ! -f demo/.env ]; then
 fi
 ensure_real_credentials
 align_shared_secret
+REDIS_PASSWORD="$(env_get "$ROOT/token-service/.env" REDIS_PASSWORD)"
 rotate_large_logs
 ensure_log_rotation
 
@@ -347,20 +408,23 @@ ensure_log_rotation
 install_redis_if_needed || true
 if have redis-server; then
   # Don't reuse Debian's 127.0.0.1-only instance; the egress container talks to
-  # host.docker.internal:6379, which is not loopback.
+  # host.docker.internal:6379 (docker0's address), which is not loopback.
   if [ "$(uname)" != "Darwin" ]; then
     as_root service redis-server stop >/dev/null 2>&1 || true
   fi
-  if have redis-cli && redis-cli -h 127.0.0.1 ping >/dev/null 2>&1; then
+  if redis_ping; then
     echo "📦 Redis already running on :6379"
   else
-    echo "📦 Starting Redis on :6379..."
-    redis-server --port 6379 --bind 0.0.0.0 --protected-mode no \
-      --daemonize no --dir /tmp --logfile /tmp/redis.log --save "" &
+    if [ -n "$REDIS_PASSWORD" ] && have redis-cli && redis-cli -h 127.0.0.1 ping 2>/dev/null | grep -q '^PONG'; then
+      echo "⚠️  A Redis without a password is already on :6379 (old start-all.sh?). Stop it, then re-run: LiveKit/Egress can't authenticate to it."
+    fi
+    REDIS_BINDS="$(redis_bind_addrs)"
+    echo "📦 Starting Redis on :6379 (bind $REDIS_BINDS${REDIS_PASSWORD:+, password required})..."
+    redis_config "$REDIS_BINDS" | redis-server - &
     REDIS_PID=$!
     STARTED_REDIS=1
     for _ in $(seq 1 10); do
-      have redis-cli && redis-cli -h 127.0.0.1 ping >/dev/null 2>&1 && break
+      redis_ping && break
       sleep 0.2
     done
   fi
@@ -375,7 +439,7 @@ install_livekit_if_needed || true
 write_runtime_configs
 ensure_udp_buffers || true
 REDIS_UP=0
-if have redis-cli && redis-cli -h 127.0.0.1 ping >/dev/null 2>&1; then
+if redis_ping; then
   REDIS_UP=1
 fi
 LK_ENV=()
@@ -406,7 +470,7 @@ if ! have docker; then
   echo "ℹ️  Docker not found -- LiveKit Egress disabled (plain calling still works). On a VPS: curl -fsSL https://get.docker.com | sh"
 elif ! wait_for_docker; then
   echo "ℹ️  Docker daemon not ready -- LiveKit Egress disabled (plain calling still works)."
-elif ! have redis-cli || ! redis-cli -h 127.0.0.1 ping >/dev/null 2>&1; then
+elif ! redis_ping; then
   echo "ℹ️  Redis is not reachable -- skipping Egress (it needs Redis as a job queue)."
 else
   echo "🎙️  Starting LiveKit Egress worker (Docker)..."

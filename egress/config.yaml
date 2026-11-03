@@ -5,6 +5,8 @@ api_secret: secret
 # Docker Desktop resolves this automatically; on Linux use the host's real LAN/bridge IP instead.
 ws_url: ws://host.docker.internal:7880
 insecure: true
+# host.docker.internal is docker0's address, where start-all.sh binds Redis (with loopback).
+# start-all.sh adds `password:` from REDIS_PASSWORD (token-service/.env) to the runtime copy.
 redis:
   address: host.docker.internal:6379
 cpu_cost:
