@@ -208,9 +208,10 @@ graph LR
   through `/api/embed/session` (room must match), and lands on the pre-join with the name locked and
   "Join as host"; joining uses the token directly, no `/api/connect`. An unreserved room (or one whose
   reservation lapsed) answers `/api/connect` with 404 `room_not_reserved`, and `RoomClient` shows the same
-  inactive-link state as an expired window. The Lobby (`/`) is only "Join a meeting": one field that takes a
-  meeting link (`/rooms/<name>`, a host link's `#t=` is kept) or a bare code, and the line "Meetings are
-  created from HOF ERP." There is no way to start a room from the website.
+  inactive-link state as an expired window. The Lobby (`/`) is a "Join a meeting" landing page: one field that
+  takes a meeting link (`/rooms/<name>`, a host link's `#t=` is kept) or a bare code, the line "Meetings are
+  created from HOF ERP.", then "What happens when you join" and "Good to know" sections, plus a Control
+  Center link to `/admin`. There is no way to start a room from the website.
 - **Hosting is the consumer's decision; token-service only records and enforces it.** A room's
   hosts are a `hosts` list in its LiveKit metadata, which is what every check reads. `/token` with
   `host: true` adds the identity to it (`recordRoomHost`; `GET /rooms`
