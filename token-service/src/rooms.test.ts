@@ -183,12 +183,13 @@ test('/token bookkeeping: implicit reservation is kept once, never replaces a re
   const ps = t.registry.getApp('petition-studio')!.id;
   const store = t.registry.reservations;
   store.recordImplicit(ps, 'case-42', NOW);
-  store.recordImplicit(ps, 'case-42', NOW + 1000);
+  assert.equal(store.getByRoom('case-42')!.expiresAt, iso(NOW + DEFAULT_DURATION_MS));
+  store.recordImplicit(ps, 'case-42', NOW + 1000); // every mint keeps its own implicit reservation active
   const r = store.getByRoom('case-42')!;
   assert.equal(r.appId, ps);
   assert.equal(r.implicit, true);
   assert.equal(r.startsAt, iso(NOW));
-  assert.equal(r.expiresAt, iso(NOW + DEFAULT_DURATION_MS));
+  assert.equal(r.expiresAt, iso(NOW + 1000 + DEFAULT_DURATION_MS));
   const real = store.create(t.registry.getApp('erp')!.id, 'erp', { title: 'T', externalRef: 'r' }, NOW);
   store.recordImplicit(ps, real.roomName, NOW);
   assert.equal(store.getByRoom(real.roomName)!.appId, real.appId);
@@ -228,12 +229,14 @@ import { mintToken, parseRoomSettings } from './livekit';
 /** An in-memory LiveKit: rooms with metadata, the real token minting. */
 function fakeLiveKit() {
   const rooms = new Map<string, string>();
+  const ensured: string[] = [];
   const settings = (room: string) => (rooms.has(room) ? parseRoomSettings(rooms.get(room)) : null);
   const ops: LiveKitOps = {
     capacityFor: async () => 'ok',
     getRoomSettings: async (room) => settings(room),
-    seedRoomIfAbsent: async (room, s) => {
-      if (!rooms.has(room)) rooms.set(room, JSON.stringify({ hosts: [], spotlight: null, ...s }));
+    ensureRoom: async (room, s = {}) => {
+      ensured.push(room);
+      if (!rooms.has(room)) rooms.set(room, JSON.stringify({ hosts: [], waitingRoom: false, record: false, spotlight: null, ...s }));
     },
     recordRoomHost: async (room, identity, waitingRoom) => {
       const cur = settings(room) ?? { hosts: [], waitingRoom: false, spotlight: null, record: false };
@@ -244,7 +247,7 @@ function fakeLiveKit() {
     },
     mintToken,
   };
-  return { rooms, settings, ops };
+  return { rooms, ensured, settings, ops };
 }
 const seedOf = (token: string) => JSON.parse(JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString()).roomConfig.metadata);
 
@@ -277,10 +280,132 @@ test('a host mint after a guest keeps record and waitingRoom and adds the host',
   assert.deepEqual(seedOf(host.details.participantToken), { hosts: ['h'], waitingRoom: true, spotlight: null, record: true });
 });
 
-test('an unreserved room is not seeded for guests', async () => {
+test('a token for an unreserved room still ensures the room, with default settings', async () => {
   const lk = fakeLiveKit();
   const res = await issueJoinToken({ room: 'lobby-x', identity: 'g', name: 'G', host: false }, lk.ops);
   assert.ok(res.ok);
-  assert.equal(lk.rooms.size, 0);
+  assert.deepEqual(lk.ensured, ['lobby-x']);
+  assert.deepEqual(lk.settings('lobby-x'), { hosts: [], waitingRoom: false, spotlight: null, record: false });
   assert.equal(JSON.parse(Buffer.from(res.details.participantToken.split('.')[1], 'base64url').toString()).roomConfig, undefined);
+});
+
+// --- only registered apps create rooms (ERP-72) ---
+
+import { gateRoomRevival, gateTokenMint } from './reservations';
+import { tokenRoute } from './tokenRoute';
+
+function tokenSetup() {
+  const lk = fakeLiveKit();
+  let now = NOW;
+  const t = setup();
+  const app = Fastify();
+  app.register(tokenRoute({ issueJoinToken: (req) => issueJoinToken(req, lk.ops), now: () => now }));
+  app.register(roomsApi({ ...t.deps, issueJoinToken: (req) => issueJoinToken(req, lk.ops), now: () => now }), { prefix: '/v1' });
+  const secret = 'Bearer shared-secret-for-tests';
+  const mint = async (auth: string, room: string, extra: Record<string, unknown> = {}) => {
+    const res = await app.inject({ method: 'POST', url: '/token', headers: { authorization: auth }, payload: { room, identity: 'g1', name: 'Guest', ...extra } });
+    return { status: res.statusCode, body: res.json() as Record<string, any> };
+  };
+  const refused = (...rooms: string[]) => t.registry.listAudit(200).filter((e) => e.action === 'room.refused' && (rooms.length === 0 || rooms.includes(e.room ?? '')));
+  return { lk, t, app, secret, mint, refused, setNow: (n: number) => (now = n) };
+}
+
+test('/token: an app without rooms:create (spaces-web, erp) is refused for an unreserved room, and audited', async () => {
+  const { lk, t, mint, refused } = tokenSetup();
+  for (const slug of ['spaces-web', 'erp']) {
+    const res = await mint(t.key(slug), 'made-up-room');
+    assert.equal(res.status, 404, slug);
+    assert.equal(res.body.code, 'room_not_reserved');
+    assert.match(res.body.error, /no longer active/);
+    // host tokens too: nobody starts a room by claiming to host it
+    assert.equal((await mint(t.key(slug), 'made-up-room', { host: true })).status, 404, `${slug} host`);
+  }
+  assert.equal(lk.rooms.size, 0, 'no LiveKit room was created');
+  assert.equal(lk.ensured.length, 0);
+  assert.equal(refused('made-up-room').length, 4);
+  assert.deepEqual([...new Set(refused('made-up-room').map((e) => e.appSlug))].sort(), ['erp', 'spaces-web']);
+});
+
+test('/token: petition-studio (shared secret, rooms:create) still creates the room and leaves an implicit reservation', async () => {
+  const { lk, t, mint, secret, refused } = tokenSetup();
+  const res = await mint(secret, 'case-77-intake', { host: true });
+  assert.equal(res.status, 200);
+  assert.deepEqual(lk.ensured, ['case-77-intake']);
+  assert.deepEqual(lk.settings('case-77-intake')!.hosts, ['g1']);
+  const implicit = t.registry.reservations.getByRoom('case-77-intake')!;
+  assert.equal(implicit.implicit, true);
+  assert.equal(refused('case-77-intake').length, 0);
+  // ...and now the call website can let a guest into that room while PS keeps it active
+  assert.equal((await mint(t.key('spaces-web'), 'case-77-intake', { identity: 'g2' })).status, 200);
+});
+
+test('/token: a reserved room inside its window mints for spaces-web and creates the LiveKit room', async () => {
+  const { lk, t, mint } = tokenSetup();
+  const r = t.registry.reservations.create(t.registry.getApp('erp')!.id, 'erp', { title: 'T', externalRef: 'r', startsAt: iso(NOW), expiresAt: iso(NOW + HOUR_MS), record: true }, NOW);
+  const res = await mint(t.key('spaces-web'), r.roomName);
+  assert.equal(res.status, 200);
+  assert.deepEqual(lk.ensured, [r.roomName]);
+  assert.equal(lk.settings(r.roomName)!.record, true, 'created with the reservation\'s settings');
+  // erp itself, calling /token for its own room as a guest, is held to the same window
+  assert.equal((await mint(t.key('erp'), r.roomName, { identity: 'g3' })).status, 200);
+});
+
+test('/token: outside the guest window an app without rooms:create is refused and nothing is created', async () => {
+  const { lk, t, mint, refused, setNow } = tokenSetup();
+  const r = t.registry.reservations.create(t.registry.getApp('erp')!.id, 'erp', { title: 'T', externalRef: 'r', startsAt: iso(NOW + HOUR_MS), expiresAt: iso(NOW + 2 * HOUR_MS) }, NOW);
+  const early = await mint(t.key('spaces-web'), r.roomName);
+  assert.equal(early.status, 403);
+  assert.equal(early.body.reservation, 'early');
+  assert.equal((await mint(t.key('erp'), r.roomName)).status, 403, 'the owner as a guest too');
+  assert.equal((await mint(t.key('erp'), r.roomName, { host: true })).status, 200, 'the owner\'s host may arrive early, as through join-tokens');
+  lk.rooms.clear();
+  lk.ensured.length = 0;
+  setNow(NOW + 2 * HOUR_MS);
+  const late = await mint(t.key('spaces-web'), r.roomName);
+  assert.equal(late.status, 403);
+  assert.equal(late.body.reservation, 'expired');
+  assert.equal(lk.ensured.length, 0);
+  assert.ok(refused(r.roomName).length >= 2, 'the refusals are audited');
+  // ended reservation
+  const ended = t.registry.reservations.create(t.registry.getApp('erp')!.id, 'erp', { title: 'T', externalRef: 'r2' }, NOW + 2 * HOUR_MS);
+  t.registry.reservations.end(ended.id, NOW + 2 * HOUR_MS);
+  assert.equal((await mint(t.key('spaces-web'), ended.roomName)).status, 403);
+});
+
+test('/token: a lapsed implicit reservation no longer lets the call website create the room', async () => {
+  const { lk, t, mint, secret, setNow } = tokenSetup();
+  await mint(secret, 'case-5');
+  lk.rooms.clear();
+  setNow(NOW + 13 * HOUR_MS);
+  const res = await mint(t.key('spaces-web'), 'case-5');
+  assert.equal(res.status, 404);
+  assert.equal(res.body.code, 'room_not_reserved');
+  assert.equal((await mint(secret, 'case-5')).status, 200, 'Petition Studio keeps creating it, which makes it active again');
+  assert.equal((await mint(t.key('spaces-web'), 'case-5')).status, 200);
+});
+
+test('join-tokens ensures the LiveKit room before handing out the token', async () => {
+  const { lk, t, app } = tokenSetup();
+  const erp = t.key('erp');
+  const created = await t.call('POST', '/v1/rooms', erp, { title: 'T', externalRef: 'r', record: true, waitingRoom: true });
+  assert.equal(lk.rooms.size, 0, 'creating the reservation creates no LiveKit room');
+  const res = await app.inject({ method: 'POST', url: `/v1/rooms/${created.body.roomId}/join-tokens`, headers: { authorization: erp }, payload: { identity: 'h', name: 'Host', host: true } });
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(lk.ensured, [created.body.roomName]);
+  assert.deepEqual(lk.settings(created.body.roomName), { hosts: ['h'], waitingRoom: true, spotlight: null, record: true });
+});
+
+test('revival gate for embed sessions: unreserved and lapsed implicit rooms are refused, explicit and active implicit are not', () => {
+  const t = setup();
+  const erpId = t.registry.getApp('erp')!.id;
+  const psId = t.registry.getApp('petition-studio')!.id;
+  assert.equal(gateRoomRevival(null, NOW).ok, false);
+  const explicit = t.registry.reservations.create(erpId, 'erp', { title: 'T', externalRef: 'r', startsAt: iso(NOW + HOUR_MS), expiresAt: iso(NOW + 2 * HOUR_MS) }, NOW);
+  assert.equal(gateRoomRevival(explicit, NOW).ok, true, 'a host token minted early is honoured');
+  t.registry.reservations.recordImplicit(psId, 'case-8', NOW);
+  const implicit = t.registry.reservations.getByRoom('case-8')!;
+  assert.equal(gateRoomRevival(implicit, NOW + HOUR_MS).ok, true);
+  const lapsed = gateRoomRevival(implicit, NOW + 13 * HOUR_MS);
+  assert.ok(!lapsed.ok && lapsed.status === 404 && lapsed.code === 'room_not_reserved');
+  assert.equal(gateTokenMint(explicit, false, NOW).ok, false);
 });

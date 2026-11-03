@@ -18,8 +18,7 @@ import {
   stopRecording,
 } from './livekit';
 import { auditCaller, requireApp } from './auth';
-import { issueJoinToken } from './joinToken';
-import { guardTokenRequest } from './reservations';
+import { tokenRoute } from './tokenRoute';
 import { reservationLookupRoutes, roomsApi } from './roomsApi';
 import { backupDir, getRegistry } from './apps';
 import { finishRecording, listRecordingFiles, resolveRecordingFile } from './recordings';
@@ -77,56 +76,7 @@ fastify.get<{ Querystring: { room?: string; identity?: string } }>(
   },
 );
 
-fastify.post<{ Body: { room?: string; identity?: string; name?: string; host?: boolean; waitingRoom?: boolean; record?: boolean } }>(
-  '/token',
-  { preHandler: requireApp('tokens:mint') },
-  async (req, reply) => {
-    const { room, identity, name, host, waitingRoom, record } = req.body ?? {};
-    if (
-      typeof room !== 'string' ||
-      !room ||
-      typeof identity !== 'string' ||
-      !identity ||
-      typeof name !== 'string' ||
-      !name
-    ) {
-      reply.code(400).send({ error: 'room, identity and name are required strings.' });
-      return;
-    }
-
-    try {
-      const caller = req.caller!;
-      const reservation = getRegistry().reservations.getByRoom(room);
-      const guard = guardTokenRequest(reservation, caller.app.id, host === true, Date.now());
-      if (!guard.ok) {
-        if (host === true) auditCaller(req, 'host_token.mint', { room, result: 'denied', detail: guard.error });
-        reply.code(guard.status).send({ error: guard.error, ...(guard.reservation && { reservation: guard.reservation }) });
-        return;
-      }
-      const result = await issueJoinToken({
-        room,
-        identity,
-        name,
-        host: host === true,
-        waitingRoom: host === true && typeof waitingRoom === 'boolean' ? waitingRoom : undefined,
-        record: record === true,
-        // A reservation's settings apply to every token for the room, whoever joins first.
-        reserved: reservation && !reservation.implicit ? { record: reservation.record, waitingRoom: reservation.waitingRoom } : undefined,
-      });
-      if (!result.ok) {
-        reply.code(result.status).send(result.body);
-        return;
-      }
-      if (host === true) auditCaller(req, 'host_token.mint', { room });
-      // Petition Studio's rooms (`case-…`) are tracked as its own reservations.
-      if (!reservation && caller.scopes.has('rooms:create')) getRegistry().reservations.recordImplicit(caller.app.id, room);
-      reply.send(result.details);
-    } catch (err) {
-      console.error('Failed to mint LiveKit token:', err);
-      reply.code(500).send({ error: 'Could not mint a token.' });
-    }
-  },
-);
+fastify.register(tokenRoute());
 
 // Ends a room for everyone on behalf of a host. The participant's own join token is the proof of who
 // they are; the room's hosts list says whether they host.

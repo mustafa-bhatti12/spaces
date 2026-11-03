@@ -46,11 +46,10 @@ export async function mintToken(params: {
   // Hosting is checked against the room's `hosts` list (see RoomSettings), so it can change
   // mid-call without reissuing anyone's token.
   const at = new AccessToken(apiKey, apiSecret, { identity: params.identity, name: params.name });
-  // The room's settings live in its metadata, which dies with the room. When this token's join is
-  // what creates the room again (it was ended for everyone, closed idle before anyone joined, or
-  // emptied while everyone dropped and someone reconnected), LiveKit seeds the new room's metadata
-  // from this, so the host still hosts and a call that must be recorded still is. LiveKit never
-  // applies it to a room that already exists, and keeps it in the tokens it refreshes.
+  // The room's settings live in its metadata, which dies with the room. LiveKit no longer creates
+  // rooms on join (auto_create is off), so this seed is read back by token-service itself
+  // (inspectJoinToken -> ensureRoom, behind /embed/session) when it has to bring the room back
+  // before this token connects: the host still hosts and a call that must be recorded still is.
   if (params.host || params.record || params.waitingRoom) {
     const seed: RoomSettings = { ...NO_SETTINGS, hosts: params.host ? [params.identity] : [], waitingRoom: params.waitingRoom === true, record: params.record === true };
     at.roomConfig = new RoomConfiguration({ metadata: JSON.stringify(seed) });
@@ -158,14 +157,29 @@ export async function markRoomRecorded(room: string): Promise<void> {
   if (!current.record) await svc.updateRoomMetadata(room, JSON.stringify({ ...current, record: true }));
 }
 
+/** What a room's metadata starts with when token-service creates it (see ensureRoom). */
+export interface RoomSeed {
+  hosts?: string[];
+  record?: boolean;
+  waitingRoom?: boolean;
+}
+
 /**
- * Creates the room with these settings if nobody has joined yet (no hosts), so a guest who arrives
- * first still meets the reservation's waiting room and required recording. An existing room is left alone.
+ * Creates the LiveKit room if it isn't live, with `seed` as its metadata; leaves a live room alone.
+ * LiveKit runs with `room.auto_create: false` (livekit/config.yaml), so a join token alone no
+ * longer brings a room into existence: token-service does, here, and only after its own checks
+ * (who may use this room, see reservations.ts `gateTokenMint`). Timeouts and the participant cap are
+ * LiveKit's `room:` defaults, which `createRoom` applies when the request leaves them unset. Call it
+ * right before handing out anything a client will connect with: a room that emptied since the token
+ * was minted (empty_timeout, departure_timeout, ended) is brought back with the host list and the
+ * required-recording/waiting-room settings the seed carries.
  */
-export async function seedRoomIfAbsent(room: string, settings: { record: boolean; waitingRoom: boolean }): Promise<void> {
+export async function ensureRoom(room: string, seed: RoomSeed = {}): Promise<void> {
   const svc = roomService();
   const [existing] = await svc.listRooms([room]);
-  if (!existing) await svc.createRoom({ name: room, metadata: JSON.stringify({ ...NO_SETTINGS, ...settings }) });
+  if (existing) return;
+  const settings: RoomSettings = { ...NO_SETTINGS, hosts: seed.hosts ?? [], record: seed.record === true, waitingRoom: seed.waitingRoom === true };
+  await svc.createRoom({ name: room, metadata: JSON.stringify(settings) });
 }
 
 /**
@@ -231,6 +245,8 @@ export interface EmbedSession {
   identity: string;
   name: string;
   serverUrl: string;
+  /** The room settings the token was minted with (its room seed), for ensureRoom. Not sent to browsers. */
+  seed: RoomSeed;
 }
 
 /**
@@ -243,7 +259,14 @@ export async function inspectJoinToken(token: string): Promise<EmbedSession | nu
     const grants = await new TokenVerifier(apiKey, apiSecret).verify(token);
     const room = grants.video?.room;
     if (!room || !grants.video?.roomJoin || !grants.sub) return null;
-    return { room, identity: grants.sub, name: grants.name || grants.sub, serverUrl: process.env.LIVEKIT_PUBLIC_URL || serverUrl };
+    const seed = grants.roomConfig?.metadata ? parseRoomSettings(grants.roomConfig.metadata) : null;
+    return {
+      room,
+      identity: grants.sub,
+      name: grants.name || grants.sub,
+      serverUrl: process.env.LIVEKIT_PUBLIC_URL || serverUrl,
+      seed: { hosts: seed?.hosts, record: seed?.record, waitingRoom: seed?.waitingRoom },
+    };
   } catch {
     return null;
   }

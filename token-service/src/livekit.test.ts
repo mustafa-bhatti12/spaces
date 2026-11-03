@@ -57,8 +57,8 @@ test('tokenIdentity refuses a token signed with another secret', async () => {
   assert.equal(await tokenIdentity('r1', forged.participantToken), null);
 });
 
-// LiveKit seeds a room its join creates from this, so a required recording survives the room being
-// ended or closed and joined again with the same token.
+// token-service reads this back (inspectJoinToken -> ensureRoom) when it has to recreate the room, so a
+// required recording survives the room being ended or closed and joined again with the same token.
 test('a host or recorded token carries the room settings a join should recreate', async () => {
   useDevEnv();
   const seedOf = async (params: { host?: boolean; record?: boolean }) => {
@@ -76,7 +76,13 @@ test('inspectJoinToken returns room, identity and name from a valid join token',
   useDevEnv();
   const { participantToken } = await mintToken({ room: 'r1', identity: 'u1', name: 'Sara' });
   const session = await inspectJoinToken(participantToken);
-  assert.deepEqual(session, { room: 'r1', identity: 'u1', name: 'Sara', serverUrl: 'ws://localhost:7880' });
+  assert.deepEqual(session, { room: 'r1', identity: 'u1', name: 'Sara', serverUrl: 'ws://localhost:7880', seed: { hosts: undefined, record: undefined, waitingRoom: undefined } });
+});
+
+test('inspectJoinToken returns the room seed the token carries, for ensureRoom', async () => {
+  useDevEnv();
+  const { participantToken } = await mintToken({ room: 'r1', identity: 'h1', name: 'Host', host: true, record: true });
+  assert.deepEqual((await inspectJoinToken(participantToken))?.seed, { hosts: ['h1'], record: true, waitingRoom: false });
 });
 
 test('inspectJoinToken prefers LIVEKIT_PUBLIC_URL for the browser', async () => {

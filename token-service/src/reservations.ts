@@ -203,10 +203,19 @@ export class ReservationStore {
 
   /**
    * Tracks a room /token minted for an app that may create rooms, if no reservation holds that name
-   * yet. The window (now, +12 h) is bookkeeping only: it is never enforced on anyone.
+   * yet, and keeps the app's own implicit one active: every mint pushes its end to now + 12 h. A
+   * room is "active" for an app that can't create rooms (`gateTokenMint`) while that app keeps
+   * minting for it; the window is never enforced on guests of other apps' implicit rooms in
+   * `guardTokenRequest`.
    */
   recordImplicit(appId: number, roomName: string, now = Date.now()): void {
-    if (this.getByRoom(roomName)) return;
+    const existing = this.getByRoom(roomName);
+    if (existing) {
+      if (existing.implicit && existing.appId === appId) {
+        this.db.prepare('UPDATE reservation SET expires_at = ? WHERE id = ?').run(new Date(now + DEFAULT_DURATION_MS).toISOString(), existing.id);
+      }
+      return;
+    }
     const at = new Date(now).toISOString();
     this.db
       .prepare(
@@ -230,4 +239,41 @@ export function guardTokenRequest(r: Reservation | null, callerAppId: number, ho
   const state = guestState(r, now);
   if (state === 'open') return { ok: true };
   return { ok: false, status: 403, error: state === 'early' ? 'This meeting has not started yet.' : 'This meeting link is no longer active.', reservation: state };
+}
+
+export const ROOM_NOT_RESERVED = 'This meeting link is no longer active. Ask the person who invited you for a new link.';
+
+export type RoomGate =
+  | { ok: true }
+  | { ok: false; status: 403 | 404; error: string; code?: 'room_not_reserved'; reservation?: GuestState };
+
+const notReserved: RoomGate = { ok: false, status: 404, error: ROOM_NOT_RESERVED, code: 'room_not_reserved' };
+
+/**
+ * Only registered apps bring rooms into existence (ERP-72). /token for a caller WITHOUT `rooms:create`
+ * (the call website, erp) may only mint for a room with an active reservation: an explicit one inside
+ * its guest window (its owner's host may also arrive early, as through join-tokens), or an implicit one
+ * that is still active (`recordImplicit`). Anything else is 404 `room_not_reserved`; an explicit
+ * reservation outside its window keeps ERP-69's 403 with its state. Callers with `rooms:create` never
+ * come here. Runs after `guardTokenRequest`, which already refuses other apps' hosts.
+ */
+export function gateTokenMint(r: Reservation | null, host: boolean, now: number): RoomGate {
+  if (!r) return notReserved;
+  const state = guestState(r, now);
+  if (state === 'open') return { ok: true };
+  if (r.implicit) return notReserved;
+  if (state === 'early' && host) return { ok: true };
+  return { ok: false, status: 403, error: state === 'early' ? 'This meeting has not started yet.' : 'This meeting link is no longer active.', reservation: state };
+}
+
+/**
+ * May an app without `rooms:create` have a room brought back for a token that was already minted
+ * (the embed session)? The token proves the owner handed it out, so an explicit reservation only has
+ * to be neither ended nor expired (the caller answers 410 for those); an implicit one has to still be
+ * active; no reservation at all is 404 `room_not_reserved`.
+ */
+export function gateRoomRevival(r: Reservation | null, now: number): RoomGate {
+  if (!r) return notReserved;
+  if (r.implicit && guestState(r, now) !== 'open') return notReserved;
+  return { ok: true };
 }

@@ -11,13 +11,17 @@ rtc:
   # audio. allow_pause stays off (the default): video is never paused outright on a weak link.
   congestion_control:
     enabled: true
-# Defaults for every room, including the ones LiveKit creates on first join (token-service's
-# createRoom only runs for hosts, recorded and waiting-room calls). empty_timeout is LiveKit's own
-# default, spelled out here so the three live together: a room nobody ever joins closes after 5
-# minutes; after a real call the room (and its recording) closes 40 s after the last person leaves,
-# which survives a reconnect. max_participants is the per-room cap token-service reports as "This
-# call is full"; the whole-server cap is capacityFor() in token-service/src/livekit.ts.
+# Rooms exist only because token-service created them (ERP-72): auto_create is off, so a join token
+# for a room nobody created is refused by LiveKit. token-service's ensureRoom (createRoom) runs before
+# every join token it hands out and again right before an embed/host-link session connects, after its
+# own check that the room is reserved. The timeouts and the cap below are the defaults LiveKit applies
+# to every room created through createRoom: empty_timeout is LiveKit's own default, spelled out here so
+# the three live together: a room nobody ever joins closes after 5 minutes; after a real call the room
+# (and its recording) closes 40 s after the last person leaves, which survives a reconnect.
+# max_participants is the per-room cap token-service reports as "This call is full"; the whole-server
+# cap is capacityFor() in token-service/src/livekit.ts.
 room:
+  auto_create: false
   empty_timeout: 300
   departure_timeout: 40
   max_participants: 40

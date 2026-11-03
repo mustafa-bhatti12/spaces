@@ -153,6 +153,7 @@ async function verifyHostToken(token: string, roomName: string, signal?: AbortSi
   });
   if (res.status === 410) return 'inactive';
   const data = await res.json().catch(() => ({}));
+  if (res.status === 404 && data.code === 'room_not_reserved') return 'inactive';
   if (!res.ok || data.room !== roomName) return 'invalid';
   return { ...data, token };
 }
@@ -249,7 +250,7 @@ export function RoomClient({ roomName }: { roomName: string }) {
         });
         const data = await res.json().catch(() => ({}));
         if (data.reservation === 'early') return setStage({ kind: 'early', startsAt: data.startsAt });
-        if (data.reservation === 'expired') return setStage({ kind: 'blocked', ...INACTIVE });
+        if (data.reservation === 'expired' || (res.status === 404 && data.code === 'room_not_reserved')) return setStage({ kind: 'blocked', ...INACTIVE });
         if (!res.ok) throw new Error(data.error || `Could not join (HTTP ${res.status}).`);
         if (data.waiting) setStage({ kind: 'waiting', requestId: data.requestId, choices, identity });
         else setStage({ kind: 'in-call', details: data as ConnectionDetails, choices, identity });

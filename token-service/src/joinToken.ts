@@ -16,7 +16,7 @@ export interface JoinTokenRequest {
 }
 
 /** The LiveKit calls issueJoinToken makes; tests swap them. */
-export type LiveKitOps = Pick<typeof livekit, 'capacityFor' | 'getRoomSettings' | 'markRoomRecorded' | 'mintToken' | 'recordRoomHost' | 'seedRoomIfAbsent'>;
+export type LiveKitOps = Pick<typeof livekit, 'capacityFor' | 'getRoomSettings' | 'markRoomRecorded' | 'mintToken' | 'recordRoomHost' | 'ensureRoom'>;
 
 export type JoinTokenResult =
   | { ok: true; details: CallConnectionDetails & { callSettings: CallSettings } }
@@ -25,7 +25,8 @@ export type JoinTokenResult =
 /**
  * The one way a join token is minted, for POST /token and POST /v1/rooms/:id/join-tokens: removal and
  * capacity checks, the host/waiting-room bookkeeping in the room's metadata, and the required-
- * recording mark. Throws when LiveKit is unreachable.
+ * recording mark. Creates the LiveKit room if it isn't live, so callers must have decided that this
+ * room may exist (reservations.ts `gateTokenMint`). Throws when LiveKit is unreachable.
  */
 export async function issueJoinToken(req: JoinTokenRequest, lk: LiveKitOps = livekit): Promise<JoinTokenResult> {
   const { room, identity, name, host, reserved } = req;
@@ -49,9 +50,10 @@ export async function issueJoinToken(req: JoinTokenRequest, lk: LiveKitOps = liv
       },
     };
   }
-  // Whoever arrives first creates the room: seed it from the reservation so a guest who beats the
-  // host still lands in the waiting room and the recording is required.
-  if (reserved) await lk.seedRoomIfAbsent(room, { record: reserved.record, waitingRoom: reserved.waitingRoom });
+  // LiveKit doesn't create rooms by itself (auto_create is off): bring it into existence now, before
+  // the token goes out. Whoever arrives first seeds it, from the reservation and the host flag, so a
+  // guest who beats the host still lands in the waiting room and the recording is required.
+  await lk.ensureRoom(room, { hosts: host ? [identity] : [], record, waitingRoom: waitingRoom === true });
   if (host) {
     // The caller decides who hosts; recording it lets GET /rooms report it on the next join.
     // A host may also set the waiting room as they join.

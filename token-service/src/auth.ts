@@ -9,7 +9,7 @@ import { RateLimiter } from './rateLimit';
 //
 // Consumer routes (requireApp): a registered app presents either its own key
 // (`Authorization: Bearer hsk_<keyId>_<secret>`, issued in /admin -> Apps) or the legacy
-// TOKEN_SERVICE_SHARED_SECRET, which is Petition Studio's credential (and the demo's) and resolves
+// TOKEN_SERVICE_SHARED_SECRET, which is Petition Studio's credential and resolves
 // to the `petition-studio` app. Both end up as a registered app with scopes, a rate limit and audit.
 
 export interface Caller {
@@ -25,6 +25,14 @@ declare module 'fastify' {
     caller?: Caller;
   }
 }
+
+/**
+ * May this caller bring a room into existence through /token (with the implicit reservation that
+ * leaves)? Only Petition Studio's legacy shared secret: it keeps minting tokens for rooms nobody
+ * reserved first. Every app key, even one with `rooms:create` like erp's, reserves rooms through
+ * POST /v1/rooms and may only mint tokens for rooms that have an active reservation.
+ */
+export const mayCreateRooms = (caller: Caller): boolean => caller.via === 'shared-secret' && caller.scopes.has('rooms:create');
 
 export type AuthResult =
   | { ok: true; caller: Caller }
