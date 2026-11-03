@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import { DatabaseSync } from 'node:sqlite';
 import { AppRegistry, generateKey, hashSecret, MAX_ACTIVE_KEYS, parseKey, RegistryError, verifySecret } from './apps';
 
 const fresh = () => new AppRegistry(':memory:');
@@ -27,9 +28,10 @@ test('first start seeds the known apps and no keys', () => {
   const r = fresh();
   const apps = r.listApps();
   assert.deepEqual(apps.map((a) => a.slug), ['erp', 'petition-studio', 'spaces-web']);
-  assert.deepEqual(r.getApp('erp')!.scopes, ['rooms:create', 'rooms:end', 'rooms:read', 'tokens:mint']);
+  assert.deepEqual(r.getApp('erp')!.scopes, ['rooms:create', 'rooms:end', 'rooms:read', 'tokens:mint', 'recordings:control']);
   assert.deepEqual(r.getApp('petition-studio')!.scopes, ['rooms:create', 'tokens:mint', 'recordings:read']);
-  assert.deepEqual(r.getApp('spaces-web')!.scopes, ['tokens:mint']);
+  assert.deepEqual(r.getApp('spaces-web')!.scopes, ['rooms:end', 'rooms:read', 'tokens:mint', 'recordings:control']);
+  assert.ok(!r.getApp('spaces-web')!.scopes.includes('rooms:create'));
   assert.ok(apps.every((a) => a.activeKeys === 0));
 });
 
@@ -104,4 +106,30 @@ test('backup writes a copy and keeps only the newest files', () => {
   const copy = new AppRegistry(path.join(dir, 'spaces-2026-11-03.db'));
   assert.equal(copy.listApps().length, 3);
   copy.close();
+});
+
+test('an existing database gets the spaces-web scopes once, and keeps its keys', () => {
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'spaces-')), 'db.sqlite');
+  const a = new AppRegistry(file);
+  const { key } = a.issueKey('spaces-web');
+  a.close();
+  // Rewind to how a pre-ERP-72 database looks: spaces-web with only tokens:mint, erp without recordings:control.
+  const raw = new DatabaseSync(file);
+  raw.exec(`UPDATE app SET scopes = '["tokens:mint"]' WHERE slug = 'spaces-web'`);
+  raw.exec(`UPDATE app SET scopes = '["rooms:create","rooms:end","rooms:read","tokens:mint"]' WHERE slug = 'erp'`);
+  raw.exec('PRAGMA user_version = 2');
+  raw.close();
+  const b = new AppRegistry(file);
+  assert.deepEqual(b.getApp('spaces-web')!.scopes, ['rooms:end', 'rooms:read', 'tokens:mint', 'recordings:control']);
+  assert.ok(b.getApp('erp')!.scopes.includes('recordings:control'));
+  const found = b.authenticateKey(key);
+  assert.ok(found !== 'invalid' && found.app.slug === 'spaces-web');
+  // The step ran once: a later hand edit in /admin-less SQL survives a restart.
+  b.close();
+  const raw2 = new DatabaseSync(file);
+  raw2.exec(`UPDATE app SET scopes = '["tokens:mint"]' WHERE slug = 'spaces-web'`);
+  raw2.close();
+  const c = new AppRegistry(file);
+  assert.deepEqual(c.getApp('spaces-web')!.scopes, ['tokens:mint']);
+  c.close();
 });

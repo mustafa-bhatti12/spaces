@@ -23,7 +23,7 @@ Run it once in the foreground to install what's missing and generate credentials
 ./start-all.sh
 ```
 
-On Linux, the first run replaces the public dev credentials with generated ones in `token-service/.env` and `demo/.env`: the LiveKit key pair, `TOKEN_SERVICE_SHARED_SECRET`, `ADMIN_SHARED_SECRET` and `REDIS_PASSWORD`. LiveKit and Egress run from `.runtime/*.yaml` copies that contain those keys and the Redis password. On Linux, Redis requires that password and listens only on `127.0.0.1` and the Docker bridge address (for the Egress container); `FLUSHALL`, `FLUSHDB`, `CONFIG` and `DEBUG` are disabled. The committed YAML files only ever hold `devkey`/`secret`.
+On Linux, the first run replaces the public dev credentials with generated ones in `token-service/.env`: the LiveKit key pair, `TOKEN_SERVICE_SHARED_SECRET` (Petition Studio's credential), `ADMIN_SHARED_SECRET` and `REDIS_PASSWORD`. On macOS `start-all.sh` also issues the demo's `spaces-web` app key into `demo/.env` (`TOKEN_SERVICE_APP_KEY`) when it is empty. LiveKit and Egress run from `.runtime/*.yaml` copies that contain those keys and the Redis password. On Linux, Redis requires that password and listens only on `127.0.0.1` and the Docker bridge address (for the Egress container); `FLUSHALL`, `FLUSHDB`, `CONFIG` and `DEBUG` are disabled. The committed YAML files only ever hold `devkey`/`secret`.
 
 Tell token-service which public URL to give browsers:
 
@@ -84,7 +84,7 @@ Create one service from this repo with its **Root Directory** set to `demo`. Rai
 
 | Service | Root Directory | Variables |
 |---|---|---|
-| demo | `demo` | `TOKEN_SERVICE_URL=https://space.example.com`, `TOKEN_SERVICE_SHARED_SECRET=<from VPS token-service/.env>`, `ADMIN_SHARED_SECRET=<from VPS token-service/.env>`, `ADMIN_PASSWORD=<choose one>`, `TRUST_PROXY=1` |
+| demo | `demo` | `TOKEN_SERVICE_URL=https://space.example.com`, `TOKEN_SERVICE_APP_KEY=<the spaces-web key: /admin → Apps → spaces-web → issue key>`, `ADMIN_SHARED_SECRET=<from VPS token-service/.env>`, `ADMIN_PASSWORD=<choose one>`, `TRUST_PROXY=1` |
 
 The call page is at the Railway URL; it gets `wss://space.example.com` from token-service and connects to LiveKit directly. The admin control center is at `<Railway URL>/admin`, behind `ADMIN_PASSWORD`. Leave the two `ADMIN_*` variables unset and `/admin` is disabled.
 

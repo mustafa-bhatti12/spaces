@@ -70,20 +70,21 @@ env_set() {
   rm -f "$tmp"
 }
 
-# Keep token-service and the demo app on the same shared secret. Fresh copies of the two
-# .env.example files used to disagree, which made every join return 401.
-align_shared_secret() {
-  local tc_env="$ROOT/demo/.env"
-  local ts_env="$ROOT/token-service/.env"
-  [ -f "$tc_env" ] && [ -f "$ts_env" ] || return 0
-  local tc_sec ts_sec
-  tc_sec="$(env_get "$tc_env" TOKEN_SERVICE_SHARED_SECRET)"
-  ts_sec="$(env_get "$ts_env" TOKEN_SERVICE_SHARED_SECRET)"
-  if [ -z "$tc_sec" ] || [ "$tc_sec" = "$ts_sec" ]; then
-    return 0
+# The demo calls token-service as the registered `spaces-web` app, with its own hsk_ key in
+# demo/.env (TOKEN_SERVICE_APP_KEY). A fresh checkout has none, so issue one straight from the
+# registry (token-service/src/issueKey.ts) and keep it across restarts. Only where the demo runs
+# from this checkout (macOS); on the droplet the demo is on Railway and its key comes from /admin.
+ensure_demo_app_key() {
+  [ "$(uname)" = "Darwin" ] || return 0
+  local tc_env="$ROOT/demo/.env" key
+  [ -f "$tc_env" ] || return 0
+  [ -z "$(env_get "$tc_env" TOKEN_SERVICE_APP_KEY | tr -d '"')" ] || return 0
+  echo "🔐 Issuing a spaces-web app key into demo/.env"
+  if ! key="$(cd "$ROOT/token-service" && npm run --silent issue-key -- spaces-web)"; then
+    echo "❌ Could not issue the spaces-web key (is another token-service already holding two?). Revoke one in /admin -> Apps, or set TOKEN_SERVICE_APP_KEY in demo/.env by hand."
+    exit 1
   fi
-  echo "🔑 Aligning token-service TOKEN_SERVICE_SHARED_SECRET with demo/.env"
-  env_set "$ts_env" TOKEN_SERVICE_SHARED_SECRET "$tc_sec"
+  env_set "$tc_env" TOKEN_SERVICE_APP_KEY "$key"
 }
 
 # A public host must never run on the credentials committed to this public repo (devkey/secret,
@@ -98,17 +99,17 @@ ensure_real_credentials() {
     echo "❌ openssl is required to generate LiveKit credentials on this host. Install it and re-run."
     exit 1
   fi
-  local lk_secret tc_secret
+  local lk_secret ts_secret
   lk_secret="$(env_get "$ts_env" LIVEKIT_API_SECRET)"
   if [ "${#lk_secret}" -lt 32 ]; then
     echo "🔐 Generating a real LiveKit API key/secret into token-service/.env (replacing the public dev pair)"
     env_set "$ts_env" LIVEKIT_API_KEY "API$(openssl rand -hex 6)"
     env_set "$ts_env" LIVEKIT_API_SECRET "$(openssl rand -hex 32)"
   fi
-  tc_secret="$(env_get "$tc_env" TOKEN_SERVICE_SHARED_SECRET)"
-  if [ -z "$tc_secret" ] || [ "$tc_secret" = "local-dev-secret-not-for-production" ]; then
-    echo "🔐 Generating a real TOKEN_SERVICE_SHARED_SECRET into demo/.env"
-    env_set "$tc_env" TOKEN_SERVICE_SHARED_SECRET "$(openssl rand -hex 32)"
+  ts_secret="$(env_get "$ts_env" TOKEN_SERVICE_SHARED_SECRET)"
+  if [ -z "$ts_secret" ] || [ "$ts_secret" = "local-dev-secret-not-for-production" ]; then
+    echo "🔐 Generating a real TOKEN_SERVICE_SHARED_SECRET (Petition Studio's credential) into token-service/.env"
+    env_set "$ts_env" TOKEN_SERVICE_SHARED_SECRET "$(openssl rand -hex 32)"
   fi
   if [ -z "$(env_get "$ts_env" ADMIN_SHARED_SECRET)" ]; then
     echo "🔐 Generating ADMIN_SHARED_SECRET (for the admin app) into token-service/.env"
@@ -390,15 +391,15 @@ ensure_log_rotation() {
 
 # --- 0. Env files + credentials (LiveKit reads the key pair from token-service/.env) ---
 ensure_npm_env token-service
-# The demo only runs locally (Railway hosts it for the droplet), but its .env is where the consumer
-# secret lives for align_shared_secret, so a VPS gets the .env without the npm install.
+# The demo only runs locally (Railway hosts it for the droplet); a VPS still gets the .env
+# (admin secret) without the npm install.
 if [ "$(uname)" = "Darwin" ]; then
   ensure_npm_env demo
 elif [ ! -f demo/.env ]; then
   cp demo/.env.example demo/.env
 fi
 ensure_real_credentials
-align_shared_secret
+ensure_demo_app_key
 REDIS_PASSWORD="$(env_get "$ROOT/token-service/.env" REDIS_PASSWORD)"
 rotate_large_logs
 ensure_log_rotation

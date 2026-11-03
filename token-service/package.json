@@ -9,6 +9,7 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
+    "issue-key": "tsx src/issueKey.ts",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
     "test": "SPACES_SETTINGS_FILE=/nonexistent/settings.json node --import tsx --test src/**/*.test.ts"

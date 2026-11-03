@@ -66,7 +66,7 @@ graph LR
   end
   Browser -->|page + /api/*| DM
   Operator -->|page + login| AD
-  DM -->|"Bearer TOKEN_SERVICE_SHARED_SECRET\n/token /rooms /participant /recording/*"| CA
+  DM -->|"Bearer TOKEN_SERVICE_APP_KEY (spaces-web)\n/token /rooms /participant /recording/*"| CA
   AD -->|"Bearer ADMIN_SHARED_SECRET\n/admin/*"| CA
   Browser -->|"wss /rtc (signaling)"| CA
   Browser -->|"media 7881/7882"| LK
@@ -91,7 +91,7 @@ graph LR
 | Redis | — | droplet | 6379 (loopback + docker0 only) | `REDIS_PASSWORD` (`requirepass`) | Job queue LiveKit server ↔ Egress worker use to coordinate. Recording-only; calling works without it. |
 | Egress worker | Docker (`livekit/egress:v1.14.1`, pinned) | droplet | — | LiveKit key pair (runtime config) | Joins a room as a hidden participant, mixes everyone's audio and writes 24 kbps Opus to `egress/raw/`; token-service moves it to `egress/compressed/` when egress reports it finished. |
 | Caddy | — | droplet | 80/443 | Let's Encrypt certs | TLS for `api.spaces.hof-global.com`: `/rtc` → LiveKit, `/twirp` + `/recording/webhook` blocked, everything else → token-service. Also, via the `layer4` plugin (custom build, see README), TURN/TLS for `turn.hof-global.com` → LiveKit's TURN on `127.0.0.1:5349`. Config: `deploy/Caddyfile`. |
-| `demo` | TypeScript, Next.js 16, React 19, Node ≥ 22.22 (`livekit-client`'s `machina` requires it), `@livekit/components-react` | Railway `https://spaces.hof-global.com` (also local via `start-all.sh`) | `$PORT` (8888 locally) | `TOKEN_SERVICE_SHARED_SECRET`; plus `ADMIN_SHARED_SECRET` + `ADMIN_PASSWORD` for `/admin` | `/` + `/rooms/[room]`: full call UI (pre-join, grid/focus, chat, people, devices, background blur/virtual backgrounds, noise cancellation, reactions, raise hand, record, invite, reconnect banner). `/embed`: the same call UI, token-only, for consumer apps to iframe (see "Embed mode"). `/admin`: the permanent operator control center. Server routes under `app/api/*` and `app/admin/*` hold the secrets; the browser never sees them. |
+| `demo` | TypeScript, Next.js 16, React 19, Node ≥ 22.22 (`livekit-client`'s `machina` requires it), `@livekit/components-react` | Railway `https://spaces.hof-global.com` (also local via `start-all.sh`) | `$PORT` (8888 locally) | `TOKEN_SERVICE_APP_KEY` (the `spaces-web` app's `hsk_` key); plus `ADMIN_SHARED_SECRET` + `ADMIN_PASSWORD` for `/admin` | `/` + `/rooms/[room]`: full call UI (pre-join, grid/focus, chat, people, devices, background blur/virtual backgrounds, noise cancellation, reactions, raise hand, record, invite, reconnect banner). `/embed`: the same call UI, token-only, for consumer apps to iframe (see "Embed mode"). `/admin`: the permanent operator control center. Server routes under `app/api/*` and `app/admin/*` hold the secrets; the browser never sees them. |
 
 ## Security model
 
@@ -103,16 +103,26 @@ graph LR
   accepts two credentials. **Per-app keys** (`Authorization: Bearer hsk_<keyId>_<secret>`, 12 hex +
   32 random bytes base64url) are issued in `/admin` → Apps (secret shown once, only its sha256 is
   stored, at most 2 active per app so rotation overlaps, revoke any time). **`TOKEN_SERVICE_SHARED_SECRET`**
-  stays permanently as Petition Studio's credential (and `demo`'s: the call UI's own server routes use it):
-  it resolves to the `petition-studio` app and is audited and rate-limited under it. The shared secret
-  keeps *every* scope, because the demo's call UI reaches `/room/end`, `/recording/*` and `/lobby/*` with
-  it; a per-app key gets only its app's scopes (403 for a missing scope, 401 for a bad, unknown or
+  stays permanently as Petition Studio's credential only: it resolves to the `petition-studio` app and
+  is audited and rate-limited under it, and keeps *every* scope (what it does today must keep working).
+  `demo` no longer uses it: the call website is the registered `spaces-web` app and sends its own
+  key from `TOKEN_SERVICE_APP_KEY` (Railway variable; `demo/lib/server/tokenService.ts`); a per-app key gets only its app's scopes (403 for a missing scope, 401 for a bad, unknown or
   revoked key, 429 + `Retry-After` over the app's per-minute limit, kept in memory per app and scope).
   Scopes → routes: `rooms:read` (`GET /rooms`, `/participant`, `/recording/status`), `rooms:create`
-  (`/recording/start|stop`), `rooms:end` (`/room/end`), `tokens:mint` (`/token`, `/embed/session`,
+  (`POST /v1/rooms`, creating rooms), `recordings:control` (`/recording/start|stop`; split out of
+  `rooms:create` in ERP-72 so the call website can run recordings without being able to create rooms),
+  `rooms:end` (`/room/end`), `tokens:mint` (`/token`, `/embed/session`,
   `/room/host|mute|remove|spotlight`, `/lobby/*`, `/call-log`), `recordings:read`
   (`/recording/transcripts`, `/recording/file/*`); `events:read` is reserved for outbound webhooks.
-  Seeded apps (first start, no keys issued): `erp`, `petition-studio`, `spaces-web`. The registry
+  Seeded apps (first start, no keys issued): `erp` (`rooms:create|end|read`, `tokens:mint`,
+  `recordings:control`), `petition-studio` (`rooms:create`, `tokens:mint`, `recordings:read`; plus every scope through the shared
+  secret), `spaces-web` (`tokens:mint`, `rooms:read`, `rooms:end`, `recordings:control`: exactly the
+  routes `demo/app/api/*` calls: `/token`, `/lobby/*`, `/room/host|mute|remove|spotlight`, `/call-log`,
+  `/embed/session`, `/room/reservation`, `/rooms`, `/participant`, `/recording/status|start|stop`,
+  `/room/end`; **never `rooms:create`**). A registry schema step (`apps.ts`, `migrate()`) rewrote
+  `spaces-web`'s scopes (and gave `erp` `recordings:control`) once on existing databases. Local keys:
+  `cd token-service && npm run issue-key -- <app>` prints a new key straight from the registry file (what
+  `start-all.sh` runs on macOS to fill `TOKEN_SERVICE_APP_KEY` in `demo/.env` when it is empty). The registry
   (tables `app`, `app_key`, `audit_event`) is SQLite via `node:sqlite` in `token-service/data/spaces.db`
   (`SPACES_DB_FILE` overrides; gitignored; copied daily into `data/backups/`, newest 14 kept). The
   audit log records app/key changes, `room.create`, `host_token.mint` and `room.end` (also from `/admin` room close),
@@ -244,8 +254,9 @@ graph LR
 - **Real credentials live only on the droplet and in Railway variables.** The repo is public and its
   committed `devkey`/`secret` + `local-dev-secret-not-for-production` are LiveKit's/our published dev
   values. On Linux (not macOS) `start-all.sh`'s `ensure_real_credentials` replaces
-  them once with generated ones in the gitignored `token-service/.env` / `demo/.env` (plus
-  `ADMIN_SHARED_SECRET` and `REDIS_PASSWORD`), and `write_runtime_configs` renders
+  them once with generated ones in the gitignored `token-service/.env` (the LiveKit pair,
+  `TOKEN_SERVICE_SHARED_SECRET`, `ADMIN_SHARED_SECRET`, `REDIS_PASSWORD`; the demo's `TOKEN_SERVICE_APP_KEY`
+  is issued from the registry, see above), and `write_runtime_configs` renders
   `.runtime/livekit.yaml` and `.runtime/egress.yaml` with that key pair and `redis.password`. The committed YAMLs keep only the dev pair — never put a
   real key in them.
 - **`token-service` (8880) and `livekit-server` (7880) listen on `0.0.0.0`;** on the droplet the Cloud
@@ -331,7 +342,7 @@ The old `spaces.hofmigration.com` / `turn.hofmigration.com` names were retired o
 **Railway:** one service, `demo` (Root Directory `demo`; Railway runs `npm run build` then
 `npm start`, and sets `PORT`), at `https://spaces.hof-global.com` (custom domain; the old
 `https://spaces-demo.up.railway.app` still works). Variables:
-`TOKEN_SERVICE_URL=https://api.spaces.hof-global.com`, `TOKEN_SERVICE_SHARED_SECRET`,
+`TOKEN_SERVICE_URL=https://api.spaces.hof-global.com`, `TOKEN_SERVICE_APP_KEY` (the `spaces-web` key from /admin → Apps),
 `ADMIN_SHARED_SECRET`, `ADMIN_PASSWORD`, `TRUST_PROXY=1`, `EMBED_ALLOWED_ORIGINS` (the consumer's
 origin(s); unset = nothing but Spaces itself may frame `/embed`). It reaches token-service over the same
 HTTPS path Petition Studio's API (also on Railway) will use.

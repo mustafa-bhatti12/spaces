@@ -188,7 +188,7 @@ fastify.post<{ Body: { room?: string; token?: string; identity?: string; host?: 
 
 fastify.post<{ Body: { room?: string; startedBy?: string } }>(
   '/recording/start',
-  { preHandler: requireApp('rooms:create') },
+  { preHandler: requireApp('recordings:control') },
   async (req, reply) => {
     const { room, startedBy } = req.body ?? {};
     if (typeof room !== 'string' || !room) {
@@ -204,7 +204,7 @@ fastify.post<{ Body: { room?: string; startedBy?: string } }>(
   },
 );
 
-fastify.post<{ Body: { egressId?: string } }>('/recording/stop', { preHandler: requireApp('rooms:create') }, async (req, reply) => {
+fastify.post<{ Body: { egressId?: string } }>('/recording/stop', { preHandler: requireApp('recordings:control') }, async (req, reply) => {
   const egressId = req.body?.egressId;
   if (typeof egressId !== 'string' || !egressId) {
     reply.code(400).send({ error: 'egressId is required.' });

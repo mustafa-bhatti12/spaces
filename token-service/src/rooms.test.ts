@@ -134,14 +134,15 @@ test('another app gets 404 for a room it does not own, like a missing one', asyn
 
 test('scopes are enforced: 403 without them, 401 without a credential; /apps/me takes any valid one', async () => {
   const t = setup();
-  const web = t.key('spaces-web'); // tokens:mint only
+  const web = t.key('spaces-web'); // no rooms:create: the call website can never reserve a room
   assert.equal((await t.call('POST', '/v1/rooms', web, { title: 'T', externalRef: 'r' })).status, 403);
-  assert.equal((await t.call('GET', '/v1/rooms/rm_x', web)).status, 403);
-  assert.equal((await t.call('POST', '/v1/rooms/rm_x/end', web)).status, 403);
+  // It has rooms:read and rooms:end for the call UI, but owns no reservation: same 404 as a missing room.
+  assert.equal((await t.call('GET', '/v1/rooms/rm_x', web)).status, 404);
+  assert.equal((await t.call('POST', '/v1/rooms/rm_x/end', web)).status, 404);
   assert.equal((await t.call('POST', '/v1/rooms', 'Bearer nope', { title: 'T', externalRef: 'r' })).status, 401);
   assert.equal((await t.call('GET', '/v1/apps/me', 'Bearer nope')).status, 401);
   const me = await t.call('GET', '/v1/apps/me', web);
-  assert.deepEqual(me.body, { slug: 'spaces-web', name: 'Spaces web (demo)', scopes: ['tokens:mint'] });
+  assert.deepEqual(me.body, { slug: 'spaces-web', name: 'Spaces web (demo)', scopes: ['rooms:end', 'rooms:read', 'tokens:mint', 'recordings:control'] });
 });
 
 test('create validates input and the expiry window', async () => {
