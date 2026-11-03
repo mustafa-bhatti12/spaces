@@ -1,11 +1,11 @@
 import type { FastifyInstance } from 'fastify';
-import { requireSharedSecret } from './auth';
+import { requireApp } from './auth';
 import { inspectJoinToken } from './livekit';
 import { getSettings } from './settings';
 
-/** Embedding support (consumer secret): turns a join token handed to /embed into a verified session. */
+/** Embedding support (needs tokens:mint): turns a join token handed to /embed into a verified session. */
 export async function embedRoutes(app: FastifyInstance): Promise<void> {
-  app.addHook('preHandler', requireSharedSecret);
+  app.addHook('preHandler', requireApp('tokens:mint'));
 
   app.post<{ Body: { token?: unknown } }>('/session', async (req, reply) => {
     const token = req.body?.token;

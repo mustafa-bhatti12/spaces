@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
-import { requireSharedSecret } from './auth';
+import { requireApp } from './auth';
 import { capacityFor, hostIdentity, mintToken, notifyRoom, setWaitingRoom } from './livekit';
 import { lobby } from './lobby';
 import { getSettings } from './settings';
@@ -17,7 +17,7 @@ function tellRoom(room: string): void {
  * actions carry the host's own join token as proof, the same way /room/end does.
  */
 export async function lobbyRoutes(app: FastifyInstance): Promise<void> {
-  app.addHook('preHandler', requireSharedSecret);
+  app.addHook('preHandler', requireApp('tokens:mint'));
 
   // Abandoned askers drop out and unanswered ones time out between polls, so hosts hear about it.
   const sweeper = setInterval(() => lobby.sweep().forEach(tellRoom), 5000);

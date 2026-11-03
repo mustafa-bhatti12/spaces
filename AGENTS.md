@@ -89,12 +89,29 @@ graph LR
 
 - `token-service` is the **only** thing in this repo (or any consumer) that ever holds real LiveKit
   credentials. Everything else gets a short-lived, room-scoped join token.
-- **Two bearer secrets, checked in `token-service/src/auth.ts`:** `TOKEN_SERVICE_SHARED_SECRET` for
-  consumer routes (`/token`, `/embed/session`, `/rooms`, `/participant`, `/recording/*`, `/room/end`, `/room/host`, `/room/mute|remove|spotlight`, `/lobby/*`, `/call-log`) — held by `demo` and later
-  Petition Studio's API; `ADMIN_SHARED_SECRET` for the operator-only `/admin/*` routes (remove people,
-  close rooms, delete recordings) — held only by `demo`'s `/admin` server routes
-  (`demo/lib/server/tokenService.ts`, `kind: 'admin'`). Never give a consumer the admin secret; a
-  leaked consumer secret must not be able to moderate or delete. Neither is a user-auth system —
+- **Consumer routes need a registered app; `/admin` has its own secret (`token-service/src/auth.ts`).**
+  `requireApp(scope)` on every consumer route (`/token`, `/embed/session`, `/rooms`, `/participant`,
+  `/recording/*`, `/room/end`, `/room/host`, `/room/mute|remove|spotlight`, `/lobby/*`, `/call-log`)
+  accepts two credentials. **Per-app keys** (`Authorization: Bearer hsk_<keyId>_<secret>`, 12 hex +
+  32 random bytes base64url) are issued in `/admin` → Apps (secret shown once, only its sha256 is
+  stored, at most 2 active per app so rotation overlaps, revoke any time). **`TOKEN_SERVICE_SHARED_SECRET`**
+  stays permanently as Petition Studio's credential (and `demo`'s: the call UI's own server routes use it):
+  it resolves to the `petition-studio` app and is audited and rate-limited under it. The shared secret
+  keeps *every* scope, because the demo's call UI reaches `/room/end`, `/recording/*` and `/lobby/*` with
+  it; a per-app key gets only its app's scopes (403 for a missing scope, 401 for a bad, unknown or
+  revoked key, 429 + `Retry-After` over the app's per-minute limit, kept in memory per app and scope).
+  Scopes → routes: `rooms:read` (`GET /rooms`, `/participant`, `/recording/status`), `rooms:create`
+  (`/recording/start|stop`), `rooms:end` (`/room/end`), `tokens:mint` (`/token`, `/embed/session`,
+  `/room/host|mute|remove|spotlight`, `/lobby/*`, `/call-log`), `recordings:read`
+  (`/recording/transcripts`, `/recording/file/*`); `events:read` is reserved for outbound webhooks.
+  Seeded apps (first start, no keys issued): `erp`, `petition-studio`, `spaces-web`. The registry
+  (tables `app`, `app_key`, `audit_event`) is SQLite via `node:sqlite` in `token-service/data/spaces.db`
+  (`SPACES_DB_FILE` overrides; gitignored; copied daily into `data/backups/`, newest 14 kept). The
+  audit log records app/key changes, `host_token.mint` and `room.end` (also from `/admin` room close),
+  and is read in `/admin` → Apps. `ADMIN_SHARED_SECRET` guards the operator-only `/admin/*` routes (remove
+  people, close rooms, delete recordings, the Apps registry) — held only by `demo`'s `/admin` server
+  routes (`demo/lib/server/tokenService.ts`, `kind: 'admin'`). Never give a consumer the admin secret;
+  a leaked consumer credential must not be able to moderate or delete. Neither is a user-auth system —
   `token-service` has no concept of a logged-in person.
 - **Hosting is the consumer's decision; token-service only records and enforces it.** A room's
   hosts are a `hosts` list in its LiveKit metadata, which is what every check reads. `/token` with
@@ -577,7 +594,7 @@ works from the same machine; test multi-device calls on the Railway deployment.
 - `token-service/src/system.ts` — `GET /admin/system`: host CPU/memory/network, per-service process rows, versions, TLS expiry, deployed commit. Linux-only parts return null on macOS; rates are deltas between calls (first call after a restart has nulls). It runs on every console poll, so keep it cheap; the comments explain why it reads cgroup files instead of `docker stats`.
 - `token-service/src/recordings.ts` — recording directories, safe filename resolution, file listing, `finishRecording` (webhook: raw/ → compressed/).
 - `token-service/src/embedRoutes.ts` — `POST /embed/session`: verifies a join token for `/embed`.
-- `token-service/src/auth.ts` — the two bearer-secret `preHandler`s.
+- `token-service/src/auth.ts` — `requireApp(scope)` (key or shared secret → app, scope, rate limit), `auditCaller`, and the `ADMIN_SHARED_SECRET` `preHandler`. `apps.ts` — the SQLite app registry (apps, keys, audit, backup; unit-tested), `rateLimit.ts` — per-app fixed-window limiter, `appAdmin.ts` — `/admin/apps` and `/admin/audit` routes (UI: `demo/components/admin/AppsPanel.tsx`).
 - `demo/app/api/*` — call-page server routes (`connect`, `rooms/status` (pre-join: occupancy, would-you-host, waiting room), `rooms/end`, `rooms/host`, `lobby/status` (guest poll), `lobby/[action]` (host), `whoami`, `recording/{start,stop,status}`) → token-service consumer routes. The public home page doesn't list live rooms (only `/admin` does), so there's no public room-list route; don't add one back.
 - `demo/app/admin/*` — `/admin` page + `login`/`logout`/`session` routes + `api/[...path]` streaming proxy → token-service `/admin/*`.
 - `demo/lib/server/tokenService.ts` — the only token-service client (both secrets); `demo/lib/server/adminSession.ts` — admin cookie + rate limit.

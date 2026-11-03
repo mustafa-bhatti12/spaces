@@ -5,7 +5,7 @@ the detail. Agents: add a line here with every change that ships (see `AGENTS.md
 
 ## 2026-11-03
 
-- **Droplet: Redis is locked down (ERP-74).** It requires a generated `REDIS_PASSWORD` (in `token-service/.env`, passed to LiveKit's and Egress's `redis.password`), listens only on `127.0.0.1` and the Docker bridge address instead of `0.0.0.0`, and has `FLUSHALL`/`FLUSHDB`/`CONFIG`/`DEBUG` disabled. Takes effect on the next `systemctl restart spaces` (drops live calls).
+- **App registry with per-app API keys, scopes, rate limits and an audit log** (ERP-68): `/admin` → Apps issues `hsk_…` keys (shown once, two active per app) for registered apps (`erp`, `petition-studio`, `spaces-web` seeded); consumer routes check the app's scope; `TOKEN_SERVICE_SHARED_SECRET` keeps working unchanged as Petition Studio's credential. Needs Node's built-in SQLite (`token-service/data/spaces.db`, `SPACES_DB_FILE`).
 
 ## 2026-10-20
 

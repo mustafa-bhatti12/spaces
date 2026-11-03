@@ -159,3 +159,6 @@ dump.rdb
 # Recording/transcription settings saved from /admin (token-service/src/settings.ts)
 token-service/settings.json
 token-service/settings.json.tmp
+
+# App registry database (token-service/src/apps.ts): apps, key hashes, audit log, daily backups
+token-service/data/

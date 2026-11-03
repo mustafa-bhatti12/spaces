@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
-import { requireSharedSecret } from './auth';
+import { requireApp } from './auth';
 import { getParticipantSid, getRoomSettings, hostIdentity, muteMicrophone, notifyRoom, removeParticipant, setSpotlight } from './livekit';
 import { lobby } from './lobby';
 
@@ -13,7 +13,7 @@ const MUTED_TOPIC = 'space.muted';
  * (stop them hosting first), so hosts can't throw each other out.
  */
 export async function moderationRoutes(app: FastifyInstance): Promise<void> {
-  app.addHook('preHandler', requireSharedSecret);
+  app.addHook('preHandler', requireApp('tokens:mint'));
 
   /** The caller when `token` belongs to a host of `room` acting on someone else; otherwise replies and returns null. */
   const hostActingOn = async (

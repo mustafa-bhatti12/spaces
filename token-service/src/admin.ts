@@ -3,6 +3,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { requireAdminSecret } from './auth';
+import { appAdminRoutes } from './appAdmin';
+import { getRegistry } from './apps';
 import {
   closeRoom,
   listActiveRooms,
@@ -35,6 +37,7 @@ type Check = { ok: boolean; detail: string };
  */
 export async function adminRoutes(app: FastifyInstance): Promise<void> {
   app.addHook('preHandler', requireAdminSecret);
+  appAdminRoutes(app);
 
   // Each part fails independently: with the recording worker down, listEgress errors ("egress not
   // connected"), but live rooms and saved files should still show. `errors` names what's missing.
@@ -88,6 +91,7 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     const room = req.body?.room;
     if (typeof room !== 'string' || !room) return reply.code(400).send({ error: 'room is required.' });
     await closeRoom(room);
+    getRegistry().audit({ actor: 'admin', action: 'room.end', room, ip: req.ip, result: 'ok' });
     return { ok: true };
   });
 

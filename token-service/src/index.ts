@@ -21,7 +21,8 @@ import {
   stopAllActiveRecordings,
   stopRecording,
 } from './livekit';
-import { requireSharedSecret } from './auth';
+import { auditCaller, requireApp } from './auth';
+import { backupDir, getRegistry } from './apps';
 import { finishRecording, listRecordingFiles, resolveRecordingFile } from './recordings';
 import { autoTranscribe, parseRecordingName, readTranscript, transcribeMissing, transcribeRecording, transcriptStates } from './transcripts';
 import * as autoRecord from './autoRecord';
@@ -34,10 +35,23 @@ import { callLogRoutes } from './callLog';
 import { getSettings } from './settings';
 
 const fastify = Fastify();
+// Opens (migrates, seeds) the app registry now, so a bad SPACES_DB_FILE fails the start, not a request.
+const registry = getRegistry();
+
+// Daily copy of the registry database (apps, keys, audit), the newest 14 kept.
+const backupRegistry = () => {
+  try {
+    registry.backup(backupDir());
+  } catch (err) {
+    console.error('Could not back up the app registry:', err);
+  }
+};
+backupRegistry();
+setInterval(backupRegistry, 86_400_000).unref();
 
 fastify.get('/health', async () => ({ ok: true }));
 
-fastify.get('/rooms', { preHandler: requireSharedSecret }, async (_req, reply) => {
+fastify.get('/rooms', { preHandler: requireApp('rooms:read') }, async (_req, reply) => {
   try {
     reply.send(await listActiveRooms());
   } catch (err) {
@@ -48,7 +62,7 @@ fastify.get('/rooms', { preHandler: requireSharedSecret }, async (_req, reply) =
 
 fastify.get<{ Querystring: { room?: string; identity?: string } }>(
   '/participant',
-  { preHandler: requireSharedSecret },
+  { preHandler: requireApp('rooms:read') },
   async (req, reply) => {
     const room = String(req.query.room ?? '');
     const identity = String(req.query.identity ?? '');
@@ -67,7 +81,7 @@ fastify.get<{ Querystring: { room?: string; identity?: string } }>(
 
 fastify.post<{ Body: { room?: string; identity?: string; name?: string; host?: boolean; waitingRoom?: boolean; record?: boolean } }>(
   '/token',
-  { preHandler: requireSharedSecret },
+  { preHandler: requireApp('tokens:mint') },
   async (req, reply) => {
     const { room, identity, name, host, waitingRoom, record } = req.body ?? {};
     if (
@@ -111,6 +125,7 @@ fastify.post<{ Body: { room?: string; identity?: string; name?: string; host?: b
       // The consumer requires this call to be recorded (autoRecord.ts).
       if (record === true) await markRoomRecorded(room);
       const details = await mintToken({ room, identity, name, host: host === true, record: record === true });
+      if (host === true) auditCaller(req, 'host_token.mint', { room });
       reply.send({ ...details, callSettings: getSettings().calls });
     } catch (err) {
       console.error('Failed to mint LiveKit token:', err);
@@ -121,7 +136,7 @@ fastify.post<{ Body: { room?: string; identity?: string; name?: string; host?: b
 
 // Ends a room for everyone on behalf of a host. The participant's own join token is the proof of who
 // they are; the room's hosts list says whether they host.
-fastify.post<{ Body: { room?: string; token?: string } }>('/room/end', { preHandler: requireSharedSecret }, async (req, reply) => {
+fastify.post<{ Body: { room?: string; token?: string } }>('/room/end', { preHandler: requireApp('rooms:end') }, async (req, reply) => {
   const { room, token } = req.body ?? {};
   if (typeof room !== 'string' || !room || typeof token !== 'string' || !token) {
     reply.code(400).send({ error: 'room and token are required.' });
@@ -129,9 +144,11 @@ fastify.post<{ Body: { room?: string; token?: string } }>('/room/end', { preHand
   }
   try {
     if ((await endRoomAsHost(room, token)) === 'forbidden') {
+      auditCaller(req, 'room.end', { room, result: 'denied' });
       reply.code(403).send({ error: 'Only the host can end this call for everyone.' });
       return;
     }
+    auditCaller(req, 'room.end', { room });
     reply.send({ ok: true });
   } catch (err) {
     console.error('Failed to end room:', err);
@@ -144,7 +161,7 @@ fastify.post<{ Body: { room?: string; token?: string } }>('/room/end', { preHand
 // never loses its last host this way. Someone who stops hosting can still rejoin past the waiting room.
 fastify.post<{ Body: { room?: string; token?: string; identity?: string; host?: boolean } }>(
   '/room/host',
-  { preHandler: requireSharedSecret },
+  { preHandler: requireApp('tokens:mint') },
   async (req, reply) => {
     const { room, token, identity, host } = req.body ?? {};
     if (typeof room !== 'string' || !room || typeof token !== 'string' || !token || typeof identity !== 'string' || !identity || typeof host !== 'boolean') {
@@ -177,7 +194,7 @@ fastify.post<{ Body: { room?: string; token?: string; identity?: string; host?: 
 
 fastify.post<{ Body: { room?: string; startedBy?: string } }>(
   '/recording/start',
-  { preHandler: requireSharedSecret },
+  { preHandler: requireApp('rooms:create') },
   async (req, reply) => {
     const { room, startedBy } = req.body ?? {};
     if (typeof room !== 'string' || !room) {
@@ -193,7 +210,7 @@ fastify.post<{ Body: { room?: string; startedBy?: string } }>(
   },
 );
 
-fastify.post<{ Body: { egressId?: string } }>('/recording/stop', { preHandler: requireSharedSecret }, async (req, reply) => {
+fastify.post<{ Body: { egressId?: string } }>('/recording/stop', { preHandler: requireApp('rooms:create') }, async (req, reply) => {
   const egressId = req.body?.egressId;
   if (typeof egressId !== 'string' || !egressId) {
     reply.code(400).send({ error: 'egressId is required.' });
@@ -214,7 +231,7 @@ fastify.post<{ Body: { egressId?: string } }>('/recording/stop', { preHandler: r
   }
 });
 
-fastify.get<{ Querystring: { room?: string } }>('/recording/status', { preHandler: requireSharedSecret }, async (req, reply) => {
+fastify.get<{ Querystring: { room?: string } }>('/recording/status', { preHandler: requireApp('rooms:read') }, async (req, reply) => {
   const room = String(req.query.room ?? '');
   if (!room) {
     reply.code(400).send({ error: 'room query param is required.' });
@@ -230,7 +247,7 @@ fastify.get<{ Querystring: { room?: string } }>('/recording/status', { preHandle
 
 // A room's finished recordings with their transcripts (Soniox, see transcripts.ts), oldest first.
 // `transcript` is present once status is `ready`.
-fastify.get<{ Querystring: { room?: string } }>('/recording/transcripts', { preHandler: requireSharedSecret }, async (req, reply) => {
+fastify.get<{ Querystring: { room?: string } }>('/recording/transcripts', { preHandler: requireApp('recordings:read') }, async (req, reply) => {
   const room = String(req.query.room ?? '');
   if (!room) {
     reply.code(400).send({ error: 'room query param is required.' });
@@ -263,7 +280,7 @@ fastify.get<{ Querystring: { room?: string } }>('/recording/transcripts', { preH
 
 // One finished recording's audio (Opus in Ogg), by the `file` name /recording/transcripts lists.
 // The consumer names the download itself; this sends no Content-Disposition.
-fastify.get<{ Params: { name: string } }>('/recording/file/:name', { preHandler: requireSharedSecret }, async (req, reply) => {
+fastify.get<{ Params: { name: string } }>('/recording/file/:name', { preHandler: requireApp('recordings:read') }, async (req, reply) => {
   const file = parseRecordingName(req.params.name) ? resolveRecordingFile('compressed', req.params.name) : null;
   if (!file) return reply.code(400).send({ error: 'Unknown recording.' });
   let size: number;

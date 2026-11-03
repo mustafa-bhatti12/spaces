@@ -3,6 +3,7 @@
 import type { LucideIcon } from 'lucide-react';
 import {
   Activity,
+  Boxes,
   ChevronLeft,
   ChevronRight,
   CircleDot,
@@ -31,6 +32,7 @@ import { api, SessionExpired } from './api';
 import type { SystemSnapshot } from './ServerPanel';
 import { ServerPanel } from './ServerPanel';
 import { SettingsPanel } from './SettingsPanel';
+import { AppsPanel } from './AppsPanel';
 import { CallQuality } from './CallQuality';
 import type { TranscriptState } from './Transcripts';
 import { TranscriptCell, TranscriptPanel } from './Transcripts';
@@ -96,10 +98,11 @@ const SOURCES: Record<string, { label: string; icon: LucideIcon }> = {
   SCREEN_SHARE_AUDIO: { label: 'Screen audio', icon: Volume2 },
 };
 
-type ConsoleView = 'overview' | 'calls' | 'settings';
+type ConsoleView = 'overview' | 'calls' | 'apps' | 'settings';
 const CONSOLE_VIEWS: { id: ConsoleView; label: string; icon: LucideIcon }[] = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
   { id: 'calls', label: 'Call quality', icon: Activity },
+  { id: 'apps', label: 'Apps', icon: Boxes },
   { id: 'settings', label: 'Settings', icon: Settings },
 ];
 
@@ -220,6 +223,7 @@ function Dashboard({ onLoggedOut }: { onLoggedOut: () => void }) {
   const [view, setView] = useState<ConsoleView>(() => {
     if (window.location.hash === '#settings') return 'settings';
     if (window.location.hash === '#calls') return 'calls';
+    if (window.location.hash === '#apps') return 'apps';
     return 'overview';
   });
   const [recQuery, setRecQuery] = useState('');
@@ -370,7 +374,7 @@ function Dashboard({ onLoggedOut }: { onLoggedOut: () => void }) {
               className="console-tab"
               onClick={() => {
                 setView(v.id);
-                const hash = v.id === 'settings' ? '#settings' : v.id === 'calls' ? '#calls' : '';
+                const hash = v.id === 'overview' ? '' : `#${v.id}`;
                 history.replaceState(null, '', hash || window.location.pathname + window.location.search);
               }}
             >
@@ -393,6 +397,10 @@ function Dashboard({ onLoggedOut }: { onLoggedOut: () => void }) {
         ) : view === 'calls' ? (
           <div id="view-calls" role="tabpanel" aria-labelledby="tab-calls" className="console-view">
             <CallQuality onError={handleError} flash={flash} />
+          </div>
+        ) : view === 'apps' ? (
+          <div id="view-apps" role="tabpanel" aria-labelledby="tab-apps" className="console-view">
+            <AppsPanel onError={handleError} flash={flash} />
           </div>
         ) : (
         <div id="view-overview" role="tabpanel" aria-labelledby="tab-overview" className="console-view">

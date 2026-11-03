@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { FastifyInstance } from 'fastify';
-import { requireSharedSecret } from './auth';
+import { requireApp } from './auth';
 import { tokenIdentity } from './livekit';
 
 /**
@@ -61,7 +61,7 @@ export async function callLogRoutes(app: FastifyInstance): Promise<void> {
   prune();
   setInterval(prune, 86_400_000).unref();
 
-  app.addHook('preHandler', requireSharedSecret);
+  app.addHook('preHandler', requireApp('tokens:mint'));
 
   // The caller's own join token is the proof of who's reporting; room and identity come from it.
   app.post<{ Body: { room?: unknown; token?: unknown; events?: unknown } }>('/', async (req, reply) => {
