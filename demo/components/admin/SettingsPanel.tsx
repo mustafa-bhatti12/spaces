@@ -38,7 +38,7 @@ interface AppConfig {
   tokenServiceUrl: string;
   embedAllowedOrigins: string[];
   trustProxy: boolean;
-  secrets: { consumerSecret: boolean; adminSecret: boolean; adminPassword: boolean };
+  secrets: { appKey: boolean; adminSecret: boolean; adminPassword: boolean };
   commit: string | null;
 }
 
@@ -592,7 +592,7 @@ export function SettingsPanel({
               <Row label="LiveKit key pair">
                 <SecretState set={info.secrets.livekitApiKey} />
               </Row>
-              <Row label="Consumer secret">
+              <Row label="Shared secret (Petition Studio)">
                 <SecretState set={info.secrets.consumerSecret} />
               </Row>
               <Row label="Admin secret">
@@ -621,8 +621,8 @@ export function SettingsPanel({
                 <Row label="Token service">{app.tokenServiceUrl}</Row>
                 <Row label="Embed allowed from">{app.embedAllowedOrigins.length ? app.embedAllowedOrigins.join(', ') : 'only Spaces itself'}</Row>
                 <Row label="Trust proxy">{app.trustProxy ? 'on (login limit per client IP)' : 'off (one shared login limit)'}</Row>
-                <Row label="Consumer secret">
-                  <SecretState set={app.secrets.consumerSecret} />
+                <Row label="App key (spaces-web)">
+                  <SecretState set={app.secrets.appKey} />
                 </Row>
                 <Row label="Admin secret">
                   <SecretState set={app.secrets.adminSecret} />

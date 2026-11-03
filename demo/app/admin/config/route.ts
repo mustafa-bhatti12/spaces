@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
     embedAllowedOrigins: parseAllowedOrigins(process.env.EMBED_ALLOWED_ORIGINS),
     trustProxy: process.env.TRUST_PROXY === '1',
     secrets: {
-      consumerSecret: !!process.env.TOKEN_SERVICE_SHARED_SECRET,
+      appKey: !!process.env.TOKEN_SERVICE_APP_KEY,
       adminSecret: !!process.env.ADMIN_SHARED_SECRET,
       adminPassword: !!process.env.ADMIN_PASSWORD,
     },

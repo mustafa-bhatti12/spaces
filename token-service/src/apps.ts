@@ -11,7 +11,7 @@ import { RESERVATION_SCHEMA, ReservationStore } from './reservations';
  * sha256 hashes; the secret is shown once when issued.
  */
 
-export const SCOPES = ['rooms:create', 'rooms:end', 'rooms:read', 'tokens:mint', 'recordings:read', 'events:read'] as const;
+export const SCOPES = ['rooms:create', 'rooms:end', 'rooms:read', 'tokens:mint', 'recordings:read', 'recordings:control', 'events:read'] as const;
 export type Scope = (typeof SCOPES)[number];
 
 export const MAX_ACTIVE_KEYS = 2;
@@ -29,12 +29,15 @@ interface SeedApp {
   rateLimits: RateLimits;
 }
 
+export const SPACES_WEB_SCOPES: Scope[] = ['rooms:end', 'rooms:read', 'tokens:mint', 'recordings:control'];
+
 // The shared-secret app also carries the demo's call traffic (lobby polling, host actions), so its
 // limits are far above the per-app defaults.
 const SEED_APPS: SeedApp[] = [
-  { slug: 'erp', name: 'HOF ERP', scopes: ['rooms:create', 'rooms:end', 'rooms:read', 'tokens:mint'], rateLimits: DEFAULT_RATE_LIMITS },
+  { slug: 'erp', name: 'HOF ERP', scopes: ['rooms:create', 'rooms:end', 'rooms:read', 'tokens:mint', 'recordings:control'], rateLimits: DEFAULT_RATE_LIMITS },
   { slug: LEGACY_APP, name: 'Petition Studio', scopes: ['rooms:create', 'tokens:mint', 'recordings:read'], rateLimits: { 'rooms:create': 600, '*': 6000 } },
-  { slug: 'spaces-web', name: 'Spaces web (demo)', scopes: ['tokens:mint'], rateLimits: DEFAULT_RATE_LIMITS },
+  // The call website: exactly the routes `demo/app/api/*` calls, never `rooms:create`.
+  { slug: 'spaces-web', name: 'Spaces web (demo)', scopes: SPACES_WEB_SCOPES, rateLimits: DEFAULT_RATE_LIMITS },
 ];
 
 export class RegistryError extends Error {
@@ -184,6 +187,10 @@ export class AppRegistry {
        );
        CREATE INDEX audit_event_at ON audit_event(id DESC);`,
       RESERVATION_SCHEMA,
+      // ERP-72: the call website gets exactly what its routes need (never rooms:create), and
+      // /recording/start|stop moved from rooms:create to recordings:control, so erp keeps them.
+      // On a fresh database no rows exist yet and seed() inserts the final values.
+      this.scopeUpdateSql(),
     ];
     const { user_version: version } = this.db.prepare('PRAGMA user_version').get() as { user_version: number };
     for (let i = version; i < steps.length; i++) {
@@ -197,6 +204,13 @@ export class AppRegistry {
         throw err;
       }
     }
+  }
+
+  private scopeUpdateSql(): string {
+    const q = (v: unknown) => `'${JSON.stringify(v)}'`;
+    return `UPDATE app SET scopes = ${q(SPACES_WEB_SCOPES)} WHERE slug = 'spaces-web';
+       UPDATE app SET scopes = ${q(SEED_APPS.find((a) => a.slug === 'erp')!.scopes)} WHERE slug = 'erp'
+         AND scopes = ${q(['rooms:create', 'rooms:end', 'rooms:read', 'tokens:mint'])};`;
   }
 
   /** First start: register the known apps if absent. No keys are issued; /admin does that. */

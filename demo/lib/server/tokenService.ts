@@ -1,17 +1,17 @@
 import 'server-only';
 
 // The only place the demo talks to token-service. Both bearer secrets stay in this server process:
-// TOKEN_SERVICE_SHARED_SECRET for the consumer routes the call page needs (/token, /rooms,
-// /participant, /recording/*) — the same routes and secret Petition Studio's API will use — and
+// TOKEN_SERVICE_APP_KEY (the `spaces-web` app's hsk_ key: tokens:mint, rooms:read, rooms:end,
+// recordings:control, never rooms:create) for the consumer routes the call page needs, and
 // ADMIN_SHARED_SECRET only for the /admin control center's proxy.
 export const TOKEN_SERVICE_URL = (process.env.TOKEN_SERVICE_URL ?? 'http://localhost:8880').replace(/\/$/, '');
 
 export type SecretKind = 'consumer' | 'admin';
 
 export function tokenServiceFetch(path: string, init: RequestInit = {}, kind: SecretKind = 'consumer') {
-  const secret = kind === 'admin' ? process.env.ADMIN_SHARED_SECRET : process.env.TOKEN_SERVICE_SHARED_SECRET;
+  const secret = kind === 'admin' ? process.env.ADMIN_SHARED_SECRET : process.env.TOKEN_SERVICE_APP_KEY;
   if (!secret) {
-    throw new Error(`${kind === 'admin' ? 'ADMIN_SHARED_SECRET' : 'TOKEN_SERVICE_SHARED_SECRET'} is not set.`);
+    throw new Error(`${kind === 'admin' ? 'ADMIN_SHARED_SECRET' : 'TOKEN_SERVICE_APP_KEY'} is not set.`);
   }
   const headers = new Headers(init.headers);
   headers.set('Authorization', `Bearer ${secret}`);
