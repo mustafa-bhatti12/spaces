@@ -23,7 +23,7 @@ Run it once in the foreground to install what's missing and generate credentials
 ./start-all.sh
 ```
 
-On Linux, the first run replaces the public dev credentials with generated ones in `token-service/.env` and `demo/.env`: the LiveKit key pair, `TOKEN_SERVICE_SHARED_SECRET` and `ADMIN_SHARED_SECRET`. LiveKit and Egress run from `.runtime/*.yaml` copies that contain those keys. The committed YAML files only ever hold `devkey`/`secret`.
+On Linux, the first run replaces the public dev credentials with generated ones in `token-service/.env` and `demo/.env`: the LiveKit key pair, `TOKEN_SERVICE_SHARED_SECRET`, `ADMIN_SHARED_SECRET` and `REDIS_PASSWORD`. LiveKit and Egress run from `.runtime/*.yaml` copies that contain those keys and the Redis password. On Linux, Redis requires that password and listens only on `127.0.0.1` and the Docker bridge address (for the Egress container); `FLUSHALL`, `FLUSHDB`, `CONFIG` and `DEBUG` are disabled. The committed YAML files only ever hold `devkey`/`secret`.
 
 Tell token-service which public URL to give browsers:
 
@@ -35,7 +35,7 @@ Then install it as a service so it starts on boot and restarts itself if LiveKit
 
 ```bash
 ln -sf /root/space/deploy/spaces.service /etc/systemd/system/spaces.service
-systemctl disable --now redis-server   # start-all.sh runs its own Redis, reachable from the recording container
+systemctl disable --now redis-server   # start-all.sh runs its own password-protected Redis, reachable from the recording container
 systemctl daemon-reload && systemctl enable --now spaces
 systemctl status spaces                # logs: journalctl -u spaces -f, plus /tmp/*.log per service
 ```
@@ -75,7 +75,7 @@ Without the TURN record and `TURN_DOMAIN`, skip the plugin and the `layer4` bloc
 
 Firewall (a cloud firewall is preferred over `ufw`, because `ufw` also blocks the Egress container's traffic to the host):
 - Inbound open: **22/tcp**, **80/tcp**, **443/tcp** (site and TURN/TLS), **7881/tcp**, **7882/udp** and **3478/udp** (TURN/UDP).
-- Everything else closed, including 6379, 7880, 8880 and 8888.
+- Everything else closed, including 6379 (Redis also refuses connections from outside the host and needs a password), 7880, 8880 and 8888.
 - Outbound: leave the default allow-all, or media breaks.
 
 ### 3. Railway
