@@ -103,12 +103,40 @@ export function EmbedClient({ parentOrigin }: { parentOrigin: string | null }) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ token: session.token }),
     }).catch(() => null);
-    if (res?.status === 401) {
-      setStage({ kind: 'invalid', message: 'This call link has expired.' });
+    if (res?.status === 401 || res?.status === 404 || res?.status === 410) {
+      setStage({ kind: 'invalid', message: (await res.json().catch(() => ({}))).error || 'This call link has expired.' });
       return;
     }
     setStage({ kind: 'prejoin' });
   }, [api, framed, parentOrigin, session]);
+  // LiveKit no longer recreates a room on join, and the one this token was minted for may have closed
+  // while the person sat on the pre-join screen (empty_timeout). So ask token-service to bring the
+  // room back right before connecting; it also re-checks the reservation.
+  const [joining, setJoining] = useState(false);
+  const handleJoin = useCallback(async (choices: LocalUserChoices) => {
+    if (!session) return;
+    setJoining(true);
+    try {
+      const res = await fetch('/api/embed/session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: session.token }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 401) api.post({ type: 'expired' });
+      if (res.status === 401 || res.status === 404 || res.status === 410) {
+        setStage({ kind: 'invalid', message: data.error || 'This call link has expired.' });
+      } else if (!res.ok) {
+        setStage({ kind: 'prejoin', error: data.error || `Could not join (HTTP ${res.status}).` });
+      } else {
+        setStage({ kind: 'in-call', choices });
+      }
+    } catch {
+      setStage({ kind: 'prejoin', error: 'Could not reach the call service. Try again.' });
+    } finally {
+      setJoining(false);
+    }
+  }, [api, session]);
   const handlePreviewError = useCallback((err: Error) => setStage({ kind: 'prejoin', error: previewErrorMessage(err, navigator.userAgent, navigator.maxTouchPoints) }), []);
   const details = useMemo<ConnectionDetails | null>(
     () => session && { serverUrl: session.serverUrl, roomName: session.room, participantName: session.name, participantToken: session.token, callSettings: session.callSettings },
@@ -128,8 +156,8 @@ export function EmbedClient({ parentOrigin }: { parentOrigin: string | null }) {
         <header className="page-top"><Wordmark /></header>
         <div className="prejoin-grid">
           <div className="prejoin-head"><h1 className="title">Ready to join?</h1></div>
-          <PreJoin defaults={{}} lockedName={session.name} joinLabel="Join call" userLabel="" busy={false}
-            onSubmit={(choices) => setStage({ kind: 'in-call', choices })} onError={handlePreviewError} copyLink={prejoinLink} />
+          <PreJoin defaults={{}} lockedName={session.name} joinLabel={joining ? 'Joining…' : 'Join call'} userLabel="" busy={joining}
+            onSubmit={handleJoin} onError={handlePreviewError} copyLink={prejoinLink} />
           <p className="prejoin-error note note-alert" role="alert" hidden={!stage.error}>{stage.error}</p>
         </div>
       </main>

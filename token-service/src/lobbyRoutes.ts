@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { requireApp } from './auth';
-import { capacityFor, hostIdentity, mintToken, notifyRoom, setWaitingRoom } from './livekit';
+import { capacityFor, getRoomSettings, hostIdentity, mintToken, notifyRoom, setWaitingRoom } from './livekit';
 import { lobby } from './lobby';
 import { getSettings } from './settings';
 
@@ -59,6 +59,9 @@ export async function lobbyRoutes(app: FastifyInstance): Promise<void> {
     if ((await capacityFor(request.room)) !== 'ok') {
       return reply.code(503).send({ error: 'This call is full. Ask someone to leave, or start another call.', full: true });
     }
+    // The host answered from inside the room, so it is live; if everyone has left since (LiveKit no
+    // longer recreates a room on join, and this must never create a host-less one), send them back to ask again.
+    if (!(await getRoomSettings(request.room))) return { status: 'unknown' };
     const details = await mintToken({ room: request.room, identity: request.identity, name: request.name });
     return { status: 'admitted', ...details, callSettings: getSettings().calls };
   });

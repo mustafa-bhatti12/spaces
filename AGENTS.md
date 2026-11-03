@@ -131,12 +131,54 @@ graph LR
   routes (`demo/lib/server/tokenService.ts`, `kind: 'admin'`). Never give a consumer the admin secret;
   a leaked consumer credential must not be able to moderate or delete. Neither is a user-auth system —
   `token-service` has no concept of a logged-in person.
+- **Only registered apps create rooms (ERP-72, `joinToken.ts`, `tokenRoute.ts`, `reservations.ts`
+  `gateTokenMint`/`gateRoomRevival`).** LiveKit runs with `room.auto_create: false`
+  (`livekit/config.yaml`; `start-all.sh`'s `.runtime` copy passes the `room:` block through unchanged),
+  so a join token alone brings no room into existence; LiveKit refuses a join for a room that doesn't
+  exist. Token-service creates the room itself: `ensureRoom(room, seed)` (`livekit.ts`: no-op when the
+  room is live, else `createRoom` with the metadata seed `{hosts, record, waitingRoom}`; timeouts and
+  `max_participants` are LiveKit's `room:` defaults, which `createRoom` applies when unset: verified
+  against livekit-server 1.13.6; creating an existing room again is harmless and keeps its metadata). Rooms are created only by an
+  app credential with `rooms:create`: erp's `hsk_` key reserves them with `POST /v1/rooms` (a reservation,
+  not a LiveKit room; the room appears when the first join token is minted), and **Petition Studio's legacy
+  shared secret** keeps creating rooms through `/token` as implicit reservations (`mayCreateRooms` in
+  `auth.ts`: shared secret *and* `rooms:create`; an `hsk_` key never creates rooms through `/token`, even
+  erp's). Every other `/token` caller (the call website's `spaces-web` key, erp) may only mint for a room
+  with an **active reservation** (`gateTokenMint`, built on ERP-69's `guestState`: an explicit one inside its guest window,
+  its owner's host token also before the window opens; or an implicit one that Petition Studio's mint
+  refreshed within the last 12 h: `recordImplicit` pushes `expires_at` out on every mint); otherwise
+  **404 `{error, code: 'room_not_reserved'}`** plus a `room.refused` audit entry (an explicit reservation
+  outside its window keeps ERP-69's 403 `{reservation: 'early'|'expired'|'ended'}`, also audited). Every path that can create a
+  LiveKit room, and how it behaves now: `/token` (gate above, then `issueJoinToken` → `ensureRoom`);
+  `POST /v1/rooms/:id/join-tokens` (owner only, reservation exists: `issueJoinToken` → `ensureRoom`
+  with the reservation's `record`/`waitingRoom`); `recordRoomHost` / `markRoomRecorded` (only called
+  by `issueJoinToken` after `ensureRoom`, so never the first creator in practice); `POST /embed/session`
+  (verifies the token, 410 for an ended/expired reservation, 404 `room_not_reserved` for a caller
+  without `mayCreateRooms` and no active reservation, then `ensureRoom` with the seed read back from the token
+  (`inspectJoinToken` → `seed`) merged with the reservation); `/lobby/status` (admitted guest's token:
+  never creates; if the room is gone it answers `{status:'unknown'}` and the guest asks again, which goes
+  through `/token`'s gate); `/room/host|mute|remove|spotlight`, `/lobby/ask|pending|answer|settings`
+  (need a live room, never create one); recording start (admin, `/recording/start`, `autoRecord`: egress
+  fails for a missing room, creates none).
+- **Late joins with auto-create off.** A room made at mint time closes after `empty_timeout` (300 s) if
+  nobody joins, and 40 s after the last person leaves, so a token used later would fail to join. Flows
+  and what each does: (1) the demo's own join (`/api/connect` mints, the browser connects at once):
+  fine. (2) ERP host links `/rooms/<name>#t=…` and embed sessions: the page verifies the token through
+  `/api/embed/session` on open and **again when the person presses Join**
+  (`RoomClient.join`, `EmbedClient.handleJoin`), each of which `ensureRoom`s from the token's seed, so a
+  room that closed while someone sat on the pre-join screen is back, with its host and recording flag, right before
+  connecting. (3) Embed Rejoin: framed, the page around asks its own backend for a fresh token (Petition
+  Studio's `/token` ensures); unframed, `handleRejoin` and then Join call `/api/embed/session` again.
+  (4) Waiting-room guests: `/lobby/status` as above. (5) A client that loses its connection mid-call
+  reconnects into the live room (same as before); once the room is gone (40 s after everyone left) the
+  client falls to the end screen and rejoins through (1)–(3). Anything new that hands a token to a
+  browser it will use later MUST re-ensure the room right before connecting, or document why not.
 - **Reserved rooms (Rooms API, `token-service/src/roomsApi.ts`, `reservations.ts`).** An app with
   `rooms:create` calls `POST /v1/rooms` `{title, externalRef, startsAt?, expiresAt?, waitingRoom?,
   record?}` (201 → `{roomId, roomName, joinUrl, expiresAt}`). The name is `<appSlug>-<26 lowercase
   base32 chars>` from 128 random bits, so it can't be guessed. `expiresAt` defaults to start + 12 h,
   at most 90 days after start. The reservation (SQLite table `reservation`, owned by the app) is the
-  only record: the LiveKit room still appears on the first join. `GET /v1/rooms/:id` (`rooms:read`),
+  only record: the LiveKit room is created by the first join token minted for it (`ensureRoom`). `GET /v1/rooms/:id` (`rooms:read`),
   `POST /v1/rooms/:id/end` (`rooms:end`: marks it ended first, then closes the live room; 502 if
   LiveKit is unreachable, and a retry finishes), `POST /v1/rooms/:id/join-tokens` (`tokens:mint`,
   `{identity, name, host}` → `{token, url}`, `url` = `joinUrl#t=<token>`; 410 once ended/expired),
@@ -145,15 +187,15 @@ graph LR
   `room.create`, `room.end`, `host_token.mint`. `record: true` marks the room recorded
   (`markRoomRecorded`, same path as `/token`'s `record`), so recording starts at the first join. Every token minted for a
   reserved room (guest or host, `/token` or `join-tokens`) first creates the room if absent with the
-  reservation's `record`/`waitingRoom` (`seedRoomIfAbsent`) and carries them in its room seed, so a guest
+  reservation's `record`/`waitingRoom` (`ensureRoom`) and carries them in its room seed, so a guest
   who arrives before the host still waits in the waiting room and the recording is required; a later
   host token only adds the host. Guest window (`guestState`): joinable from 15 min before `startsAt`
   until `expiresAt` and not ended. `/token` is shared by everyone (`joinToken.ts`): for a reserved
   room another app gets **403** for `host: true` (never), and for a guest token outside the window;
   the owner is never blocked. A `/token` call by an app with `rooms:create` for an unreserved room
-  records an **implicit** reservation (`implicit = 1`, owned by that app, window not enforced), so
-  Petition Studio's `case-…` rooms (and, until ERP-72, the demo's own rooms, since the shared secret
-  resolves to Petition Studio) are tracked. `GET /room/reservation?room=` (`tokens:mint`) is what the
+  records an **implicit** reservation (`implicit = 1`, owned by that app, 12 h from its latest mint; the window is not enforced
+  on guests in `guardTokenRequest`, but `gateTokenMint` needs it active for callers that can't create rooms), so
+  Petition Studio's `case-…` rooms are tracked. Since ERP-72 only the shared-secret credential records one. `GET /room/reservation?room=` (`tokens:mint`) is what the
   demo asks before letting a guest in: `{reserved, state: open|early|expired|ended, startsAt, expiresAt}`;
   implicit and unknown rooms are `{reserved: false}`. `POST /embed/session` refuses (410) a token for a
   room whose reservation ended or expired.
@@ -164,16 +206,18 @@ graph LR
   `/rooms/<name>#t=<token>` (the owner's host token): `RoomClient` takes the token from the fragment
   (`lib/client/fragmentToken.ts`, shared with `/embed`, stripped from the URL at once), verifies it
   through `/api/embed/session` (room must match), and lands on the pre-join with the name locked and
-  "Join as host"; joining uses the token directly, no `/api/connect`. Unreserved rooms and the Lobby
-  are unchanged until ERP-72 closes self-serve creation.
+  "Join as host"; joining uses the token directly, no `/api/connect`. An unreserved room (or one whose
+  reservation lapsed) answers `/api/connect` with 404 `room_not_reserved`, and `RoomClient` shows the same
+  inactive-link state as an expired window. The Lobby (`/`) is only "Join a meeting": one field that takes a
+  meeting link (`/rooms/<name>`, a host link's `#t=` is kept) or a bare code, and the line "Meetings are
+  created from HOF ERP." There is no way to start a room from the website.
 - **Hosting is the consumer's decision; token-service only records and enforces it.** A room's
   hosts are a `hosts` list in its LiveKit metadata, which is what every check reads. `/token` with
-  `host: true` adds the identity to it (`recordRoomHost`, creating the room if needed; `GET /rooms`
+  `host: true` adds the identity to it (`recordRoomHost`; `GET /rooms`
   reports `hosts`). Metadata dies with the room, so a host or `record: true` token also carries a
-  room seed (`roomConfig.metadata`, `mintToken`): when that token's join is what creates the room
-  again (ended for everyone, closed idle before anyone joined, emptied and rejoined), LiveKit starts
-  it with that host and `record` flag. LiveKit ignores the seed for a room that exists and keeps it
-  in refreshed tokens. `/room/host` lets a host make someone in the call a host or stop them hosting
+  room seed (`roomConfig.metadata`, `mintToken`). LiveKit no longer uses it (auto-create is off):
+  token-service reads it back (`inspectJoinToken`) when `/embed/session` has to recreate the room
+  (ended for everyone, closed idle before anyone joined, emptied and rejoined), so the room starts again with that host and `record` flag. `/room/host` lets a host make someone in the call a host or stop them hosting
   (never themselves, so a room can't lose its last host that way; someone demoted is admitted so
   they can rejoin past the waiting room). Every host action (`/room/end`, `/room/host`,
   `/room/mute|remove|spotlight`, `/lobby/pending|answer|settings`) takes the caller's own join token, verifies it (`tokenIdentity`;
@@ -275,7 +319,7 @@ graph LR
 - **Never expose `/twirp`** (LiveKit's admin API) publicly. Caddy blocks it; `token-service` reaches
   it on localhost. Browsers only ever need `/rtc`.
 - **Rooms close themselves, and calls are capped.** `livekit/config.yaml`'s `room:` block sets the
-  defaults for every room, including ones LiveKit auto-creates on first join: `empty_timeout: 300`
+  defaults for every room token-service creates (`auto_create` is off): `empty_timeout: 300`
   (a room nobody joins), `departure_timeout: 40` (after the last person leaves — long enough to
   survive a reconnect; the recording and `room_finished` wait that long too) and
   `max_participants: 40`. On top of that `capacityFor()` (`livekit.ts`, checked in `/token` and when
@@ -289,6 +333,12 @@ graph LR
   nothing until a restart. `/admin` says so, reading the real numbers with
   `livekitRoomDefaults()` (it parses `.runtime/livekit.yaml`, else the template, so nothing is
   duplicated as a constant). Changing the YAML needs `systemctl restart spaces`.
+  **Deploy note for the `auto_create: false` change (ERP-72):** it is a LiveKit config change, so it only
+  takes effect after `systemctl restart spaces`, which drops live calls: restart only with no live calls.
+  Order: merge PR 1 (set `TOKEN_SERVICE_APP_KEY` on Railway first), pull on the droplet (token-service
+  reloads by itself), merge PR 2 and pull, then restart. Because self-minted tokens no longer create
+  rooms, `/root/tools/stack-check.sh` must create its test room first (`lk room create <name>`) before it
+  joins with a token it minted itself; a join with a token for a room nobody created now fails by design.
 
 ## Embed mode
 
@@ -472,10 +522,10 @@ works from the same machine; test multi-device calls on the Railway deployment.
   `egress/recordings/raw/<file>`. The container-path→host-path mapping lives in exactly one place:
   `token-service/src/livekit.ts`'s `containerPathToHostPath`. If you ever change the mount, that's
   the only function that needs to know.
-- **RoomComposite egress requires the room to already exist.** You can't start recording a room
-  before at least one participant has joined it — LiveKit rooms are created on first join, not
-  pre-created. `POST /recording/start` on a room nobody's in yet 404s
-  (`"requested room does not exist"`).
+- **RoomComposite egress requires the room to already exist** (`"requested room does not exist"`
+  otherwise). Since ERP-72 token-service creates the room when it mints the token (`ensureRoom`), so the
+  room can exist before anyone is in it; recording still starts at the first join (`autoRecord` reacts to
+  `participant_joined`), and `/recording/start` on a room that was never created or has closed still 404s.
 - **Recording must stay on egress's audio-only pipeline (no Chrome).** An `audioOnly` room
   composite with `layout` and `customBaseUrl` unset runs on egress's SDK source (GStreamer mixing,
   `ShouldUseSDKSource` in egress's `pkg/config/pipeline.go`); setting either one starts headless
