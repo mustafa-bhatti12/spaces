@@ -120,7 +120,7 @@ graph LR
   routes `demo/app/api/*` calls: `/token`, `/lobby/*`, `/room/host|mute|remove|spotlight`, `/call-log`,
   `/embed/session`, `/room/reservation`, `/rooms`, `/participant`, `/recording/status|start|stop`,
   `/room/end`; **never `rooms:create`**). A registry schema step (`apps.ts`, `migrate()`) rewrote
-  `spaces-web`'s scopes (and gave `erp` `recordings:control`, then `recordings:read` in ERP-85) once on existing databases. Local keys:
+  `spaces-web`'s scopes (and gave `erp` `recordings:control`, then `recordings:read` in ERP-86) once on existing databases. Local keys:
   `cd token-service && npm run issue-key -- <app>` prints a new key straight from the registry file (what
   `start-all.sh` runs on macOS to fill `TOKEN_SERVICE_APP_KEY` in `demo/.env` when it is empty). The registry
   (tables `app`, `app_key`, `audit_event`) is SQLite via `node:sqlite` in `token-service/data/spaces.db`

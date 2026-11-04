@@ -413,7 +413,7 @@ test('revival gate for embed sessions: unreserved and lapsed implicit rooms are 
   assert.equal(gateTokenMint(explicit, false, NOW).ok, false);
 });
 
-test('ERP-85: owner lists recordings with transcripts only when ready, streams audio with ranges, others get 404', async () => {
+test('ERP-86: owner lists recordings with transcripts only when ready, streams audio with ranges, others get 404', async () => {
   const t = setup();
   const erp = t.key('erp');
   if (!t.registry.getApp('other-rec')) t.registry.createApp({ slug: 'other-rec', name: 'Other', scopes: ['rooms:read', 'recordings:read'] });

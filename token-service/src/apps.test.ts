@@ -134,7 +134,7 @@ test('an existing database gets the spaces-web scopes once, and keeps its keys',
   c.close();
 });
 
-test('ERP-85 migration adds recordings:read to erp and keeps its other scopes', () => {
+test('ERP-86 migration adds recordings:read to erp and keeps its other scopes', () => {
   const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'spaces-')), 'db.sqlite');
   new AppRegistry(file).close();
   const raw = new DatabaseSync(file);
