@@ -28,7 +28,7 @@ test('first start seeds the known apps and no keys', () => {
   const r = fresh();
   const apps = r.listApps();
   assert.deepEqual(apps.map((a) => a.slug), ['erp', 'petition-studio', 'spaces-web']);
-  assert.deepEqual(r.getApp('erp')!.scopes, ['rooms:create', 'rooms:end', 'rooms:read', 'tokens:mint', 'recordings:control']);
+  assert.deepEqual(r.getApp('erp')!.scopes, ['rooms:create', 'rooms:end', 'rooms:read', 'tokens:mint', 'recordings:control', 'recordings:read']);
   assert.deepEqual(r.getApp('petition-studio')!.scopes, ['rooms:create', 'tokens:mint', 'recordings:read']);
   assert.deepEqual(r.getApp('spaces-web')!.scopes, ['rooms:end', 'rooms:read', 'tokens:mint', 'recordings:control']);
   assert.ok(!r.getApp('spaces-web')!.scopes.includes('rooms:create'));
@@ -121,7 +121,7 @@ test('an existing database gets the spaces-web scopes once, and keeps its keys',
   raw.close();
   const b = new AppRegistry(file);
   assert.deepEqual(b.getApp('spaces-web')!.scopes, ['rooms:end', 'rooms:read', 'tokens:mint', 'recordings:control']);
-  assert.ok(b.getApp('erp')!.scopes.includes('recordings:control'));
+  assert.deepEqual(b.getApp('erp')!.scopes, ['rooms:create', 'rooms:end', 'rooms:read', 'tokens:mint', 'recordings:control', 'recordings:read']);
   const found = b.authenticateKey(key);
   assert.ok(found !== 'invalid' && found.app.slug === 'spaces-web');
   // The step ran once: a later hand edit in /admin-less SQL survives a restart.
@@ -132,4 +132,17 @@ test('an existing database gets the spaces-web scopes once, and keeps its keys',
   const c = new AppRegistry(file);
   assert.deepEqual(c.getApp('spaces-web')!.scopes, ['tokens:mint']);
   c.close();
+});
+
+test('ERP-85 migration adds recordings:read to erp and keeps its other scopes', () => {
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'spaces-')), 'db.sqlite');
+  new AppRegistry(file).close();
+  const raw = new DatabaseSync(file);
+  raw.exec(`UPDATE app SET scopes = '["rooms:create","rooms:end","rooms:read","tokens:mint","recordings:control"]' WHERE slug = 'erp'`);
+  raw.exec('PRAGMA user_version = 3');
+  raw.close();
+  const r = new AppRegistry(file);
+  assert.deepEqual(r.getApp('erp')!.scopes, ['rooms:create', 'rooms:end', 'rooms:read', 'tokens:mint', 'recordings:control', 'recordings:read']);
+  assert.deepEqual(r.getApp('petition-studio')!.scopes, ['rooms:create', 'tokens:mint', 'recordings:read']);
+  r.close();
 });

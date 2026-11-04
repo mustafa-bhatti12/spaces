@@ -1,8 +1,11 @@
+import fs from 'node:fs';
 import type { FastifyInstance, FastifyPluginAsync } from 'fastify';
 import { auditCaller, requireApp } from './auth';
 import { getRegistry } from './apps';
 import { issueJoinToken, type JoinTokenRequest, type JoinTokenResult } from './joinToken';
 import { closeRoomIfLive } from './livekit';
+import { listRecordingFiles, resolveRecordingFile } from './recordings';
+import { parseRecordingName, readTranscript, transcriptStates } from './transcripts';
 import { guestState, ReservationError, type Reservation } from './reservations';
 
 /**
@@ -49,6 +52,28 @@ function present(deps: RoomsDeps, r: Reservation) {
   };
 }
 
+/**
+ * A single `bytes=a-b`, `bytes=a-` or `bytes=-n` range against a file of `size` bytes. null when the
+ * header isn't a single byte range (served whole, as RFC 9110 allows); 'unsatisfiable' for a 416.
+ */
+export function parseRange(header: string, size: number): { start: number; end: number } | 'unsatisfiable' | null {
+  const m = /^bytes=(\d*)-(\d*)$/.exec(header.trim());
+  if (!m || (m[1] === '' && m[2] === '')) return null;
+  let start: number;
+  let end: number;
+  if (m[1] === '') {
+    const n = Number(m[2]);
+    if (n === 0) return 'unsatisfiable';
+    start = Math.max(0, size - n);
+    end = size - 1;
+  } else {
+    start = Number(m[1]);
+    end = m[2] === '' ? size - 1 : Math.min(Number(m[2]), size - 1);
+  }
+  if (start >= size || start > end) return 'unsatisfiable';
+  return { start, end };
+}
+
 export function roomsApi(deps: RoomsDeps = realDeps): FastifyPluginAsync {
   return async (app: FastifyInstance) => {
     const store = () => getRegistry().reservations;
@@ -75,6 +100,71 @@ export function roomsApi(deps: RoomsDeps = realDeps): FastifyPluginAsync {
       if (!r) return reply.code(404).send(NOT_FOUND);
       return present(deps, r);
     });
+
+    // A room's finished recordings with their transcripts, oldest first. Transcript text and segments
+    // only once the status is `ready`.
+    app.get<{ Params: { id: string } }>('/rooms/:id/recordings', { preHandler: requireApp('recordings:read') }, async (req, reply) => {
+      const r = store().getOwned(req.params.id, req.caller!.app.id);
+      if (!r) return reply.code(404).send(NOT_FOUND);
+      try {
+        const files = (await listRecordingFiles())
+          .filter((f) => f.kind === 'compressed' && parseRecordingName(f.name)?.room === r.roomName)
+          .sort((a, b) => (parseRecordingName(a.name)!.recordedAt < parseRecordingName(b.name)!.recordedAt ? -1 : 1));
+        const states = await transcriptStates(files.map((f) => f.name));
+        const recordings = await Promise.all(
+          files.map(async (f) => {
+            const status = states.get(f.name)!.status;
+            const t = status === 'ready' ? await readTranscript(f.name) : null;
+            return {
+              file: f.name,
+              recordedAt: parseRecordingName(f.name)?.recordedAt ?? null,
+              durationMs: t?.durationMs ?? null,
+              bytes: f.bytes,
+              transcript: t
+                ? { status, languages: t.languages, text: t.text, segments: t.segments }
+                : { status: status === 'ready' ? 'none' : status },
+            };
+          }),
+        );
+        auditCaller(req, 'recording.read', { room: r.roomName, externalRef: r.externalRef ?? undefined });
+        return { recordings };
+      } catch (err) {
+        console.error('Failed to list room recordings:', err);
+        return reply.code(500).send({ error: 'Could not list recordings.' });
+      }
+    });
+
+    // One recording's audio (Opus in Ogg). Single byte ranges are honoured so players can seek.
+    app.get<{ Params: { id: string; file: string } }>(
+      '/rooms/:id/recordings/:file',
+      { preHandler: requireApp('recordings:read') },
+      async (req, reply) => {
+        const r = store().getOwned(req.params.id, req.caller!.app.id);
+        if (!r || parseRecordingName(req.params.file)?.room !== r.roomName) return reply.code(404).send(NOT_FOUND);
+        const path = resolveRecordingFile('compressed', req.params.file);
+        let size: number;
+        try {
+          if (!path) throw new Error('unsafe name');
+          size = (await fs.promises.stat(path)).size;
+        } catch {
+          return reply.code(404).send({ error: 'Recording not found.' });
+        }
+        reply.type('audio/ogg').header('Accept-Ranges', 'bytes');
+        const header = req.headers.range;
+        const range = header === undefined ? null : parseRange(header, size);
+        if (range === 'unsatisfiable') {
+          return reply.code(416).type('application/json').header('Content-Range', `bytes */${size}`).send({ error: 'Range not satisfiable.' });
+        }
+        // Audit the start of a playback, not every seek or chunk after it.
+        if (!range || range.start === 0) auditCaller(req, 'recording.audio', { room: r.roomName, externalRef: r.externalRef ?? undefined, detail: req.params.file });
+        if (!range) return reply.header('Content-Length', size).send(fs.createReadStream(path!));
+        return reply
+          .code(206)
+          .header('Content-Range', `bytes ${range.start}-${range.end}/${size}`)
+          .header('Content-Length', range.end - range.start + 1)
+          .send(fs.createReadStream(path!, { start: range.start, end: range.end }));
+      },
+    );
 
     // Ends the reservation first (nobody new joins), then closes the live room. If LiveKit can't be
     // reached the answer is 502 and a retry finishes the job.

@@ -188,6 +188,17 @@ curl -s -XPOST $API/v1/rooms/$ID/join-tokens -H "Authorization: Bearer $KEY" -H 
 # → {"token":"…","url":"https://spaces.hof-global.com/rooms/erp-…#t=…"}   open `url` to join as host
 ```
 
+Past meetings: with `recordings:read` the owner reads a room's recordings and transcripts and streams the audio (`Range` supported, so players can seek):
+
+```bash
+curl -s $API/v1/rooms/$ID/recordings -H "Authorization: Bearer $KEY"
+# → {"recordings":[{"file":"erp-…-1793700000000.ogg","recordedAt":"…","durationMs":123000,"bytes":34517,
+#     "transcript":{"status":"ready","languages":["en"],"text":"…","segments":[{"speaker":"1","language":"en","startMs":0,"endMs":4200,"text":"…"}]}}]}   oldest first
+curl -s $API/v1/rooms/$ID/recordings/erp-…-1793700000000.ogg -H "Authorization: Bearer $KEY" -H 'Range: bytes=0-1023' -o part.ogg   # 206, audio/ogg
+```
+
+`transcript.status` is `ready|transcribing|failed|none|off`; `languages`, `text` and `segments` only come with `ready`; `durationMs` is null when unknown.
+
 `GET /v1/rooms/:id` (`rooms:read`), `POST /v1/rooms/:id/end` (`rooms:end`), `GET /v1/apps/me` (any valid key). A room is visible to its owning app only (others get 404). Guests can join from 15 minutes before `startsAt` until `expiresAt` (default start + 12 h, at most 90 days); in a reserved room nobody becomes host except through a host token. `SPACES_PUBLIC_WEB_URL` (token-service `.env`) sets the origin in `joinUrl`.
 
 ---

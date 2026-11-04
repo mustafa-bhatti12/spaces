@@ -3,6 +3,10 @@
 What shipped, newest first. One line per user- or operator-visible change; commit hashes point at
 the detail. Agents: add a line here with every change that ships (see `AGENTS.md`).
 
+## 2026-11-04
+
+- **Owner-scoped recordings and transcripts for apps** (ERP-85): `GET /v1/rooms/:id/recordings` (list with transcript text and speaker segments once ready) and `GET /v1/rooms/:id/recordings/:file` (audio with `Range` support) for the app that owns the room (`recordings:read`, 404 for others, audited as `recording.read` / `recording.audio`). `erp` gains `recordings:read`; existing databases are migrated at start. token-service reloads on pull.
+
 ## 2026-11-03
 
 - **New home page.** The "Join a meeting" landing is now a split hero (headline beside the link field) over a faint dot field, followed by "What happens when you join" (link opens 15 min early, device check, waiting room) and "Good to know" (recording is visible and audio only, HTTPS relay, supported browsers), with a Control Center link. Responsive down to phones; blocks fade in on scroll, instant under reduced motion.

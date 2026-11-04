@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict';
+import './testRecordingsEnv';
+import fs from 'node:fs';
+import path from 'node:path';
 import test from 'node:test';
 import Fastify from 'fastify';
 
@@ -408,4 +411,74 @@ test('revival gate for embed sessions: unreserved and lapsed implicit rooms are 
   const lapsed = gateRoomRevival(implicit, NOW + 13 * HOUR_MS);
   assert.ok(!lapsed.ok && lapsed.status === 404 && lapsed.code === 'room_not_reserved');
   assert.equal(gateTokenMint(explicit, false, NOW).ok, false);
+});
+
+test('ERP-85: owner lists recordings with transcripts only when ready, streams audio with ranges, others get 404', async () => {
+  const t = setup();
+  const erp = t.key('erp');
+  if (!t.registry.getApp('other-rec')) t.registry.createApp({ slug: 'other-rec', name: 'Other', scopes: ['rooms:read', 'recordings:read'] });
+  const other = t.key('other-rec');
+  const mine = (await t.call('POST', '/v1/rooms', erp, { title: 'Mine', externalRef: 'rec-1' })).body;
+  const theirs = (await t.call('POST', '/v1/rooms', erp, { title: 'Theirs', externalRef: 'rec-2' })).body;
+  const compressed = process.env.EGRESS_COMPRESSED_DIR!;
+  const transcripts = process.env.EGRESS_TRANSCRIPTS_DIR!;
+  fs.mkdirSync(compressed, { recursive: true });
+  fs.mkdirSync(transcripts, { recursive: true });
+  const first = `${mine.roomName}-1793700000000.ogg`;
+  const second = `${mine.roomName}-1793703600000.ogg`;
+  const foreign = `${theirs.roomName}-1793700000000.ogg`;
+  const bytes = Buffer.from('0123456789');
+  for (const f of [first, second, foreign]) fs.writeFileSync(path.join(compressed, f), bytes);
+  fs.writeFileSync(
+    path.join(transcripts, `${first}.json`),
+    JSON.stringify({
+      file: first, room: mine.roomName, recordedAt: null, model: 'm', transcribedAt: 'x', durationMs: 123000, languages: ['en'], text: 'hello',
+      segments: [{ speaker: '1', language: 'en', startMs: 0, endMs: 900, text: 'hello' }],
+    }),
+  );
+
+  const list = await t.call('GET', `/v1/rooms/${mine.roomId}/recordings`, erp);
+  assert.equal(list.status, 200);
+  assert.deepEqual(list.body.recordings.map((r: any) => r.file), [first, second], 'oldest first, own room only');
+  assert.equal(list.body.recordings[0].recordedAt, new Date(1793700000000).toISOString());
+  assert.equal(list.body.recordings[0].durationMs, 123000);
+  assert.equal(list.body.recordings[0].bytes, 10);
+  assert.deepEqual(list.body.recordings[0].transcript, {
+    status: 'ready', languages: ['en'], text: 'hello', segments: [{ speaker: '1', language: 'en', startMs: 0, endMs: 900, text: 'hello' }],
+  });
+  assert.deepEqual(list.body.recordings[1].transcript, { status: 'off' });
+  assert.equal(list.body.recordings[1].durationMs, null);
+
+  const url = `/v1/rooms/${mine.roomId}/recordings/${first}`;
+  const raw = (headers: Record<string, string> = {}) => t.app.inject({ method: 'GET', url, headers: { authorization: erp, ...headers } });
+  const whole = await raw();
+  assert.equal(whole.statusCode, 200);
+  assert.equal(whole.headers['content-type'], 'audio/ogg');
+  assert.equal(whole.headers['accept-ranges'], 'bytes');
+  assert.equal(whole.rawPayload.toString(), '0123456789');
+  const part = await raw({ range: 'bytes=2-4' });
+  assert.equal(part.statusCode, 206);
+  assert.equal(part.headers['content-range'], 'bytes 2-4/10');
+  assert.equal(part.rawPayload.toString(), '234');
+  const suffix = await raw({ range: 'bytes=-3' });
+  assert.equal(suffix.headers['content-range'], 'bytes 7-9/10');
+  const open = await raw({ range: 'bytes=0-' });
+  assert.equal(open.statusCode, 206);
+  assert.equal(open.headers['content-range'], 'bytes 0-9/10');
+  const bad = await raw({ range: 'bytes=10-20' });
+  assert.equal(bad.statusCode, 416);
+  assert.equal(bad.headers['content-range'], 'bytes */10');
+
+  // Only requests that start a playback are audited, not seeks.
+  const audio = t.registry.listAudit(200).filter((e) => e.action === 'recording.audio' && e.room === mine.roomName);
+  assert.equal(audio.length, 2, 'whole, bytes=0-, and nothing for the mid-file ranges');
+  assert.ok(t.registry.listAudit(200).some((e) => e.action === 'recording.read'));
+
+  // Another app, another room's file, an unknown file and an unsafe name all look like a missing room/file.
+  for (const u of [`/v1/rooms/${mine.roomId}/recordings`, url]) assert.equal((await t.call('GET', u, other)).status, 404, u);
+  assert.equal((await t.call('GET', `/v1/rooms/${mine.roomId}/recordings/${foreign}`, erp)).status, 404);
+  assert.equal((await t.call('GET', `/v1/rooms/${mine.roomId}/recordings/${mine.roomName}-1793799999999.ogg`, erp)).status, 404);
+  assert.equal((await t.call('GET', `/v1/rooms/${mine.roomId}/recordings/..%2Fx.ogg`, erp)).status, 404);
+  // The web app lacks recordings:read.
+  assert.equal((await t.call('GET', `/v1/rooms/${mine.roomId}/recordings`, t.key('spaces-web'))).status, 403);
 });

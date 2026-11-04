@@ -113,14 +113,14 @@ graph LR
   `rooms:create` in ERP-72 so the call website can run recordings without being able to create rooms),
   `rooms:end` (`/room/end`), `tokens:mint` (`/token`, `/embed/session`,
   `/room/host|mute|remove|spotlight`, `/lobby/*`, `/call-log`), `recordings:read`
-  (`/recording/transcripts`, `/recording/file/*`); `events:read` is reserved for outbound webhooks.
+  (`/recording/transcripts`, `/recording/file/*`, `GET /v1/rooms/:id/recordings[/:file]`); `events:read` is reserved for outbound webhooks.
   Seeded apps (first start, no keys issued): `erp` (`rooms:create|end|read`, `tokens:mint`,
-  `recordings:control`), `petition-studio` (`rooms:create`, `tokens:mint`, `recordings:read`; plus every scope through the shared
+  `recordings:control`, `recordings:read`), `petition-studio` (`rooms:create`, `tokens:mint`, `recordings:read`; plus every scope through the shared
   secret), `spaces-web` (`tokens:mint`, `rooms:read`, `rooms:end`, `recordings:control`: exactly the
   routes `demo/app/api/*` calls: `/token`, `/lobby/*`, `/room/host|mute|remove|spotlight`, `/call-log`,
   `/embed/session`, `/room/reservation`, `/rooms`, `/participant`, `/recording/status|start|stop`,
   `/room/end`; **never `rooms:create`**). A registry schema step (`apps.ts`, `migrate()`) rewrote
-  `spaces-web`'s scopes (and gave `erp` `recordings:control`) once on existing databases. Local keys:
+  `spaces-web`'s scopes (and gave `erp` `recordings:control`, then `recordings:read` in ERP-85) once on existing databases. Local keys:
   `cd token-service && npm run issue-key -- <app>` prints a new key straight from the registry file (what
   `start-all.sh` runs on macOS to fill `TOKEN_SERVICE_APP_KEY` in `demo/.env` when it is empty). The registry
   (tables `app`, `app_key`, `audit_event`) is SQLite via `node:sqlite` in `token-service/data/spaces.db`
@@ -182,7 +182,12 @@ graph LR
   `POST /v1/rooms/:id/end` (`rooms:end`: marks it ended first, then closes the live room; 502 if
   LiveKit is unreachable, and a retry finishes), `POST /v1/rooms/:id/join-tokens` (`tokens:mint`,
   `{identity, name, host}` → `{token, url}`, `url` = `joinUrl#t=<token>`; 410 once ended/expired),
-  `GET /v1/apps/me` (any valid credential). Another app's room answers **404**, same as a missing
+  `GET /v1/apps/me` (any valid credential), `GET /v1/rooms/:id/recordings` (`recordings:read`: the room's
+  compressed recordings matched by room name, oldest first, each `{file, recordedAt, durationMs, bytes,
+  transcript:{status, languages?, text?, segments?}}`, text only when `ready`; `durationMs` comes from the transcript,
+  null otherwise) and `GET /v1/rooms/:id/recordings/:file` (`audio/ogg`, `Accept-Ranges`, one `Range` → 206,
+  unsatisfiable → 416; the file must belong to that room else 404). Audit `recording.read`, `recording.audio`
+  (only requests without `Range` or starting at byte 0, so seeking doesn't flood the log). Another app's room answers **404**, same as a missing
   one. `joinUrl` uses `SPACES_PUBLIC_WEB_URL` (default `https://spaces.hof-global.com`). Audit:
   `room.create`, `room.end`, `host_token.mint`. `record: true` marks the room recorded
   (`markRoomRecorded`, same path as `/token`'s `record`), so recording starts at the first join. Every token minted for a
