@@ -191,7 +191,7 @@ export class AppRegistry {
       // /recording/start|stop moved from rooms:create to recordings:control, so erp keeps them.
       // On a fresh database no rows exist yet and seed() inserts the final values.
       this.scopeUpdateSql(),
-      // ERP-85: erp reads its rooms' recordings and transcripts (/v1/rooms/:id/recordings*), keeping its other scopes.
+      // ERP-86: erp reads its rooms' recordings and transcripts (/v1/rooms/:id/recordings*), keeping its other scopes.
       `UPDATE app SET scopes = '${JSON.stringify(['rooms:create', 'rooms:end', 'rooms:read', 'tokens:mint', 'recordings:control', 'recordings:read'])}' WHERE slug = 'erp'
          AND scopes = '${JSON.stringify(['rooms:create', 'rooms:end', 'rooms:read', 'tokens:mint', 'recordings:control'])}';`,
     ];

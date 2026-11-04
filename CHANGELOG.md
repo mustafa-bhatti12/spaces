@@ -5,7 +5,7 @@ the detail. Agents: add a line here with every change that ships (see `AGENTS.md
 
 ## 2026-11-04
 
-- **Owner-scoped recordings and transcripts for apps** (ERP-85): `GET /v1/rooms/:id/recordings` (list with transcript text and speaker segments once ready) and `GET /v1/rooms/:id/recordings/:file` (audio with `Range` support) for the app that owns the room (`recordings:read`, 404 for others, audited as `recording.read` / `recording.audio`). `erp` gains `recordings:read`; existing databases are migrated at start. token-service reloads on pull.
+- **Owner-scoped recordings and transcripts for apps** (ERP-86): `GET /v1/rooms/:id/recordings` (list with transcript text and speaker segments once ready) and `GET /v1/rooms/:id/recordings/:file` (audio with `Range` support) for the app that owns the room (`recordings:read`, 404 for others, audited as `recording.read` / `recording.audio`). `erp` gains `recordings:read`; existing databases are migrated at start. token-service reloads on pull.
 
 ## 2026-11-03
 
