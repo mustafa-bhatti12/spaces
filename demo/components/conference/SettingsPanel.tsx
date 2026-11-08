@@ -1,7 +1,7 @@
 'use client';
 
 import { MediaDeviceSelect, useLocalParticipant, VideoTrack } from '@livekit/components-react';
-import { Track } from 'livekit-client';
+import { supportsAudioOutputSelection, Track } from 'livekit-client';
 import { ChevronDown, VideoOff } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useMirrorVideo } from '@/lib/client/mirror';
@@ -138,10 +138,12 @@ export function SettingsPanel({
           )}
         </section>
 
-        <section className="settings-section" aria-labelledby="set-speaker">
-          <h3 id="set-speaker">Speaker</h3>
-          <MediaDeviceSelect kind="audiooutput" />
-        </section>
+        {supportsAudioOutputSelection() && (
+          <section className="settings-section" aria-labelledby="set-speaker">
+            <h3 id="set-speaker">Speaker</h3>
+            <MediaDeviceSelect kind="audiooutput" />
+          </section>
+        )}
       </div>
     </SidePanel>
   );

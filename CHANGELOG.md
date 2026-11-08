@@ -3,6 +3,15 @@
 What shipped, newest first. One line per user- or operator-visible change; commit hashes point at
 the detail. Agents: add a line here with every change that ships (see `AGENTS.md`).
 
+## 2026-11-09
+
+- **Call quality verdicts are honest.** The "concealed audio" figure counted the browser filling in silence (muted mics, DTX pauses), which scored 83 of a week's 103 "poor" sessions as poor on clean calls. The browser now logs `voiceConcealedPct` (speech only, `silentConcealedSamples` excluded) and `/admin` ignores the old `concealedPct`; older days show no concealed figure.
+- **Rejoin goes via TURN/TLS right after an ICE failure** (`could not establish pc connection`), not only after repeated drops or multi-second RTT.
+- **Lossy downlink steps remote video down.** Audio we hear losing >5 % for two samples makes that viewer receive every camera at its lowest layer until loss is ≤2 % for the hold time (`adapt` reason `downlink-audio-loss`). Video is still never paused; nobody else is affected.
+- **Mic/camera failures are shown in the call.** An amber notice at the top of the stage says which device failed, what it means for the others, the steps for this browser (Samsung Internet, iOS Safari/Chrome, Chrome, Firefox, Edge, macOS), and Try again; `media-error` log lines now carry the device kind.
+- **iOS Safari and Samsung Internet:** screen wake lock while in a call; mic/camera restarted when the page returns from the background with a dead track (also on iPadOS); RNNoise no longer silently sends silence on Safari and resumes after an iOS interruption; no Full screen item where the browser lacks it (iPhone); Speaker picker hidden where output selection isn't supported; browser storage failures no longer break the call UI; keep-open advice also shows on iPad; when the browser has paused the call's sound (an iOS listen-only join), any tap on the page turns it on, not only the banner's button; no tap flash, long-press callout or double-tap zoom delay on controls.
+- **Phones held sideways get a landscape layout:** compact dock and more height for video, a 4:3 self-view, notifications and menus on the right, and a side-by-side pre-join so Join is on screen. Only on that phone, only while it's sideways.
+
 ## 2026-11-04
 
 - **Owner-scoped recordings and transcripts for apps** (ERP-86): `GET /v1/rooms/:id/recordings` (list with transcript text and speaker segments once ready) and `GET /v1/rooms/:id/recordings/:file` (audio with `Range` support) for the app that owns the room (`recordings:read`, 404 for others, audited as `recording.read` / `recording.audio`). `erp` gains `recordings:read`; existing databases are migrated at start. token-service reloads on pull.

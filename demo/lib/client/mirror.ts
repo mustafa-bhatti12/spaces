@@ -1,4 +1,5 @@
 import { useCallback, useSyncExternalStore } from 'react';
+import { readStored, writeStored } from './storage';
 
 // New key because mirroring now applies to everyone, not only the local self-view. Starting fresh
 // also guarantees the new shared behavior defaults to on despite an older self-view preference.
@@ -15,13 +16,13 @@ function subscribe(onChange: () => void) {
   };
 }
 
-const read = () => localStorage.getItem(MIRROR_KEY) !== 'off';
+const read = () => readStored(MIRROR_KEY) !== 'off';
 
 /** Whether this participant's camera should be shown mirrored to everyone. */
 export function useMirrorVideo(): [boolean, (mirror: boolean) => void] {
   const mirror = useSyncExternalStore(subscribe, read, () => true);
   const setMirror = useCallback((next: boolean) => {
-    localStorage.setItem(MIRROR_KEY, next ? 'on' : 'off');
+    writeStored(MIRROR_KEY, next ? 'on' : 'off');
     window.dispatchEvent(new Event(CHANGE_EVENT));
   }, []);
   return [mirror, setMirror];

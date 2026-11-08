@@ -4,6 +4,7 @@ import { useLocalParticipant } from '@livekit/components-react';
 import { loadRnnoise, RnnoiseWorkletNode } from '@sapphi-red/web-noise-suppressor';
 import { LocalAudioTrack, type AudioProcessorOptions, type Track, type TrackProcessor } from 'livekit-client';
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
+import { readStored, writeStored } from '@/lib/client/storage';
 
 const PREF_KEY = 'spaces-noise-filter';
 const CHANGE_EVENT = 'spaces-noise-filter-change';
@@ -22,7 +23,7 @@ function subscribe(onChange: () => void) {
 
 // Off until someone turns it on. An explicit choice is remembered per browser.
 function read(): boolean {
-  return localStorage.getItem(PREF_KEY) === 'on';
+  return readStored(PREF_KEY) === 'on';
 }
 
 // One fetch per page; a failed one is retried on the next attempt.
@@ -46,6 +47,7 @@ class RnnoiseProcessor implements TrackProcessor<Track.Kind.Audio, AudioProcesso
   readonly name = PROCESSOR_NAME;
   processedTrack?: MediaStreamTrack;
   private context?: AudioContext;
+  private onVisible?: () => void;
   private source?: MediaStreamAudioSourceNode;
   private node?: RnnoiseWorkletNode;
 
@@ -63,8 +65,19 @@ class RnnoiseProcessor implements TrackProcessor<Track.Kind.Audio, AudioProcesso
       this.source = source;
       this.node = node;
       this.processedTrack = destination.stream.getAudioTracks()[0];
-      // The join click already gave the page user activation, so this resolves at once.
-      void context.resume().catch(() => {});
+      // Chrome remembers the join click (sticky activation); Safari only lets a context start
+      // within about a second of a tap, and never resolves resume() otherwise. A context that isn't
+      // running would send silence, so fail and let the plain mic carry on.
+      await Promise.race([context.resume(), new Promise((resolve) => setTimeout(resolve, 1500))]);
+      if (context.state !== 'running') throw new Error('the browser kept audio processing paused; turn it on again from Settings');
+      // iOS suspends ("interrupted") the context for a phone call, Siri or the lock screen.
+      this.onVisible = () => {
+        if (document.visibilityState === 'visible' && context.state !== 'running' && context.state !== 'closed') {
+          void context.resume().catch(() => {});
+        }
+      };
+      document.addEventListener('visibilitychange', this.onVisible);
+      context.addEventListener('statechange', this.onVisible);
     } catch (err) {
       await this.destroy();
       throw err;
@@ -77,12 +90,16 @@ class RnnoiseProcessor implements TrackProcessor<Track.Kind.Audio, AudioProcesso
   }
 
   async destroy() {
+    if (this.onVisible) {
+      document.removeEventListener('visibilitychange', this.onVisible);
+      this.context?.removeEventListener('statechange', this.onVisible);
+    }
     this.source?.disconnect();
     this.node?.disconnect();
     this.node?.destroy();
     this.processedTrack?.stop();
     await this.context?.close().catch(() => {});
-    this.source = this.node = this.processedTrack = this.context = undefined;
+    this.source = this.node = this.processedTrack = this.context = this.onVisible = undefined;
   }
 }
 
@@ -112,7 +129,7 @@ export function useNoiseFilter(): NoiseFilterControls {
   const track = microphoneTrack?.track instanceof LocalAudioTrack ? microphoneTrack.track : undefined;
 
   const setEnabled = useCallback((next: boolean) => {
-    localStorage.setItem(PREF_KEY, next ? 'on' : 'off');
+    writeStored(PREF_KEY, next ? 'on' : 'off');
     window.dispatchEvent(new Event(CHANGE_EVENT));
   }, []);
 

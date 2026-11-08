@@ -477,7 +477,7 @@ What `start-all.sh` does and doesn't do on a bare Linux host:
   type, `quality`, `pagehide`, plus a `session` line with the user agent. `joined` carries the
   participant sid to match `/tmp/livekit.log`. Start here for "the call kept dropping" reports:
   `grep <room> token-service/logs/calls-*.jsonl | jq -c '[.at,.identity[:8],.e,.d]'`.
-  Every 15 s a `stats` line (RTT, ICE path, audio loss, concealed %, bitrates) plus `adapt`
+  Every 15 s a `stats` line (RTT, ICE path, audio loss, concealed speech % as `voiceConcealedPct`, bitrates) plus `adapt`
   (low-bandwidth mode) and `relay` (relay-first rejoin); `/admin` → Call quality aggregates them
   (`token-service/src/callStats.ts`) and deletes log files. LiveKit runs at `log_level: info`, so
   this browser log, not `/tmp/livekit.log`, is where per-caller quality lives. Call-quality knobs

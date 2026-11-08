@@ -1,3 +1,5 @@
+import { readStored, writeStored } from './storage';
+
 const DEVICE_ID_KEY = 'space-meet-device-id';
 const DISPLAY_NAME_KEY = 'spaces-display-name';
 
@@ -7,10 +9,10 @@ const DISPLAY_NAME_KEY = 'spaces-display-name';
  * participant (see the /api/whoami heartbeat). A different browser or private window has its own id.
  */
 export function getDeviceId(): string {
-  let id = localStorage.getItem(DEVICE_ID_KEY);
+  let id = readStored(DEVICE_ID_KEY);
   if (!id) {
     id = crypto.randomUUID();
-    localStorage.setItem(DEVICE_ID_KEY, id);
+    writeStored(DEVICE_ID_KEY, id);
   }
   return id;
 }
@@ -18,7 +20,7 @@ export function getDeviceId(): string {
 /** Retrieve the persisted display name entered on this device, if any. */
 export function getSavedDisplayName(): string {
   if (typeof window === 'undefined') return '';
-  return localStorage.getItem(DISPLAY_NAME_KEY) || '';
+  return readStored(DISPLAY_NAME_KEY) || '';
 }
 
 /** Save the user's chosen display name so they don't have to retype it next time. */
@@ -26,6 +28,6 @@ export function saveDisplayName(name: string): void {
   if (typeof window === 'undefined') return;
   const trimmed = name.trim();
   if (trimmed) {
-    localStorage.setItem(DISPLAY_NAME_KEY, trimmed);
+    writeStored(DISPLAY_NAME_KEY, trimmed);
   }
 }

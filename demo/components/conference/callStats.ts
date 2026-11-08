@@ -16,8 +16,13 @@ export interface CallStats {
   audioLossPct: number | null;
   /** Worst jitter among the audio we hear. */
   audioJitterMs: number | null;
-  /** Share of played-out audio that was made up (silence/robot voice) because packets were missing. */
-  concealedPct: number | null;
+  /**
+   * Share of played-out speech that was made up (robot voice, gaps) because packets were missing.
+   * Excludes concealment of silence (`silentConcealedSamples`: the sender's DTX pauses or a muted
+   * mic), which counted as 20–60% "concealed" with under 1% loss. Null when the browser doesn't
+   * report silent concealment.
+   */
+  voiceConcealedPct: number | null;
   /** What the SFU loses of our mic (its receiver report). */
   remoteLossPct: number | null;
 }
@@ -28,7 +33,7 @@ interface Counters {
   /** The transports these ids belong to; a new one (rejoin, full reconnect) restarts the ids. */
   source: object;
   out: Map<string, { kind: string; bytes: number }>;
-  in: Map<string, { kind: string; bytes: number; lost: number; received: number; concealed: number; samples: number }>;
+  in: Map<string, { kind: string; bytes: number; lost: number; received: number; concealed: number; silent: number | null; samples: number }>;
 }
 
 type Stat = Record<string, unknown> & { id: string; type: string };
@@ -133,6 +138,7 @@ export function createStatsSampler(room: Room) {
                 lost: num(s.packetsLost) ?? 0,
                 received: num(s.packetsReceived) ?? 0,
                 concealed: num(s.concealedSamples) ?? 0,
+                silent: num(s.silentConcealedSamples),
                 samples: num(s.totalSamplesReceived) ?? 0,
               });
               const j = num(s.jitter);
@@ -174,6 +180,7 @@ export function createStatsSampler(room: Room) {
         let lost = 0;
         let received = 0;
         let concealed = 0;
+        let silent: number | null = 0;
         let samples = 0;
         for (const [key, s] of inbound) {
           const o = last.in.get(key);
@@ -182,7 +189,10 @@ export function createStatsSampler(room: Room) {
           received += Math.max(0, s.received - o.received);
           concealed += Math.max(0, s.concealed - o.concealed);
           samples += Math.max(0, s.samples - o.samples);
+          silent = silent === null || s.silent === null || o.silent === null ? null : silent + Math.max(0, s.silent - o.silent);
         }
+        // Speech only: silence the decoder filled in is neither heard as a fault nor caused by loss.
+        const voiceSamples = silent === null ? 0 : samples - silent;
 
         return {
           rttMs: int(rttMs),
@@ -194,7 +204,7 @@ export function createStatsSampler(room: Room) {
           downVideoKbps: int(rate(inbound, last.in, 'video')),
           audioLossPct: pct(lost + received > 0 ? (lost / (lost + received)) * 100 : null),
           audioJitterMs: int(jitter),
-          concealedPct: pct(samples > 0 ? (concealed / samples) * 100 : null),
+          voiceConcealedPct: pct(silent !== null && voiceSamples > 0 ? (Math.max(0, concealed - silent) / voiceSamples) * 100 : null),
           remoteLossPct: pct(remoteLoss),
         };
       } catch {

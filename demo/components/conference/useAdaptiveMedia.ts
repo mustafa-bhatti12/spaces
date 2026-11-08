@@ -1,6 +1,6 @@
 'use client';
 
-import { ConnectionQuality, ParticipantEvent, RoomEvent, Track, type Room } from 'livekit-client';
+import { ConnectionQuality, ParticipantEvent, RoomEvent, Track, VideoQuality, type RemoteTrackPublication, type Room } from 'livekit-client';
 import { useEffect } from 'react';
 import type { CallSettings } from '@/lib/callSettings';
 import type { CallStats } from './callStats';
@@ -13,6 +13,14 @@ const CAMERA_LOW_BITRATE: Record<CallSettings['lowCameraHeight'], number> = {
   270: 250_000,
   360: 450_000,
 };
+/**
+ * Downlink: audio we hear losing more than this for two samples in a row caps every remote camera
+ * at its lowest simulcast layer; it comes back after `adaptHoldSec` at or under the recovery level.
+ * Seen: a caller receiving ~390 kbps of video lost 20–23 % of the audio for whole 1.5 h calls.
+ * Video is never paused (user decision), only stepped down; screen shares are left alone.
+ */
+const DOWNLINK_LOSS_PCT = 5;
+const DOWNLINK_RECOVERED_PCT = 2;
 
 type AdaptiveMediaLevel = 'normal' | 'low';
 type EncodingBaseline = Pick<RTCRtpEncodingParameters, 'maxBitrate' | 'maxFramerate' | 'scaleResolutionDownBy'>[];
@@ -22,7 +30,8 @@ export type AdaptiveMediaStatsRef = { current: AdaptiveMediaStatsHandler | undef
 
 /**
  * Keep camera and screen video active, but constrain their sender encodings when this caller's
- * uplink is weak. The configured recovery hold must pass before restoring full quality.
+ * uplink is weak, and receive other people's cameras at the lowest layer while the audio we hear
+ * is losing packets. The configured recovery hold must pass before restoring full quality.
  */
 export function useAdaptiveMedia(
   room: Room,
@@ -41,6 +50,53 @@ export function useAdaptiveMedia(
     let qualityNeedsRecovery = room.localParticipant.connectionQuality === ConnectionQuality.Poor;
     let recoveryTimer: ReturnType<typeof setTimeout> | undefined;
     let pendingUpdates: Promise<void> = Promise.resolve();
+    let downlinkLow = false;
+    let lossySamples = 0;
+    let downlinkTimer: ReturnType<typeof setTimeout> | undefined;
+
+    const capCamera = (publication: RemoteTrackPublication) => {
+      if (publication.source !== Track.Source.Camera || !publication.isSubscribed) return;
+      publication.setVideoQuality(downlinkLow ? VideoQuality.LOW : VideoQuality.HIGH);
+    };
+    const capRemoteCameras = () => {
+      for (const participant of room.remoteParticipants.values()) {
+        for (const publication of participant.videoTrackPublications.values()) capCamera(publication);
+      }
+    };
+    const cancelDownlinkRecovery = () => {
+      if (downlinkTimer === undefined) return;
+      clearTimeout(downlinkTimer);
+      downlinkTimer = undefined;
+    };
+    const onDownlinkLoss = (loss: number | null) => {
+      if (loss === null) return;
+      if (loss > DOWNLINK_LOSS_PCT) {
+        lossySamples += 1;
+        cancelDownlinkRecovery();
+        if (lossySamples >= 2 && !downlinkLow) {
+          downlinkLow = true;
+          log('adapt', { level: 'low', reason: 'downlink-audio-loss' });
+          capRemoteCameras();
+        }
+        return;
+      }
+      lossySamples = 0;
+      if (!downlinkLow) return;
+      if (loss > DOWNLINK_RECOVERED_PCT) {
+        cancelDownlinkRecovery();
+        return;
+      }
+      if (downlinkTimer !== undefined) return;
+      downlinkTimer = setTimeout(() => {
+        downlinkTimer = undefined;
+        downlinkLow = false;
+        log('adapt', { level: 'normal', reason: 'downlink-audio-recovered' });
+        capRemoteCameras();
+      }, settings.adaptHoldSec * 1000);
+    };
+    const onTrackSubscribed = (_track: unknown, publication: RemoteTrackPublication) => {
+      if (downlinkLow) capCamera(publication);
+    };
 
     const applySenderLevel = async (sender: RTCRtpSender, source: Track.Source, nextLevel: AdaptiveMediaLevel) => {
       try {
@@ -131,6 +187,7 @@ export function useAdaptiveMedia(
     };
 
     const onStats: AdaptiveMediaStatsHandler = (stats) => {
+      onDownlinkLoss(stats.audioLossPct);
       const available = stats.availOutKbps;
       if (available === null) {
         lowSamples = 0;
@@ -163,7 +220,9 @@ export function useAdaptiveMedia(
     const onDisconnected = () => {
       lowSamples = 0;
       outboundLow = false;
+      lossySamples = 0;
       cancelRecovery();
+      cancelDownlinkRecovery();
     };
     const onConnected = () => {
       lowSamples = 0;
@@ -185,16 +244,25 @@ export function useAdaptiveMedia(
     statsHandler.current = onStats;
     room.localParticipant.on(ParticipantEvent.ConnectionQualityChanged, onQuality);
     room.localParticipant.on(ParticipantEvent.LocalTrackPublished, onTrackPublished);
-    room.on(RoomEvent.Disconnected, onDisconnected).on(RoomEvent.Connected, onConnected).on(RoomEvent.Reconnected, onConnected);
+    room
+      .on(RoomEvent.Disconnected, onDisconnected)
+      .on(RoomEvent.Connected, onConnected)
+      .on(RoomEvent.Reconnected, onConnected)
+      .on(RoomEvent.TrackSubscribed, onTrackSubscribed);
     if (room.localParticipant.connectionQuality === ConnectionQuality.Poor) lowerQuality('connection-quality');
 
     return () => {
       cancelRecovery();
+      cancelDownlinkRecovery();
       if (statsHandler.current === onStats) statsHandler.current = undefined;
       room.localParticipant
         .off(ParticipantEvent.ConnectionQualityChanged, onQuality)
         .off(ParticipantEvent.LocalTrackPublished, onTrackPublished);
-      room.off(RoomEvent.Disconnected, onDisconnected).off(RoomEvent.Connected, onConnected).off(RoomEvent.Reconnected, onConnected);
+      room
+        .off(RoomEvent.Disconnected, onDisconnected)
+        .off(RoomEvent.Connected, onConnected)
+        .off(RoomEvent.Reconnected, onConnected)
+        .off(RoomEvent.TrackSubscribed, onTrackSubscribed);
     };
   }, [room, log, statsHandler, settings]);
 }
