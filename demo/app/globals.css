@@ -170,6 +170,14 @@ code { font: 0.875em var(--mono); background: var(--key); padding: 1px 6px; bord
 }
 .avatar-xl { width: clamp(56px, 22%, 112px); height: auto; aspect-ratio: 1; font-size: clamp(1.25rem, 3.2vw, 2.5rem); }
 
+/* Touch (iOS Safari, Samsung Internet): no grey tap flash or long-press callout on controls, and no
+   double-tap zoom delay; each control draws its own pressed state. */
+.key, .self-view, .lk-participant-tile, .chat-toast-close, .chat-toast-open {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  touch-action: manipulation;
+}
+
 /* ---------- Keys ---------- */
 .key {
   position: relative;
@@ -567,6 +575,99 @@ code { font: 0.875em var(--mono); background: var(--key); padding: 1px 6px; bord
 .share-banner-stop { height: 26px; padding: 0 12px; font-size: 0.8125rem; }
 /* The browser blocked the call's sound until a tap (autoplay policy). */
 .audio-banner { padding-right: 6px; }
+/* The mic or camera failed in the call: an amber-edged card at the top of the stage (the join
+   request's family), with what's wrong, what it means for the others, this browser's steps, and
+   Try again. Drops in from the top; leaves the same way, faster. */
+.device-notice {
+  position: absolute;
+  top: 20px;
+  left: 50%;
+  z-index: 25;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: min(440px, calc(100% - 32px));
+  padding: 14px 14px 12px;
+  border-radius: 16px;
+  background: oklch(0.24 0.007 70 / 0.96);
+  -webkit-backdrop-filter: blur(16px) saturate(1.3);
+  backdrop-filter: blur(16px) saturate(1.3);
+  box-shadow: var(--pop), inset 0 0 0 1px oklch(0.83 0.15 80 / 0.32);
+  transform: translateX(-50%);
+  transition: opacity 300ms var(--ease-out), transform 300ms var(--ease-out);
+}
+@starting-style {
+  .device-notice { opacity: 0; transform: translate(-50%, -12px) scale(0.98); }
+}
+.device-notice[data-leaving] {
+  opacity: 0;
+  transform: translate(-50%, -12px) scale(0.98);
+  transition-duration: 180ms;
+  pointer-events: none;
+}
+.device-notice-head { position: relative; display: flex; align-items: flex-start; gap: 12px; padding-right: 28px; }
+.device-notice-icon {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+.device-notice-icon svg { width: 18px; height: 18px; }
+.device-notice-text { min-width: 0; padding-top: 1px; }
+.device-notice-title { margin: 0; font-size: 0.9375rem; font-weight: 650; line-height: 1.3; letter-spacing: -0.01em; }
+.device-notice-lede { margin: 2px 0 0; font-size: 0.8125rem; line-height: 1.4; color: var(--ink-2); }
+.device-notice-head .chat-toast-close { top: -4px; right: -4px; }
+.device-notice-steps {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--screen);
+  box-shadow: var(--recess);
+  list-style: none;
+  counter-reset: step;
+}
+.device-notice-steps li {
+  display: grid;
+  grid-template-columns: 20px 1fr;
+  gap: 10px;
+  align-items: baseline;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--ink);
+  counter-increment: step;
+  text-wrap: pretty;
+}
+.device-notice-steps li::before {
+  content: counter(step);
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--key);
+  color: var(--ink-2);
+  font: 600 0.6875rem/1 var(--mono);
+  transform: translateY(4px);
+}
+.device-notice-detail { margin: 0; font: 0.75rem/1.4 var(--mono); color: var(--ink-3); overflow-wrap: anywhere; }
+.device-notice-fallback { margin: -4px 2px 0; font-size: 0.75rem; line-height: 1.45; color: var(--ink-3); text-wrap: pretty; }
+.device-notice-fallback span { color: var(--ink-2); font-weight: 600; }
+.device-notice-foot { display: flex; align-items: center; gap: 8px; }
+.device-notice-status { flex: 1; min-width: 0; margin: 0; font-size: 0.75rem; line-height: 1.35; color: var(--warn); }
+.device-notice-foot .key { flex: none; }
+@media (max-width: 560px), (orientation: landscape) and (max-height: 500px) and (pointer: coarse) {
+  .device-notice { top: 12px; width: calc(100% - 24px); }
+  .device-notice-foot { flex-wrap: wrap; }
+  .device-notice-status:empty { display: none; }
+  .device-notice-status:not(:empty) { flex-basis: 100%; }
+  .device-notice-foot .key { flex: 1; height: 44px; }
+}
 /* Lost the connection: covers the call, dock included, while it rejoins. */
 .rejoin-overlay {
   position: fixed;
@@ -1780,7 +1881,11 @@ code { font: 0.875em var(--mono); background: var(--key); padding: 1px 6px; bord
   .readout-by { display: none; }
   .dock-room { max-width: 14ch; }
 }
-@media (max-width: 1080px) {
+/* Phones held sideways (landscape, at most 500px tall, touch) are 640–930px wide but have a third of
+   a desktop's height: they take the same compact dock, floating readout, full-screen panels and
+   phone layout as portrait phones, then the landscape block below fits them to the short screen.
+   Keep `useIsPhone.ts` on the same queries. */
+@media (max-width: 1080px), (orientation: landscape) and (max-height: 500px) and (pointer: coarse) {
   .dock .key { height: 44px; min-width: 44px; padding: 0 10px; }
   .dock .key-chevron { min-width: 0; width: 22px; }
   .dock .legend { display: none; }
@@ -1788,7 +1893,7 @@ code { font: 0.875em var(--mono); background: var(--key); padding: 1px 6px; bord
   .dock-readout .readout-seg:nth-child(2) { display: none; }
   .key-flag-rec::after { top: 6px; right: 6px; }
 }
-@media (max-width: 900px) {
+@media (max-width: 900px), (orientation: landscape) and (max-height: 500px) and (pointer: coarse) {
   .lobby-hero { grid-template-columns: minmax(0, 1fr); align-items: start; gap: 36px; min-height: 0; padding: 40px 0 72px; }
   .lobby-join { max-width: 520px; }
   .lobby-steps { grid-template-columns: minmax(0, 1fr); }
@@ -1820,7 +1925,7 @@ code { font: 0.875em var(--mono); background: var(--key); padding: 1px 6px; bord
     -webkit-backdrop-filter: blur(8px);
   }
 }
-@media (max-width: 760px) {
+@media (max-width: 760px), (orientation: landscape) and (max-height: 500px) and (pointer: coarse) {
   .side-panel,
   .conference .lk-chat {
     position: fixed;
@@ -1948,7 +2053,7 @@ code { font: 0.875em var(--mono); background: var(--key); padding: 1px 6px; bord
   .leave-actions .key { width: 100%; }
 }
 
-@media (max-width: 560px) {
+@media (max-width: 560px), (orientation: landscape) and (max-height: 500px) and (pointer: coarse) {
   .page-top { padding: 16px 20px; }
   .lobby { padding: 0 20px 88px; }
   .lobby > .lobby-top { padding: 14px 0; }
@@ -2036,6 +2141,32 @@ code { font: 0.875em var(--mono); background: var(--key); padding: 1px 6px; bord
   @starting-style {
     .chat-toast { opacity: 0; transform: translateY(-16px) scale(0.98); }
   }
+}
+/* Landscape phone: width is plentiful, height isn't. Every pixel of height goes to video; overlays
+   sit at the right instead of spanning the screen, and nothing may grow taller than the stage. */
+@media (orientation: landscape) and (max-height: 500px) and (pointer: coarse) {
+  .stage { padding: 6px 6px 0; }
+  .dock { padding: 6px 8px calc(6px + env(safe-area-inset-bottom)); }
+  .self-view { right: 10px; bottom: 10px; width: auto; max-width: none; height: 42%; max-height: 150px; aspect-ratio: 4 / 3; }
+  .chat-toasts { left: auto; right: 8px; width: min(340px, 45vw); }
+  .menu-panel { left: auto; right: 8px; width: min(360px, 60vw); bottom: 64px; max-height: calc(100dvh - 80px); overflow-y: auto; }
+  .toast-slot { bottom: 70px; }
+  .device-notice { top: 8px; width: min(460px, calc(100% - 24px)); max-height: calc(100% - 16px); overflow-y: auto; gap: 10px; padding: 12px; }
+  .device-notice-steps { padding: 10px 12px; gap: 6px; }
+  .device-notice-foot { flex-wrap: nowrap; }
+  .device-notice-foot { justify-content: flex-end; }
+  .device-notice-foot .key { flex: none; height: 40px; }
+  /* Pre-join side by side again: camera preview and devices on the left, name and Join on the right,
+     so Join is on screen without scrolling. */
+  .prejoin-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-areas: 'preview head' 'preview form' 'preview hint' 'preview err' 'devices .';
+    column-gap: 24px;
+    row-gap: 10px;
+    align-content: start;
+    padding-bottom: 20px;
+  }
+  .prejoin-grid .lk-prejoin .lk-video-container { align-self: start; }
 }
 @media (max-width: 420px) {
   .dock .key,

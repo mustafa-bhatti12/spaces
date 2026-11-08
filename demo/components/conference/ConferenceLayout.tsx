@@ -27,6 +27,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link2, MonitorUp, Volume2, WifiOff, X } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { MIRROR_ATTRIBUTE, useMirrorVideo } from '@/lib/client/mirror';
+import { deviceHelp, type FailedDevice } from '@/lib/client/prejoinGuidance';
+import { DeviceNotice, type DeviceProblem } from './DeviceNotice';
 import type { Panel } from './Dock';
 import { ChatToasts } from './ChatToasts';
 import { Dock } from './Dock';
@@ -102,6 +104,49 @@ export function ConferenceLayout({
   const room = useRoomContext();
   const { canPlayAudio, startAudio } = useAudioPlayback(room);
   const { canPlayVideo } = useStartVideo({ room, props: {} });
+  // A listen-only join on iOS (mic and camera off) has no capture to unlock playback, so the call
+  // stays silent until a tap. Any tap on the page counts, not only the banner's button: the first
+  // touch someone makes (opening chat, tapping a tile) turns the sound on.
+  const blocked = !canPlayAudio || !canPlayVideo;
+  useEffect(() => {
+    if (!blocked) return;
+    const unlock = () => void Promise.all([startAudio(), room.startVideo()]).catch(() => {});
+    document.addEventListener('pointerdown', unlock, { capture: true });
+    return () => document.removeEventListener('pointerdown', unlock, { capture: true });
+  }, [blocked, startAudio, room]);
+  // The mic or camera failed in the call (permission denied or revoked, device missing or busy).
+  // Seen: 17 of 27 such sessions in a week never sent any audio and left within minutes, with
+  // nothing on screen saying why others couldn't hear them.
+  const [deviceProblem, setDeviceProblem] = useState<DeviceProblem | null>(null);
+  useEffect(() => {
+    const onError = (error: Error, kind?: MediaDeviceKind) => {
+      const device: FailedDevice = kind === 'audioinput' || kind === 'videoinput' ? kind : undefined;
+      const help = deviceHelp(error, navigator.userAgent, navigator.maxTouchPoints, device);
+      // The same device failing again while the card is up is a failed Try again.
+      setDeviceProblem((current) => ({ device, help, retries: current && current.device === device ? current.retries + 1 : 0 }));
+    };
+    // Working now (a retry, or allowed from the browser's own prompt): the notice has done its job.
+    const onPublished = () =>
+      setDeviceProblem((current) => {
+        if (!current) return current;
+        const lp = room.localParticipant;
+        const ok = current.device === 'videoinput' ? lp.isCameraEnabled : current.device === 'audioinput' ? lp.isMicrophoneEnabled : lp.isMicrophoneEnabled && lp.isCameraEnabled;
+        return ok ? null : current;
+      });
+    room.on(RoomEvent.MediaDevicesError, onError).on(RoomEvent.LocalTrackPublished, onPublished);
+    return () => {
+      room.off(RoomEvent.MediaDevicesError, onError).off(RoomEvent.LocalTrackPublished, onPublished);
+    };
+  }, [room]);
+  const deviceToRetry = deviceProblem?.device;
+  const retryDevice = useCallback(async () => {
+    const lp = room.localParticipant;
+    await Promise.allSettled([
+      deviceToRetry !== 'videoinput' ? lp.setMicrophoneEnabled(true) : undefined,
+      deviceToRetry === 'videoinput' ? lp.setCameraEnabled(true) : undefined,
+    ]);
+  }, [room, deviceToRetry]);
+  const dismissDeviceProblem = useCallback(() => setDeviceProblem(null), []);
 
   // Participant attributes are synchronized through LiveKit, so every client renders this
   // participant's camera with the same orientation. Only send once connected: an update sent while
@@ -318,6 +363,11 @@ export function ConferenceLayout({
                   </button>
                 </div>
               )}
+              <DeviceNotice
+                problem={connectionState === ConnectionState.Connected ? deviceProblem : null}
+                onRetry={retryDevice}
+                onDismiss={dismissDeviceProblem}
+              />
               {sharingScreen && (
                 <div className="stage-banner share-banner" role="status">
                   <MonitorUp aria-hidden="true" />

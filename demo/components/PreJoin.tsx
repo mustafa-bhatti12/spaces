@@ -22,7 +22,8 @@ import { useMirrorVideo } from '@/lib/client/mirror';
  */
 function mobileCallAdvice(): string | null {
   const ua = navigator.userAgent;
-  if (!/Android|iPhone|iPad|iPod/i.test(ua)) return null;
+  const ipad = /Macintosh/i.test(ua) && navigator.maxTouchPoints > 1;
+  if (!ipad && !/Android|iPhone|iPad|iPod/i.test(ua)) return null;
   const keepOpen = 'Keep this screen open during the call: switching apps or locking the phone can cut you off. Wi-Fi is steadier than mobile data.';
   return /SamsungBrowser/i.test(ua) ? `Calls are steadier in Chrome than in Samsung Internet; open this link in Chrome if you can. ${keepOpen}` : keepOpen;
 }

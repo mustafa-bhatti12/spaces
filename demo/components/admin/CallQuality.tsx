@@ -217,7 +217,7 @@ export function CallQuality({ onError, flash }: { onError: (error: unknown) => s
                 <strong className="call-quality-value">{percent(summary?.lossAvg ?? null)}</strong>
               </div>
               <div className="health-seg">
-                <span className="health-name">Avg concealed</span>
+                <span className="health-name" title="Speech the browser had to make up because packets were missing (silence excluded)">Concealed speech</span>
                 <strong className="call-quality-value">{percent(summary?.concealedAvg ?? null)}</strong>
               </div>
             </div>

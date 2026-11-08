@@ -58,15 +58,19 @@ export function elapsed(startedAtNs: string): string {
   return m >= 60 ? `${Math.floor(m / 60)}:${String(m % 60).padStart(2, '0')}:${s}` : `${String(m).padStart(2, '0')}:${s}`;
 }
 
+/** Full screen, where the page can have it: iPhone has no element fullscreen at all (iPad does). */
 function useFullscreen() {
   const [fullscreen, setFullscreen] = useState(false);
+  const [supported, setSupported] = useState(false);
   useEffect(() => {
+    setSupported(typeof document.documentElement.requestFullscreen === 'function' && document.fullscreenEnabled !== false);
     const sync = () => setFullscreen(Boolean(document.fullscreenElement));
     document.addEventListener('fullscreenchange', sync);
     return () => document.removeEventListener('fullscreenchange', sync);
   }, []);
-  const toggle = () => (document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen());
-  return { fullscreen, toggle };
+  const toggle = () =>
+    (document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen()).catch(() => {});
+  return { fullscreen, supported, toggle };
 }
 
 /** Ticks once a second while `active`, so elapsed timers stay current. */
@@ -185,7 +189,7 @@ export function Dock({ roomName, participantCount, panel, onTogglePanel, onReact
   const hand = useParticipantAttribute(HAND_ATTRIBUTE, { participant: localParticipant });
   const { saveAudioInputEnabled, saveVideoInputEnabled, saveAudioInputDeviceId, saveVideoInputDeviceId } =
     usePersistentUserChoices();
-  const { fullscreen, toggle: toggleFullscreen } = useFullscreen();
+  const { fullscreen, supported: fullscreenSupported, toggle: toggleFullscreen } = useFullscreen();
   const [leaveOpen, setLeaveOpen] = useState(false);
   const rec = recording.current;
   useSecondTick(Boolean(rec));
@@ -377,15 +381,17 @@ export function Dock({ roomName, participantCount, panel, onTogglePanel, onReact
                 >
                   Settings
                 </MenuItem>
-                <MenuItem
-                  icon={fullscreen ? Minimize : Maximize}
-                  onSelect={() => {
-                    void toggleFullscreen();
-                    close();
-                  }}
-                >
-                  {fullscreen ? 'Exit full screen' : 'Full screen'}
-                </MenuItem>
+                {fullscreenSupported && (
+                  <MenuItem
+                    icon={fullscreen ? Minimize : Maximize}
+                    onSelect={() => {
+                      void toggleFullscreen();
+                      close();
+                    }}
+                  >
+                    {fullscreen ? 'Exit full screen' : 'Full screen'}
+                  </MenuItem>
+                )}
                 {floatingWindow && (
                   <MenuItem
                     icon={PictureInPicture2}

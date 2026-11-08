@@ -45,9 +45,9 @@ test('summarises stats samples into one session row', () => {
   const r = report([
     row(0, 'session', { ua: CHROME_WIN, embedded: true }),
     row(1, 'joined', { sid: 'PA_1' }),
-    stats(15, { rttMs: 100, path: 'udp', audioLossPct: 1, concealedPct: 0.5, remoteLossPct: 0, upAudioKbps: 40 }),
-    stats(30, { rttMs: 300, path: 'udp', audioLossPct: 3, concealedPct: 1.5, remoteLossPct: 1, upAudioKbps: 50 }),
-    stats(45, { rttMs: 200, path: 'tcp', audioLossPct: null, concealedPct: null, remoteLossPct: null, upAudioKbps: null }),
+    stats(15, { rttMs: 100, path: 'udp', audioLossPct: 1, voiceConcealedPct: 0.5, remoteLossPct: 0, upAudioKbps: 40 }),
+    stats(30, { rttMs: 300, path: 'udp', audioLossPct: 3, voiceConcealedPct: 1.5, remoteLossPct: 1, upAudioKbps: 50 }),
+    stats(45, { rttMs: 200, path: 'tcp', audioLossPct: null, voiceConcealedPct: null, remoteLossPct: null, upAudioKbps: null }),
     row(50, 'state', 'reconnecting'),
     row(52, 'state', 'connected'),
     row(60, 'quality', 'poor'),
@@ -90,10 +90,10 @@ test('counts recovery and media events and aggregates by browser and UTC start d
     row(7, 'quality', 'poor'),
     row(8, 'quality', 'lost'),
     row(9, 'media-error', 'NotAllowedError'),
-    stats(10, { rttMs: 900, audioLossPct: 6, concealedPct: 1, remoteLossPct: 0, upAudioKbps: 40 }),
+    stats(10, { rttMs: 900, audioLossPct: 6, voiceConcealedPct: 1, remoteLossPct: 0, upAudioKbps: 40 }),
     row(86_400, 'session', { ua: FIREFOX_MAC }),
     row(86_401, 'joined', { sid: 'PB_1' }),
-    stats(86_415, { rttMs: 100, audioLossPct: 0, concealedPct: 0, remoteLossPct: 0, upAudioKbps: 30 }, 'dev-a'),
+    stats(86_415, { rttMs: 100, audioLossPct: 0, voiceConcealedPct: 0, remoteLossPct: 0, upAudioKbps: 30 }, 'dev-a'),
   ]);
 
   assert.equal(r.sessionsTotal, 2);
@@ -123,6 +123,16 @@ test('old rows without stats still make a row with null stats', () => {
   assert.equal(s.mediaErrors, 1);
   assert.equal(s.verdict, 'good');
   assert.equal(s.browser, 'Firefox 144');
+});
+
+test('ignores the old concealedPct, which counted filled-in silence', () => {
+  const s = report([
+    row(0, 'session', { ua: CHROME_WIN }),
+    row(1, 'joined', { sid: 'PA_1' }),
+    stats(15, { rttMs: 100, audioLossPct: 0.2, concealedPct: 40, remoteLossPct: 0 }),
+  ]).sessions[0];
+  assert.equal(s.concealedAvg, null);
+  assert.equal(s.verdict, 'good');
 });
 
 test('sessions split by joined and session, but a rejoin continues the session', () => {

@@ -41,6 +41,7 @@ export interface CallSession {
   rttMax: number | null;
   lossAvg: number | null;
   lossMax: number | null;
+  /** Concealed speech (`voiceConcealedPct`); null for samples logged before it existed. */
   concealedAvg: number | null;
   concealedMax: number | null;
   remoteLossAvg: number | null;
@@ -84,11 +85,13 @@ export const MAX_DAYS = 30;
 
 /**
  * Verdict thresholds (session averages; RTT is the 95th percentile of the 15 s samples):
- *   poor: a drop (the client had to rejoin), concealed audio > 5 %, audio loss > 5 %,
+ *   poor: a drop (the client had to rejoin), concealed speech > 5 %, audio loss > 5 %,
  *         loss of our own mic at the others > 5 %, or RTT p95 > 800 ms;
  *   fair: a reconnect (LiveKit resumed it), LiveKit reported poor/lost quality, concealed > 2 %,
  *         loss > 2 %, remote loss > 2 %, or RTT p95 > 400 ms;
  *   good: none of those. A session without stats samples is judged on its events alone.
+ * Concealment counts speech only: the older `concealedPct` field also counted silence the decoder
+ * filled in (DTX pauses, muted mics) and read 20–60 % on clean calls, so it is ignored.
  */
 export const THRESHOLDS = {
   poor: { pct: 5, rttP95: 800 },
@@ -323,7 +326,7 @@ export class CallStatsAggregator {
         };
         push(acc.rtt, 'rttMs');
         push(acc.loss, 'audioLossPct');
-        push(acc.concealed, 'concealedPct');
+        push(acc.concealed, 'voiceConcealedPct');
         push(acc.remoteLoss, 'remoteLossPct');
         push(acc.upAudio, 'upAudioKbps');
         const p = field('path');

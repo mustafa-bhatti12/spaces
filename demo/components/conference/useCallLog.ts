@@ -84,7 +84,7 @@ export function useCallLog(
     const onConnected = () => log('joined', { sid: room.localParticipant.sid });
     const onDisconnected = (reason?: DisconnectReason) => log('disconnected', reason === undefined ? 'none' : DisconnectReason[reason]);
     const onPlayback = () => log('audio-playback', room.canPlaybackAudio ? 'allowed' : 'blocked');
-    const onDeviceError = (err: Error) => log('media-error', err.message);
+    const onDeviceError = (err: Error, kind?: MediaDeviceKind) => log('media-error', { kind: kind ?? null, name: err.name, message: err.message });
     const onQuality = (quality: ConnectionQuality) => log('quality', quality);
     room
       .on(RoomEvent.ConnectionStateChanged, onState)

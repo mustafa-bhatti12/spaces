@@ -26,6 +26,7 @@ import type { ConnectionDetails, LeaveReason } from './types';
 import type { CallStats } from './callStats';
 import { type CallLog, useCallLog } from './useCallLog';
 import { useAdaptiveMedia, type AdaptiveMediaStatsHandler } from './useAdaptiveMedia';
+import { useCallKeepAlive } from './useCallKeepAlive';
 
 const DUPLICATE_CHECK_EVERY_MS = 5000;
 /** How long we keep rejoining after LiveKit's own reconnect gives up (see RESUME_POLICY). */
@@ -53,7 +54,9 @@ const RESUME_POLICY: ReconnectPolicy = {
  * Relay-only rejoin. Mobile carriers in the UAE (du, Etisalat) were seen stalling UDP for seconds
  * at a time (RTT spikes of 2–13 s, then drops), which TURN over TLS on 443 rides out: to the
  * carrier it looks like HTTPS. Configured repeated-drop and RTT thresholds switch later rejoins
- * to `iceTransportPolicy: 'relay'`; LiveKit supplies its own TURN servers, including
+ * to `iceTransportPolicy: 'relay'`, and so does a rejoin whose signalling worked but whose media
+ * didn't (`could not establish pc connection`: 4 of a week's 17 failed rejoins, none of them followed
+ * by relay under the other two triggers). LiveKit supplies its own TURN servers, including
  * turn.hof-global.com:443 TLS. A slow-but-alive call is not dropped on purpose; the next natural
  * drop uses relay.
  */
@@ -173,6 +176,7 @@ export function Conference({ roomName, details, choices, identity, onLeave, chil
     callSettings.statsIntervalSec,
   );
   useAdaptiveMedia(room, log, adaptiveStats, callSettings);
+  useCallKeepAlive(room, log);
   // Set just before we disconnect ourselves (duplicate identity) or end the room for everyone, so
   // the Disconnected event (CLIENT_INITIATED / ROOM_DELETED) is reported as what actually happened.
   const leavingAs = useRef<LeaveReason | null>(null);
@@ -273,6 +277,11 @@ export function Conference({ roomName, details, choices, identity, onLeave, chil
           // Refused outright (bad or long-expired token, removed): retrying won't change that.
           if (err instanceof ConnectionError && err.reason === ConnectionErrorReason.NotAllowed) {
             return end({ kind: 'error', message: err.message });
+          }
+          // Signalling got through but ICE didn't: the network is letting HTTPS out but not our
+          // media ports, which is what TURN over TLS on 443 is for.
+          if (err instanceof ConnectionError && err.reason === ConnectionErrorReason.InternalError && /pc connection/i.test(err.message)) {
+            enableRelay('ice-failed', log);
           }
         }
         const delay = Math.min(1000 * 2 ** (attempt - 1), REJOIN_MAX_DELAY_MS);
